@@ -1,0 +1,1 @@
+# Generic-Obsidian-Repository
