@@ -1,0 +1,11 @@
+# Obsidian
+.obsidian/cache
+.obsidian/workspace.json
+.obsidian/workspaces.json
+.obsidian/plugins/*/.cache
+
+# Mac系统垃圾
+.DS_Store
+
+# Windows缩略图缓存
+Thumbs.db
