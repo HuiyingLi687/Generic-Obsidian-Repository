@@ -8,8 +8,8 @@
   "shouldDeleteEmptyNoteFolders": false,
   "shouldHandleDeletions": false,
   "shouldHandleRenames": false,
-  "shouldRenameAttachmentFiles": false,
-  "shouldRenameAttachmentFolder": false,
+  "shouldRenameAttachmentFiles": true,
+  "shouldRenameAttachmentFolder": true,
   "shouldRescueSharedAttachments": false,
   "shouldUpdateFileNameAliases": true,
   "treatAsAttachmentExtensions": [
