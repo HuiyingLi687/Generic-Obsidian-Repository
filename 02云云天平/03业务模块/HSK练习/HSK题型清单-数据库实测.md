@@ -116,25 +116,25 @@
 
 ## 3. HSK 2.0 题型矩阵
 
-| 题型 | L1 | L2 | L3 | L4 | L5 | L6 |
-|---|:-:|:-:|:-:|:-:|:-:|:-:|
-| 例题 `example_question` | 200 | 200 | 220 | 200 | 21 | — |
-| 听力:单选 `listening_single` | 200 | 300 | 400 | 300 | 945 | 1000 |
-| 听力:判断 `listening_judge` | 100 | 200 | 200 | 200 | — | — |
-| 听力:图片匹配 `listening_img_match` | 100 | 200 | 200 | — | — | — |
-| 听力:短文理解 `listening_passage` | — | — | — | 400 | — | — |
-| 阅读:匹配 `reading_match` | 200 | 300 | 200 | — | — | — |
-| 阅读:单选 `reading_single` | — | — | 200 | 400 | 630 | 600 |
-| 阅读:选词填空 `reading_word_fill` | 100 | 100 | 200 | 200 | 315 | — |
-| 阅读:判断 `reading_judge` | 100 | 100 | — | — | — | — |
-| 阅读:排列顺序 `reading_sort` | — | — | — | 200 | — | — |
-| 阅读:语病判断 `reading_wrong_sentence` | — | — | — | — | — | 200 |
-| 阅读:选句填空 `reading_sent_fill` | — | — | — | — | — | **200** |
-| 书写:完成句子 `write_complete_sent` | — | — | 100 | 200 | 168 | — |
-| 书写:写汉字 `write_character_writing` | — | — | 100 | — | — | — |
-| 书写:造句 `write_make_sent` | — | — | — | 100 | — | — |
-| 书写:写短文 `write_short_essay` | — | — | — | — | 42 | — |
-| 书写:缩写 `write_summary` | — | — | — | — | — | 20 |
+| 题型                               | L1  | L2  | L3  | L4  | L5  |   L6    |
+| -------------------------------- | :-: | :-: | :-: | :-: | :-: | :-----: |
+| 例题 `example_question`            | 200 | 200 | 220 | 200 | 21  |    —    |
+| 听力:单选 `listening_single`         | 200 | 300 | 400 | 300 | 945 |  1000   |
+| 听力:判断 `listening_judge`          | 100 | 200 | 200 | 200 |  —  |    —    |
+| 听力:图片匹配 `listening_img_match`    | 100 | 200 | 200 |  —  |  —  |    —    |
+| 听力:短文理解 `listening_passage`      |  —  |  —  |  —  | 400 |  —  |    —    |
+| 阅读:匹配 `reading_match`            | 200 | 300 | 200 |  —  |  —  |    —    |
+| 阅读:单选 `reading_single`           |  —  |  —  | 200 | 400 | 630 |   600   |
+| 阅读:选词填空 `reading_word_fill`      | 100 | 100 | 200 | 200 | 315 |    —    |
+| 阅读:判断 `reading_judge`            | 100 | 100 |  —  |  —  |  —  |    —    |
+| 阅读:排列顺序 `reading_sort`           |  —  |  —  |  —  | 200 |  —  |    —    |
+| 阅读:语病判断 `reading_wrong_sentence` |  —  |  —  |  —  |  —  |  —  |   200   |
+| 阅读:选句填空 `reading_sent_fill`      |  —  |  —  |  —  |  —  |  —  | **200** |
+| 书写:完成句子 `write_complete_sent`    |  —  |  —  | 100 | 200 | 168 |    —    |
+| 书写:写汉字 `write_character_writing` |  —  |  —  | 100 |  —  |  —  |    —    |
+| 书写:造句 `write_make_sent`          |  —  |  —  |  —  | 100 |  —  |    —    |
+| 书写:写短文 `write_short_essay`       |  —  |  —  |  —  |  —  | 42  |    —    |
+| 书写:缩写 `write_summary`            |  —  |  —  |  —  |  —  |  —  |   20    |
 
 **卷数/题量**：L1–L6 各 20 套卷（L5 为 21 套），每卷 5 个题型组合、约 100–120 题。
 
