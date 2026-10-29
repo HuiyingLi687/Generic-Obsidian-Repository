@@ -1,0 +1,37 @@
+HSK1：
+section_mapping = 'SEC_LISTEN' AND `section` = 1 则 layout = imageJudge；
+section_mapping = 'SEC_LISTEN' AND `section` = 2 则 layout = imageChoice；
+section_mapping = 'SEC_LISTEN' AND `section` = 3 则 layout = imageMatch；
+section_mapping = 'SEC_LISTEN' AND `section` = 4 则 layout = textChoice；
+
+HSK2：
+section_mapping = 'SEC_LISTEN' AND `section` = 1 则 layout = imageJudge；
+section_mapping = 'SEC_LISTEN' AND `section` = 2 则 layout = textChoice；
+section_mapping = 'SEC_LISTEN' AND `section` = 3 则 layout = textChoice；
+section_mapping = 'SEC_LISTEN' AND `section` = 4 则 layout = textChoice；
+
+HSK3：
+section_mapping = 'SEC_LISTEN' AND `section` = 1 则 layout = imageMatch；
+section_mapping = 'SEC_LISTEN' AND `section` = 2 则 layout = textJudge；
+section_mapping = 'SEC_LISTEN' AND `section` = 3 则 layout = textChoice；
+section_mapping = 'SEC_LISTEN' AND `section` = 4 则 layout = textChoice；
+
+HSK4：
+section_mapping = 'SEC_LISTEN' AND `section` = 1 则 layout = textJudge；
+section_mapping = 'SEC_LISTEN' AND `section` = 2 则 layout = textChoice；
+section_mapping = 'SEC_LISTEN' AND `section` = 3 AND  `number` 属于26-35 则 layout = textChoice；
+section_mapping = 'SEC_LISTEN' AND `section` = 3 AND  `number` 属于36-45 则 layout = textChoice_shareAudio；
+
+HSK5：
+section_mapping = 'SEC_LISTEN' AND `section` = 1 则 layout = textChoice；
+section_mapping = 'SEC_LISTEN' AND `section` = 2 AND  `number` 属于21-30 则 layout = textChoice；
+section_mapping = 'SEC_LISTEN' AND `section` = 2 AND  `number` 属于31-45 则 layout = textChoice_shareAudio；
+
+HSK6：
+section_mapping = 'SEC_LISTEN' AND `section` = 1 则 layout = textChoice；
+section_mapping = 'SEC_LISTEN' AND `section` = 2 则 layout = textChoice_shareAudio；
+section_mapping = 'SEC_LISTEN' AND `section` = 3 则 layout = passageGroup；
+
+
+以上`number` = 0是例题，不需要填充layout字段。
+

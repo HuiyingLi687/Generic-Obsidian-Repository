@@ -1,0 +1,214 @@
+{
+  "HSK1": [
+    {
+      "partName": "第一部分",
+      "partNameEn": "Part 1",
+      "partNameVi": "Phần 1",
+      "typeName": "看图判断题",
+      "typeNameEn": "Picture Judgment",
+      "typeNameVi": "Nhận định hình ảnh",
+      "questionCount": 5,
+      "sortOrder": 1
+    },
+    {
+      "partName": "第二部分",
+      "partNameEn": "Part 2",
+      "partNameVi": "Phần 2",
+      "typeName": "看图选择题",
+      "typeNameEn": "Picture Choice",
+      "typeNameVi": "Lựa chọn hình ảnh",
+      "questionCount": 5,
+      "sortOrder": 2
+    },
+    {
+      "partName": "第三部分",
+      "partNameEn": "Part 3",
+      "partNameVi": "Phần 3",
+      "typeName": "图片匹配题",
+      "typeNameEn": "Picture Matching",
+      "typeNameVi": "Ghép hình ảnh",
+      "questionCount": 5,
+      "sortOrder": 3
+    },
+    {
+      "partName": "第四部分",
+      "partNameEn": "Part 4",
+      "partNameVi": "Phần 4",
+      "typeName": "细节选择题",
+      "typeNameEn": "Detail Choice",
+      "typeNameVi": "Lựa chọn chi tiết",
+      "questionCount": 5,
+      "sortOrder": 4
+    }
+  ],
+  "HSK2": [
+    {
+      "partName": "第一部分",
+      "partNameEn": "Part 1",
+      "partNameVi": "Phần 1",
+      "typeName": "看图判断题",
+      "typeNameEn": "Picture Judgment",
+      "typeNameVi": "Nhận định hình ảnh",
+      "questionCount": 5,
+      "sortOrder": 1
+    },
+    {
+      "partName": "第二部分",
+      "partNameEn": "Part 2",
+      "partNameVi": "Phần 2",
+      "typeName": "图片匹配题",
+      "typeNameEn": "Picture Matching",
+      "typeNameVi": "Ghép hình ảnh",
+      "questionCount": 5,
+      "sortOrder": 2
+    },
+    {
+      "partName": "第三部分",
+      "partNameEn": "Part 3",
+      "partNameVi": "Phần 3",
+      "typeName": "细节选择题",
+      "typeNameEn": "Detail Choice",
+      "typeNameVi": "Lựa chọn chi tiết",
+      "questionCount": 5,
+      "sortOrder": 3
+    },
+    {
+      "partName": "第四部分",
+      "partNameEn": "Part 4",
+      "partNameVi": "Phần 4",
+      "typeName": "细节选择题",
+      "typeNameEn": "Detail Choice",
+      "typeNameVi": "Lựa chọn chi tiết",
+      "questionCount": 10,
+      "sortOrder": 4
+    }
+  ],
+  "HSK3": [
+    {
+      "partName": "第一部分",
+      "partNameEn": "Part 1",
+      "partNameVi": "Phần 1",
+      "typeName": "图片匹配题",
+      "typeNameEn": "Picture Matching",
+      "typeNameVi": "Ghép hình ảnh",
+      "questionCount": 10,
+      "sortOrder": 1
+    },
+    {
+      "partName": "第二部分",
+      "partNameEn": "Part 2",
+      "partNameVi": "Phần 2",
+      "typeName": "文字判断题",
+      "typeNameEn": "Text Judgment",
+      "typeNameVi": "Nhận định văn bản",
+      "questionCount": 10,
+      "sortOrder": 2
+    },
+    {
+      "partName": "第三部分",
+      "partNameEn": "Part 3",
+      "partNameVi": "Phần 3",
+      "typeName": "细节选择题",
+      "typeNameEn": "Detail Choice",
+      "typeNameVi": "Lựa chọn chi tiết",
+      "questionCount": 10,
+      "sortOrder": 3
+    },
+    {
+      "partName": "第四部分",
+      "partNameEn": "Part 4",
+      "partNameVi": "Phần 4",
+      "typeName": "细节选择题",
+      "typeNameEn": "Detail Choice",
+      "typeNameVi": "Lựa chọn chi tiết",
+      "questionCount": 10,
+      "sortOrder": 4
+    }
+  ],
+  "HSK4": [
+    {
+      "partName": "第一部分",
+      "partNameEn": "Part 1",
+      "partNameVi": "Phần 1",
+      "typeName": "文字判断题",
+      "typeNameEn": "Text Judgment",
+      "typeNameVi": "Nhận định văn bản",
+      "questionCount": 10,
+      "sortOrder": 1
+    },
+    {
+      "partName": "第二部分",
+      "partNameEn": "Part 2",
+      "partNameVi": "Phần 2",
+      "typeName": "细节选择题",
+      "typeNameEn": "Detail Choice",
+      "typeNameVi": "Lựa chọn chi tiết",
+      "questionCount": 10,
+      "sortOrder": 2
+    },
+    {
+      "partName": "第三部分",
+      "partNameEn": "Part 3",
+      "partNameVi": "Phần 3",
+      "typeName": "细节选择题",
+      "typeNameEn": "Detail Choice",
+      "typeNameVi": "Lựa chọn chi tiết",
+      "questionCount": 10,
+      "sortOrder": 3
+    }
+  ],
+  "HSK5": [
+    {
+      "partName": "第一部分",
+      "partNameEn": "Part 1",
+      "partNameVi": "Phần 1",
+      "typeName": "细节选择题",
+      "typeNameEn": "Detail Choice",
+      "typeNameVi": "Lựa chọn chi tiết",
+      "questionCount": 20,
+      "sortOrder": 1
+    },
+    {
+      "partName": "第二部分",
+      "partNameEn": "Part 2",
+      "partNameVi": "Phần 2",
+      "typeName": "细节选择题",
+      "typeNameEn": "Detail Choice",
+      "typeNameVi": "Lựa chọn chi tiết",
+      "questionCount": 25,
+      "sortOrder": 2
+    }
+  ],
+  "HSK6": [
+    {
+      "partName": "第一部分",
+      "partNameEn": "Part 1",
+      "partNameVi": "Phần 1",
+      "typeName": "细节选择题",
+      "typeNameEn": "Detail Choice",
+      "typeNameVi": "Lựa chọn chi tiết",
+      "questionCount": 15,
+      "sortOrder": 1
+    },
+    {
+      "partName": "第二部分",
+      "partNameEn": "Part 2",
+      "partNameVi": "Phần 2",
+      "typeName": "细节选择题",
+      "typeNameEn": "Detail Choice",
+      "typeNameVi": "Lựa chọn chi tiết",
+      "questionCount": 15,
+      "sortOrder": 2
+    },
+    {
+      "partName": "第三部分",
+      "partNameEn": "Part 3",
+      "partNameVi": "Phần 3",
+      "typeName": "听短文选择",
+      "typeNameEn": "Passage Listening",
+      "typeNameVi": "Nghe đoạn văn chọn",
+      "questionCount": 20,
+      "sortOrder": 3
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+INSERT INTO `xuexitest`.`speaking_exam_paper_question` (`id`, `paper_id`, `number`, `question_group`, `question_type`, `question_type_mapping`, `passage`, `practice_audio_url`, `mock_audio_url`, `pic_url`, `level`, `reference_answer`, `audio_time`, `waitting_time`, `score`, `deleted`, `created_by`, `created_time`, `update_by`, `updated_time`) VALUES (2082716580563263491, 2082716580470988801, 0, '1-15 ', '提纲', 'outline', '<p>准备第1一5题</p ><p>每道题拥有独立提纲输入区，正式回答时展示对应题目的提纲。</p >', NULL, '', NULL, 'Beginner', '', '30.1', '0', '0', 0, 2057361044495556609, 1785393302, 1, 1788330039);
+
+
+<p>准备第26一27题</p ><p>每道题拥有独立提纲输入区，正式回答时展示对应题目的提纲。</p >
+<p>准备第11一14题</p ><p>每道题拥有独立提纲输入区，正式回答时展示对应题目的提纲。</p >
+<p>准备第4一6题</p ><p>每道题拥有独立提纲输入区，正式回答时展示对应题目的提纲。</p >
