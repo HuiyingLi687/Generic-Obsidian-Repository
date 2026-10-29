@@ -114,38 +114,38 @@
 
 ### 4.1 听力（11 项）
 
-| 题型 | 枚举值 | 出现版本-等级 |
-|---|---|---|
-| 看图判断题 | `listening_judge` | 2.0 L1、L2 |
-| 看图选择题 | `listening_pic_choice` | 2.0 L1；3.0 L1、L2 |
-| 图片匹配题 | `listening_img_match` | 2.0 L1–L3；3.0 L1–L3 |
-| 细节选择题 | `listening_detail_choice` | 2.0 L1、L5、L6；3.0 L1、L3–L6 |
-| 短对话选择题 | `listening_short_dialog_choice` | 2.0 L2–L4 |
-| 长对话选择题 | `listening_long_dialog_choice` | 2.0 L2–L4 |
-| 对话选择题 | `listening_dialog_choice` | 3.0 L2–L4 |
-| 细节判断题 | `listening_detail_judge` | 2.0 L3、L4 |
-| 阅读理解题 | `listening_reading_passage` | 2.0 L6；3.0 L6 |
-| 判断题 | `listening_judge` | 3.0 L7-9 |
-| 选择/填空题 | `listening_choice_fill` | 3.0 L7-9 |
+| 题型     | 枚举值                             | 出现版本-等级                   |
+| ------ | ------------------------------- | ------------------------- |
+| 看图判断题  | `listening_judge`               | 2.0 L1、L2                 |
+| 看图选择题  | `listening_pic_choice`          | 2.0 L1；3.0 L1、L2          |
+| 图片匹配题  | `listening_img_match`           | 2.0 L1–L3；3.0 L1–L3       |
+| 细节选择题  | `listening_detail_choice`       | 2.0 L1、L5、L6；3.0 L1、L3–L6 |
+| 短对话选择题 | `listening_short_dialog_choice` | 2.0 L2–L4                 |
+| 长对话选择题 | `listening_long_dialog_choice`  | 2.0 L2–L4                 |
+| 对话选择题  | `listening_dialog_choice`       | 3.0 L2–L4                 |
+| 细节判断题  | `listening_detail_judge`        | 2.0 L3、L4                 |
+| 阅读理解题  | `listening_reading_passage`     | 2.0 L6；3.0 L6             |
+| 判断题    | `listening_judge_text`          | 3.0 L7-9                  |
+| 选择/填空题 | `listening_choice_fill`         | 3.0 L7-9                  |
 
 ### 4.2 阅读（14 项）
 
-| 题型 | 枚举值 | 出现版本-等级 |
-|---|---|---|
-| 看图判断题 | `reading_judge` | 2.0 L1 |
-| 图片匹配题 | `reading_img_match` | 2.0 L1、L2；3.0 L1、L2 |
-| 句子匹配题 | `reading_sent_match` | 2.0 L1–L3；3.0 L1–L3 |
-| 完形填空题 | `reading_cloze` | 2.0 L1–L4；3.0 L1–L4 |
-| 细节判断题 | `reading_detail_judge`（新增） | 2.0 L2 |
-| 细节选择题 | `reading_detail_choice` | 2.0 L3–L5；3.0 L1–L4 |
-| 排列顺序题 | `reading_sort` | 2.0 L4 |
-| 选句填空题 | `reading_sent_fill` | 2.0 L6；3.0 L4、L6 |
-| 阅读填空题 | `reading_fill` | 2.0 L5；3.0 L5 |
+| 题型    | 枚举值                      | 出现版本-等级               |
+| ----- | ------------------------ | --------------------- |
+| 看图判断题 | `reading_judge`          | 2.0 L1                |
+| 图片匹配题 | `reading_img_match`      | 2.0 L1、L2；3.0 L1、L2   |
+| 句子匹配题 | `reading_sent_match`     | 2.0 L1–L3；3.0 L1–L3   |
+| 完形填空题 | `reading_cloze`          | 2.0 L1–L4；3.0 L1–L4   |
+| 细节判断题 | `reading_detail_judge`   | 2.0 L2                |
+| 细节选择题 | `reading_detail_choice`  | 2.0 L3–L5；3.0 L1–L4   |
+| 排列顺序题 | `reading_sort`           | 2.0 L4                |
+| 选句填空题 | `reading_sent_fill`      | 2.0 L6；3.0 L4、L6      |
+| 阅读填空题 | `reading_fill`           | 2.0 L5；3.0 L5         |
 | 文章选择题 | `reading_passage_choice` | 2.0 L5、L6；3.0 L5–L7-9 |
-| 段落排序题 | `reading_para_sort` | 3.0 L5、L7-9 |
-| 病句选择题 | `reading_wrong_sentence` | 2.0 L6 |
-| 选词填空题 | `reading_word_fill` | 2.0 L6；3.0 L6 |
-| 文章简答题 | `reading_short_answer` | 3.0 L7-9 |
+| 段落排序题 | `reading_para_sort`      | 3.0 L5、L7-9           |
+| 病句选择题 | `reading_wrong_sentence` | 2.0 L6                |
+| 选词填空题 | `reading_word_fill`      | 2.0 L6；3.0 L6         |
+| 文章简答题 | `reading_short_answer`   | 3.0 L7-9              |
 
 ### 4.3 写作（10 项）
 
@@ -183,27 +183,11 @@
 
 ## 五、使用附注
 
-### 5.1 `listening_judge` 一词两用
-
-原表中「看图判断题（2.0 L1、L2）」与「判断题（3.0 L7-9）」共用同一个 `listening_judge`。
-两者题干形态差别很大（看图判断 vs 纯文字 √×◯），若入库存的是同一个 code，
-**必须同时靠 `exam_version`（2.0/3.0）+ `level` 才能区分**，不能只凭 code 渲染 UI。落地前建议二选一：
-
-- 保留共用，查询时强制带版本条件；
-- 或把 3.0 L7-9 拆成 `listening_judge_text`，与看图判断题彻底分开。
-
-### 5.2 `reading_detail_judge` 标注「（新增）」但版本列写 2.0 L2
-
-「新增」是相对**枚举体系**新增（此前 2.0 的细节判断题没有独立 code），不是指 3.0 新题型 ——
-大纲对比表里它出现在 HSK2 的 **2.0 旧版**阅读第三部分。书写文档时别误写成「3.0 新增」。
-
-### 5.3 本表把 HSK2/HSK3 的「书写」并入「写作」列
+### 5.1 本表把 HSK2/HSK3 的「书写」并入「写作」列
 
 大纲对比表里 HSK2、HSK3 第三模块原名是**书写**，HSK4 及以上才叫**写作**。
-本 Excel 的枚举表统一用了 `writing_` 前缀。而 `HSK题型枚举.md`（3.0 实测口径）另设 `handwriting_` 前缀区分两者
-（理由：看图用词造句在两个模块下都出现，需要保留两个枚举值）。**两套口径不一致，以代码实际枚举为准。**
 
-### 5.4 题量自检结论
+### 5.2 题量自检结论
 
 对原表逐级别把各模块「第X部分*题量」求和，与「总题量」行比对，**7 个级别全部自洽**：
 
@@ -217,7 +201,6 @@
 | HSK6 | 50+50+1=101 | 40+40+2=82 | ✅ |
 | HSK7-9 | － | 40+47+2+4+5=98 | ✅ |
 
-> 早期版本该表有 4 处阅读题量算错（2.0 的 L4/L5/L6、3.0 的 L5），当前文件已修正。
 
 ---
 
@@ -225,6 +208,6 @@
 
 | 文档 | 关系 |
 |---|---|
-| [HSK题型枚举.md](HSK题型枚举.md) | 3.0 侧 —— 取自 22 份真题提取表实测的 31 个题型，含 `handwriting_` 前缀 |
-| [HSK题型枚举_2.0.md](HSK题型枚举_2.0.md) | 2.0 侧 —— 同样取自本对比表 B 列，按模块拆解 |
+| [HSK题型枚举（已废弃）](<(废弃)HSK题型枚举.md>) | 3.0 侧实测口径（31 个题型，含 `handwriting_` 前缀）。**已被本对比表取代**，仅作历史参考 |
+| [HSK题型枚举_2.0（已废弃）](<(废弃)HSK题型枚举_2.0.md>) | 2.0 侧口径，同样取自本对比表 B 列。**已被本对比表取代**，仅作历史参考 |
 | [HSK题型清单-数据库实测.md](../HSK练习/HSK题型清单-数据库实测.md) | 库内实际存在的题型值，用于核对枚举落地情况 |
