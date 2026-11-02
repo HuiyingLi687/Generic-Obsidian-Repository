@@ -40,6 +40,14 @@ def read(p):
             continue
     return open(p, encoding='utf-8', errors='replace').read()
 
+def strip_code(txt):
+    """去掉围栏代码块和行内代码，避免把文档里的链接「示例」当成真链接。
+    这会漏掉写在代码块里的真实链接，但那种写法本来就不该被渲染。"""
+    txt = re.sub(r'```.*?```', '', txt, flags=re.S)
+    txt = re.sub(r'~~~.*?~~~', '', txt, flags=re.S)
+    txt = re.sub(r'`[^`\n]*`', '', txt)
+    return txt
+
 def main():
     do_fix = '--fix' in sys.argv
     files = collect()
@@ -56,7 +64,7 @@ def main():
 
     for f in files:
         rel = os.path.relpath(f, ROOT)
-        txt = read(f)
+        txt = strip_code(read(f))
         for m in MD_LINK.finditer(txt):
             label, raw = m.group(1), m.group(2).strip()
             if not raw or EXTERNAL.match(raw):
@@ -84,17 +92,20 @@ def main():
             tgt = m.group(1).strip()
             if not tgt:
                 ignored += 1; continue
-            if tgt in by_name or os.path.exists(os.path.join(ROOT, tgt)) or \
-               os.path.splitext(os.path.basename(tgt))[0] in by_name:
+            # Obsidian 的 wikilink 只认「文件名」或「从库根算起的路径」，
+            # 写成 ../../xxx 这种相对路径解析不了，是纯写法错误
+            bad_rel = tgt.startswith('../') or '/../' in tgt or '\\..\\' in tgt
+            if not bad_rel and (tgt in by_name or os.path.exists(os.path.join(ROOT, tgt)) or
+                                os.path.splitext(os.path.basename(tgt))[0] in by_name):
                 ok += 1; continue
-            if not looks_like_file(tgt) and '/' not in tgt and '\\' not in tgt:
+            if not bad_rel and not looks_like_file(tgt) and '/' not in tgt and '\\' not in tgt:
                 fakes.append((rel, m.group(0), '占位符或正文方括号')); continue
-            # wikilink 里写了相对路径 —— 这是常见误用
             base = os.path.basename(tgt.replace('\\', '/'))
             stem = os.path.splitext(base)[0]
             hits = [h for h in by_name.get(stem, []) if h != f]
             if len(hits) == 1:
-                fixable.append((rel, m.group(0), f'[[{stem}]]'))
+                why = 'wikilink 里写了 ../ 相对路径' if bad_rel else '改名或移动过'
+                fixable.append((rel, m.group(0), f'[[{stem}]]  ({why})'))
                 edits.setdefault(f, []).append((m.group(0), f'[[{stem}]]'))
             else:
                 dead.append((rel, m.group(0), tgt, hits))
