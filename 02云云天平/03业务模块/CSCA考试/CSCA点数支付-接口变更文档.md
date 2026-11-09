@@ -353,12 +353,12 @@ X-Client-Type: APP
 
 ## 5. 错误码更新
 
-| 错误码 | 服务 | 场景 |
-|---|---|---|
-| 8105 | exam-service | 【修改】触发条件从「免费次数不足」扩为「**免费次数=0 且点数不足以支付本次单价**」，`data` 增加 `requiredPoints` / `pointBalance` / `sceneCode`；扣点被 pay-service 判定余额不足时也归一为 8105 |
-| 8117 | exam-service | 【新增】点数通道不可用：`point_price_config` 缺 `csca_exam` 行 / `status=0`，或 pay-service 调用异常、超时（fail-closed，不建会话、不扣任何东西） |
-| 4001 | pay-service | 【无变更】HSK/HSKK 仍在用；**CSCA 不透传**，统一折成 8105 |
-| 8101–8104 / 8107–8116 | exam-service | 【无变更】 |
+| 错误码                   | 服务           | 场景                                                                                                                                      |
+| --------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 8105                  | exam-service | 【修改】触发条件从「免费次数不足」扩为「**免费次数=0 且点数不足以支付本次单价**」，`data` 增加 `requiredPoints` / `pointBalance` / `sceneCode`；扣点被 pay-service 判定余额不足时也归一为 8105 |
+| 8117                  | exam-service | 【新增】点数通道不可用：`point_price_config` 缺 `csca_exam` 行 / `status=0`，或 pay-service 调用异常、超时（fail-closed，不建会话、不扣任何东西）                            |
+| 4001                  | pay-service  | 【无变更】HSK/HSKK 仍在用；**CSCA 不透传**，统一折成 8105                                                                                                |
+| 8101–8104 / 8107–8116 | exam-service | 【无变更】                                                                                                                                   |
 
 > 8105 的 `data` 结构由 `QuotaCheckDTO` 承载，本次给它加 3 个可空字段，不新建 DTO——否则前端要按两种错误结构解析。
 
