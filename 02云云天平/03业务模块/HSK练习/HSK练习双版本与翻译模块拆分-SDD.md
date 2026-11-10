@@ -63,13 +63,13 @@ practice-service
 
 ### 2.2 分层与子模块
 
-| 层 | 包 | 职责 | 本次改动 |
-|---|---|---|---|
-| Controller | `{listen,read,write,speak,trans}/*/controller` | 解析 `version` / `levelCode` / `userId` | 加参数 |
-| Catalog Service | `*/service/impl/*CatalogServiceImpl` | 等级 / 卷 / 板块目录 + 进度聚合 | 版本化 + 换配置源 |
-| Attempt / Answer / Submit | `writing/*`、各模块 `*ServiceImpl` | 作答、保存、交卷、报告 | 仅准入校验 |
-| Domain Support | `core/support` | 值对象、模块注册表、目录装载 | 新增 4 个类 |
-| Mapper | `core/mapper` + XML | 数据访问 | 少量 SQL 加条件 |
+| 层                         | 包                                              | 职责                                    | 本次改动       |
+| ------------------------- | ---------------------------------------------- | ------------------------------------- | ---------- |
+| Controller                | `{listen,read,write,speak,trans}/*/controller` | 解析 `version` / `levelCode` / `userId` | 加参数        |
+| Catalog Service           | `*/service/impl/*CatalogServiceImpl`           | 等级 / 卷 / 板块目录 + 进度聚合                  | 版本化 + 换配置源 |
+| Attempt / Answer / Submit | `writing/*`、各模块 `*ServiceImpl`                 | 作答、保存、交卷、报告                           | 仅准入校验      |
+| Domain Support            | `core/support`                                 | 值对象、模块注册表、目录装载                        | 新增 4 个类    |
+| Mapper                    | `core/mapper` + XML                            | 数据访问                                  | 少量 SQL 加条件 |
 
 子模块：版本上下文、模块注册表、首页聚合、听力/阅读/写作/口语目录、**翻译目录（新）**、**翻译写链路（新，薄封装）**。
 
