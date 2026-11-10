@@ -288,39 +288,6 @@ ORDER BY level, sort_order;
 
 映射表与现网 `practice_part_setting.answer_mode` 逐行比对一次（旧表是服役值），差异记入附录 A 的 B-09。
 
-#### 3.2.3 板块配置迁移（`sortOrder` → `section`）
-
-源：`practice_module_level_config.parts_config` 的 JSON 数组元素，键固定 8 个：
-`partName / partNameEn / partNameVi / typeName / typeNameEn / typeNameVi / sortOrder / questionCount`。
-
-| 情况 | 行数（TEST） | 迁移口径 |
-|---|---|---|
-| `sortOrder` 集合 == `question.section` 集合 | 38 | `section = sortOrder`，脚本批量，零人工 |
-| `SEC_SPEAK`（2.0 L1–L3、3.0 L3–L6、3.0 L7） | 8 | 人工核对后写入（见下） |
-| `parts_config` 为空 | 3（TEST）/ 15（PROD） | 不生成明细行，等数据补齐 |
-
-- `type_code` 取同板块 `question.type_id_mapping`；`answerMode` 由它映射得到，不落库（§3.2.2）。
-- **口语板块的划分来自配置，不来自内容**：`speaking_exam_paper_question` 没有 `section` 列，只有 `number` 与 `question_group`（后者是 `1-8`/`9-13` 这类**题号区间**，与板块名对不上）。现状靠 `SpeakingSourceQuestionMapper` 里的 `PartCodeCase` 按题型硬编码映射，这套映射只覆盖 8 个题型，新配置里 6 个 `type_code` 落在外面（B-19）→ 必须改为以 `part_config.type_code` 为准。
-- **口语编码统一到 `SEC_SPEAK`**：代码里 4 处全部用 `SEC_SPEAK`，`SEC_SPEAKING` 从未被引用。TEST 现存 `SEC_SPEAKING` 的 1 行模块配置 + 3 行板块配置（L7）与 `SEC_SPEAK` L7 内容重复，应删；`question` 里 `SEC_SPEAKING` 的 5 条是造数残留，软删。
-
-示例（翻译）：原 `parts_config` 元素
-
-```json
-{"partName":"第一部分","typeName":"笔译","sortOrder":1,"questionCount":2,
- "partNameEn":"Part 1","partNameVi":"Phần 1","typeNameEn":"Written Translation","typeNameVi":"Biên dịch viết"}
-```
-
-对应新表一行
-
-```sql
-INSERT INTO practice_module_part_config
-  (id, version, level, section_mapping, section, part_name, part_name_en, part_name_vi,
-   type_code, type_name, type_name_en, type_name_vi,
-   standard_question_count, sort_order, enabled, deleted)
-VALUES ( <雪花id>, 'HSK3.0', 7, 'SEC_TRANSLATION', 1, '第一部分', 'Part 1', 'Phần 1',
-         'translation_written', '笔译', 'Written Translation', 'Biên dịch viết',
-         2, 1, 1, 0);   -- enabled = 1 开放；deleted = 0 未删除
-```
 
 #### 3.2.4 目录装配（读时装配，不写中间表）
 
