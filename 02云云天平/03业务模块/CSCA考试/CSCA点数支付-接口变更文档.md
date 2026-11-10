@@ -79,14 +79,13 @@
 
 > 接口类型说明：新增 / 改造 / 复用不改代码
 
-| #   | Method | Path                          | 用途                | 接口类型   | 改动简述                                                                          |
-| --- | ------ | ----------------------------- | ----------------- | ------ | ----------------------------------------------------------------------------- |
-| 1   | POST   | `/api/exam/answer/start/csca` | CSCA 开考（唯一入口）     | 改造     | `remain=0` 时改走点数：先锁配额行 → 判余额 → 扣点 → 建会话；响应新增 `deductPoints`                   |
-| 2   | GET    | `/api/exam/record/csca/quota` | CSCA 5 科次数        | 改造     | 每科新增 `requiredPoints` / `canStartWithPoints` / `canStart`；顶层新增 `pointBalance` |
-| 3   | POST   | `/api/pay/benefit/deductExam` | 按场景扣点（内部）         | 复用不改代码 | `sceneCode` 传 `csca_exam`，实扣数由价格表决定                                           |
-| 4   | GET    | `/api/pay/benefit/price`      | 查场景单价（内部）         | 复用不改代码 | `sceneCode=csca_exam`                                                         |
-| 5   | GET    | `/api/pay/benefit/examPoints` | 查点数余额（内部）         | 复用不改代码 | 会员点数 + 永久点数                                                                   |
-| 6   | GET    | `/api/exam/quota`             | HSK / HSKK 通用次数查询 | 复用不改代码 | **CSCA 不走这个入口**（它按 `level` 维度，CSCA 一个用户 5 行会命中随机一科）                           |
+| #   | Method | Path                          | 用途            | 接口类型   | 改动简述                                                                          |
+| --- | ------ | ----------------------------- | ------------- | ------ | ----------------------------------------------------------------------------- |
+| 1   | POST   | `/api/exam/answer/start/csca` | CSCA 开考（唯一入口） | 改造     | `remain=0` 时改走点数：先锁配额行 → 判余额 → 扣点 → 建会话；响应新增 `deductPoints`                   |
+| 2   | GET    | `/api/exam/record/csca/quota` | CSCA 5 科次数    | 改造     | 每科新增 `requiredPoints` / `canStartWithPoints` / `canStart`；顶层新增 `pointBalance` |
+| 3   | POST   | `/api/pay/benefit/deductExam` | 按场景扣点（内部）     | 复用不改代码 | `sceneCode` 传 `csca_exam`，实扣数由价格表决定                                           |
+| 4   | GET    | `/api/pay/benefit/price`      | 查场景单价（内部）     | 复用不改代码 | `sceneCode=csca_exam`                                                         |
+| 5   | GET    | `/api/pay/benefit/examPoints` | 查点数余额（内部）     | 复用不改代码 | 会员点数 + 永久点数                                                                   |
 
 ---
 
