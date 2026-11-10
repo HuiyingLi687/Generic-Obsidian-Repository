@@ -804,7 +804,7 @@ POST /translation/attempts/start {paperId, section}
 
 | 项 | 方案 |
 |---|---|
-| 模块元数据 | 进程内常量，无缓存 |
+| 模块元数据 | **取自 `sys_dict` / `sys_dict_item`**（`hsk_practice_module_v2` / `_v3`），随字典缓存刷新，不做进程内常量。卡片顺序、三语名、`badge`、`entryLevelCode` 全部可运营配置；`layout`（`GRID_2` / `LIST`）存在 `sys_dict.remark` |
 | 目录结果 | P0 不缓存（单等级 ≤ 21 卷）；P1 可加 Caffeine，`key = version + level + module`，TTL 60s |
 | 进度 | **禁止缓存**（用户态） |
 | `dataVersion` | P1 引入：相关表 `MAX(updated_time)` 作 ETag，供前端失效 |
@@ -1021,11 +1021,11 @@ POST /translation/attempts/start {paperId, section}
 | 期 | 范围 | 前置 | 完成判据 |
 |---|---|---|---|
 | **P0-a** | 修三条存量缺陷（附录 A：B-01/B-02/B-03） | — | TEST 听力 intro 不 500；PROD 听力列表不混版；HSK7-9 写作可开练 |
-| **P0-b** | 四个支撑类：`PracticeVersion` / `PracticeLevelCode` / `PracticeModuleCatalog` / `PracticeLayout`（`layout` 值域 + 主客观判定，**不做值换算**） | — | 单测覆盖 `HSK7-9`、`'7-9'`、非法版本、7 个 `layout` 值 |
+| **P0-b** | 四个支撑类：`PracticeVersion` / `PracticeLevelCode` / `PracticeModuleCatalog`（**模块元数据从 `sys_dict` 读，不再写死常量**）/ `PracticeLayout`（`layout` 值域 + 主客观判定，**不做值换算**） | — | 单测覆盖 `HSK7-9`、`'7-9'`、非法版本、7 个 `layout` 值 |
 | **P0-c** | 16 个目录端点加 `version` | P0-b | 2.0 全链路零回归 |
 | **P0-c2** | **`practice_module_part_config` 收尾**：TEST 已建表迁数据（132 行）+ 已补 `enabled` 列 → 补唯一键（`answer_mode` 不入库、答题形式读 `question.layout`；开关读 `enabled` 而非 `deleted`）→ 清 `SEC_SPEAKING` 残留配置 | P0-b | 表含 `uk_module_part`；132 行 `enabled` 全 1；`layouts` 取值全部落在 7 个规范值内；关板块后目录不出现 |
 | **P0-c3** | 板块开关接口 `PATCH /hsk/module-config/parts/{id}` | P0-c2 | 关板块后目录不出现，新练习不下发其题目，历史记录不受影响 |
-| **P0-d** | 聚合接口 `GET /hsk/modules` | P0-c | 2.0 四卡 / 3.0 五卡，布局角标正确 |
+| **P0-d** | 聚合接口 `GET /hsk/modules`，模块卡改由字典驱动 | P0-c；**TEST 字典数据已就绪**（`hsk_practice_module_v2` 4 项 / `_v3` 5 项） | 2.0 四卡 / 3.0 五卡，卡片顺序与三语名取自字典；改字典 `sort_order` 后顺序即时生效 |
 | **P0-e** | **重写 `PracticeCatalogBatchLoader`**：从「查 structure + part_setting」改为「读板块配置 + 算题量」 | P0-c2 | 2.0 四模块目录与现网**逐字段一致** |
 | **P0-f** | 翻译目录 4 + 写链路 6 + `validatePart` 放宽 | P0-e | 笔译/口译都能练到交卷；写作卷的 section 打翻译 → 400 |
 | ~~P0-g~~ | ~~生产库数据补全~~ | — | **移出本文档**：生产与 TEST 的结构 / 数据差异只在[附录 D](#附录-d生产与测试环境差异登记) 登记，生产改造另行安排，不进本分期、不影响 P0-a～P0-j 的排期 |
@@ -1164,6 +1164,7 @@ POST /translation/attempts/start {paperId, section}
 | **E13** | `total_question_count` 与板块求和不一致 | 46/46 一致 | **5/6**（HSK2.0 L2 听力 `35` ≠ 板块求和 `40`） | 无（题量改为现算） | 生产该值不必修，接口已不读它 |
 | **E14** | 混 `layouts` 的板块数 | **2** 个 | **48** 个 | 无（前端逐题渲染） | 若产品要求「一板块一交互」，回内容侧改 `layout`，不改接口 |
 | **E15** | 3.0 口语内容 | `speaking_exam_paper` 5 卷 78 题 | **0 卷** | 无（代码按 TEST 走） | 随 E10 一起放量 |
+| **E16** | `sys_dict` 模块字典（`/hsk/modules` 数据源） | 已建：`hsk_practice_module_v2`（1007，4 项）/ `hsk_practice_module_v3`（1008，5 项） | **0 项**（字典表存在，无这两条） | **有**：生产不补则 `/hsk/modules` 返回空卡片列表（不报错，但首页空白） | 按 TEST 原样灌 9 项。🔴 `item_value` 必须是 **`section_mapping`**（`SEC_LISTEN` 等），不是 `moduleCode`；`layout`（`GRID_2` / `LIST`）在 `sys_dict.remark`，三语名与 icon/theme/badge 在 `item_properties` JSON |
 
 ### D.3 仅体量差异（不影响判定，仅供核对）
 

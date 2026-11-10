@@ -35,6 +35,7 @@
 | 10 | 翻译作答复用写作链路 | 6 个写链路端点薄封装委托 `Writing*Service`，唯一侵入点是 `validatePart` 放宽 `contentType` 白名单 |
 | 11 | 环境基线 | **以 TEST 为准**。生产差异只在 §9.1 登记，不改字段契约、不写进接口行为 |
 | 12 | 等级入参命名 | 请求侧一律用 **`level`**（query / path / body），弃用 `levelCode`；**响应字段仍叫 `levelCode`**，不改前端已有解析 |
+| 13 | 模块卡数据源 | `/hsk/modules` 的模块卡**取自字典表**（`hsk_practice_module_v2` / `_v3`），不做进程内常量。`layout` 存 `sys_dict.remark`，其余元数据存 `item_properties` JSON；`item_value` 即 `sectionMapping` |
 
 ---
 
@@ -77,6 +78,7 @@
 | `practice_report` | 【删除】`structure_id` |
 | `writing_attempt` | 【新增】`section_mapping`、`section` 两列（回填后删 `structure_id`） |
 | `speaking_attempt` | 【新增】同上两列（`section_code` 是 `PART_1/2/3`，回填取 `SUBSTRING(section_code, 6)`） |
+| `sys_dict` / `sys_dict_item` | 【仅数据，不改表结构】新增 `hsk_practice_module_v2`（1007，4 项）/ `hsk_practice_module_v3`（1008，5 项），作为 `/hsk/modules` 的模块卡数据源 |
 
 > 以上均为 **TEST 现状**（5 张内容表两列已就位、`part_config` 132 行含 `enabled`）。生产库缺哪些列 / 表不在此展开，统一见 §9.1。
 
@@ -1887,6 +1889,37 @@ Accept-Language: zh
 | `modules[].progress.completedPapers` | Integer | 已完成卷数。**未登录恒为 0** |
 | `modules[].progress.inProgressPaperId` | String | 进行中卷 ID，**String 避免 19 位精度丢失**，无则 `null` |
 
+**模块卡取自字典表（不写死常量）**
+
+模块清单存在 `sys_dict` / `sys_dict_item`（TEST 已铺 9 项，见 §9.3）：
+
+| 版本 | `dict_code` | 项数 | 布局 |
+|---|---|---|---|
+| HSK2.0 | `hsk_practice_module_v2` | 4 | `GRID_2` |
+| HSK3.0 | `hsk_practice_module_v3` | 5 | `LIST` |
+
+字段映射：`item_text` = 中文名、`item_value` = `sectionMapping`、`sort_order` = 卡片顺序、`item_properties` = 其余元数据的 JSON。
+
+```json
+// item_properties（省略即 null，接口侧缺键按 null 处理）
+{"moduleCode":"TRANSLATION","nameEn":"Translation","nameVi":"Dịch",
+ "icon":"translate","theme":"#8B5CF6","badge":"NEW","entryLevelCode":"HSK7-9"}
+```
+
+```sql
+-- 一次取一个版本的卡片，按 sort_order 排序；status / deleted 都要判
+SELECT i.item_text, i.item_value, i.sort_order, i.item_properties
+FROM sys_dict d JOIN sys_dict_item i ON i.dict_id = d.id
+WHERE d.dict_code = ? AND d.deleted = 0 AND d.status = 0
+  AND i.deleted = 0 AND i.status = 0
+ORDER BY i.sort_order, i.id;
+```
+
+- `layout` 在 `sys_dict.remark` 里（`{"layout":"GRID_2"}`），随字典一起取
+- **`item_value` 必须等于 `sectionMapping`**，接口拿它去查 `practice_module_level_config` 与内容表；填 `moduleCode` 会导致全部卡片 `available=false`
+- 运营改 `item_text` / `sort_order` / `status` 即改卡片；`status=1` 是下架单个模块卡（与 `practice_module_level_config.enabled` 的模块级开关**不是一回事**，后者关的是配置层可用性）
+- 字典缺项 / `section_mapping` 不在配置层 → 记 `WARN` 并按缺少处理，不 500
+
 **`available` 判定规则**
 
 ```
@@ -1897,7 +1930,7 @@ available = 存在 enabled=1 的 level_config 行
 **服务端内部执行顺序**（SQL ≤ 5 次，与模块数无关）
 
 1. 解析 `version` → 非法 400
-2. 取模块元数据（进程内常量，按版本过滤 + `sortOrder` 排序）
+2. 取模块元数据（**字典表** `hsk_practice_module_v2` / `_v3`，按 `sort_order` 排序；`layout` 取 `sys_dict.remark`）
 3. 批量查 `practice_module_level_config` 得各模块可用等级
 4. 批量查 `exam_paper` + `question` 统计 `totalPapers`（题量为 0 的卷剔除）
 5. 带 `userId` 时批量查进行中 / 已完成记录
@@ -2141,6 +2174,7 @@ POST /translation/attempts/{attemptId}/submissions
 | E10 | 3.0 卷上架 | 15/15 | **0/15** | 生产 3.0 目录为空（属运营放量，非缺陷） |
 | E11 | `exam_paper.level`（HSK7-9） | `"7"` | `"7-9"` | **代码已兼容**：统一走 `IN ('7','7-9')` 候选集 |
 | E13 | `total_question_count` vs 板块求和 | 46/46 一致 | 5/6（L2 听力 `35` ≠ `40`） | 无（`questionCount` 已改为现算） |
+| E16 | 模块字典 `hsk_practice_module_v2` / `_v3` | 已建 9 项（1007 / 1008） | **0 项** | **生产不补则 `/hsk/modules` 返回空卡片列表**（不报错、首页空白）。🔴 `item_value` 必须填 `sectionMapping` 而非 `moduleCode` |
 
 > 结论：**接口契约只按 TEST 写**，生产差异不产生第二个分支。唯一进过代码的兼容点是 E11 的等级候选集。
 
@@ -2177,7 +2211,7 @@ ALTER TABLE practice_module_part_config
 |---|---|
 | `core/support/PracticeVersion.java` | 新增：version 白名单解析，非法抛 400 |
 | `core/support/PracticeLevelCode.java` | 新增：`HSK7-9` ↔ `7` 双向映射 + `dbLevels()` 候选集 |
-| `core/support/PracticeModuleCatalog.java` | 新增：模块元数据常量（code / mapping / icon / theme / sortOrder / 各版本可用性） |
+| `core/support/PracticeModuleCatalog.java` | 新增：**从 `sys_dict` / `sys_dict_item` 载入模块元数据**（`hsk_practice_module_v2` / `_v3`），启动 + 定时刷新；`item_value` 与 `section_mapping` 不匹配时告警，不静默兜底 |
 | `core/support/PracticeTypeRegistry.java` | 新增：`typeCode → 题型显示名 / 评分策略` 字典。**不再承担 `answerMode` 判定**——答题形式一律读 `question.layout`（§4.0.5） |
 | `core/support/PracticeLayout.java` | 新增：`layout` 值域常量 + `isSubjective(layout)` 等轻量判定（`input` / `shortInput` / `record` 为主观）。**只判语义，不做值换算** |
 | `core/support/SharedPaperEligibility.java` | **补判 `enabledPrac == 1`**（B-17，当前缺失 → 下架卷可直达） |
@@ -2215,6 +2249,7 @@ ALTER TABLE practice_module_part_config
 | `practice_module_part_config` | ✅ 已建 132 行 + `enabled` 列已加，三语 132/132 填充 |
 | `practice_module_level_config.parts_config` | ✅ 已 drop |
 | `question.layout` | ✅ 非空率 100%，7 个规范值 |
+| **模块字典**（`/hsk/modules` 数据源） | ✅ 已铺 9 项：`hsk_practice_module_v2`（id 1007，4 项）/ `hsk_practice_module_v3`（id 1008，5 项）；`item_value` 全部命中 `practice_module_level_config` |
 | 代码侧 `enabled_prac` 过滤 | ✅ 已改完并编译通过 |
 | 待补 | `uk_module_part` 唯一键；清 `SEC_SPEAKING` 残留 4 行（§9.1.1） |
 | 生产库 | 差异见 §9.1，**本期不处理** |
