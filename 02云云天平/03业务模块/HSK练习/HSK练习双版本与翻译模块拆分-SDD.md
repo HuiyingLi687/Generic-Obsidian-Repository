@@ -157,13 +157,13 @@ practice-service
 
 **题库里已经有 5 张表承载了全部考试内容，本次不再新建任何内容表**，只在既有列上收口语义。判断一个字段该放哪层，只问一句：*删掉练习侧配置，这个信息还在不在？* 在 → 内容层；不在 → 编排层。
 
-| 层 | 表 | 承载什么 | 是否真相源 |
-|---|---|---|---|
-| **内容层** | `exam_paper` / `question` / `question_group` | 版本、等级、模块归属（`section_mapping`）、题型（`type_id_mapping`）、部分号（`section`）、音频、题干、答案 | ✅ **唯一真相源** |
-| （口语分支） | `speaking_exam_paper` / `speaking_exam_paper_question` | HSK**2.0** 口语卷与题（`level` 用 `Beginner/Intermediate/Advanced` 三档） | ✅ 2.0 口语唯一真相源 |
-| **编排层** | `practice_paper_structure` / `practice_part_setting` | 三语名称、时长、满分、作答提示语、作答交互模式（`answer_mode`）、部分顺序 | ⚠️ **投影**，可由内容层派生，**不是真相源** |
-| | `practice_module_level_config` / `practice_paper_setting` / `hsk_level_config` | 模块开关、卷上下架、等级名称 | ⚠️ 投影 + 少量运营开关 |
-| **作答层** | `practice_record` / `writing_attempt` / `speaking_attempt` | 练习记录 | 只引用上层 ID，不反推 |
+| 层       | 表                                                                              | 承载什么                                                                        | 是否真相源                       |
+| ------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------- | --------------------------- |
+| **内容层** | `exam_paper` / `question` / `question_group`                                   | 版本、等级、模块归属（`section_mapping`）、题型（`type_id_mapping`）、部分号（`section`）、音频、题干、答案 | ✅ **唯一真相源**                 |
+| （口语分支）  | `speaking_exam_paper` / `speaking_exam_paper_question`                         | HSK**2.0** 口语卷与题（`level` 用 `Beginner/Intermediate/Advanced` 三档）             | ✅ 2.0 口语唯一真相源               |
+| **编排层** | `practice_paper_structure` / `practice_part_setting`                           | 三语名称、时长、满分、作答提示语、作答交互模式（`answer_mode`）、部分顺序                                 | ⚠️ **投影**，可由内容层派生，**不是真相源** |
+|         | `practice_module_level_config` / `practice_paper_setting` / `hsk_level_config` | 模块开关、卷上下架、等级名称                                                              | ⚠️ 投影 + 少量运营开关              |
+| **作答层** | `practice_record` / `writing_attempt` / `speaking_attempt`                     | 练习记录                                                                        | 只引用上层 ID，不反推                |
 
 ```
 ┌─────────────────── 内容层（真相源，本次零 DDL）───────────────────┐
