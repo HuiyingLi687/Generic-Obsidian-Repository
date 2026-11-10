@@ -24,7 +24,8 @@
 | 2 | 板块定位键 | 全面弃用 `structureId`，改用 `section`（板块号，整数）。`practice_paper_structure` / `practice_part_setting` 两表本期 drop |
 | 3 | `section` 取值 | 与 `question.section` 对齐，`1..N`。口语也是 `1/2/3`，不再用 `PART_1` |
 | 4 | `partCode` 取值 | **保持不变**：口语 `PART_{section}`（如 `PART_1`），其余模块 `{section}`（如 `"1"`）。服务端由 `section` 派生，不再查表 |
-| 5 | 板块字段来源 | `parts[]` 全部字段直取 `practice_module_part_config` 同名列，三语同发；**不下发 `answerMode`**（主客观由前端按 `typeCode` 判断） |
+| 5 | 板块字段来源 | `parts[]` 全部字段直取 `practice_module_part_config` 同名列，三语同发；**不下发 `answerMode`**（答题形式由**题目接口逐题下发 `layout`** 判定，见 §4.0.5） |
+| 5b | 答题形式真源 | **`question.layout`**，原样透传、不做枚举换算。`typeCode` 只表业务语义（题型名 / 评分策略），**不能反推答题形式**（PROD 实测同一 `type_id_mapping` 对 4 种 layout） |
 | 6 | 报告 latest 路径 | 旧 `/parts/{structureId}/reports/latest` **直接删除**，换 `/papers/{paperId}/parts/{section}/reports/latest`，不保留兼容 |
 | 7 | 上下架口径 | 练习侧只读 `enabled_prac = 1`；`enabled`（板块）/ `exam_paper.enabled_prac`（卷）/ `question.enabled_prac`（题）三级独立，详见 SDD §3.4 |
 | 8 | 板块开关 | `practice_module_part_config.enabled`：`1` 开放 / `0` 关闭。`deleted` 回到纯逻辑删除，不作开关 |
@@ -187,7 +188,8 @@
   "typeNameEn": "Picture Judgment",
   "typeNameVi": "Nhận định hình ảnh",
   "questionCount": 10,
-  "sortOrder": 1
+  "sortOrder": 1,
+  "layouts": ["judge"]
 }
 ```
 
@@ -205,8 +207,9 @@
 | `typeNameVi` | String | 【新增】 | `type_name_vi`，非空 |
 | `questionCount` | Integer | 【修改】 | 口径由「配置的标准题量」改为「`question` 现算的实际题量（已排除 `enabled_prac=0` 的单题）」。**`questionCount = 0` 的板块不下发** |
 | `sortOrder` | Integer | 【修改】 | `sort_order`。阅读/写作/口语的 `/parts` 原本没有该字段，本次统一补上 |
+| `layouts` | Array\<String\> | 【新增】 | 该板块内**实际题目**的 `question.layout` 去重集合，按出现顺序。**答题形式看这个**（§4.0.5）。正常只有一个元素；`["input","record"]` 表示该板块混了两种交互 |
 
-> **`answerMode` 不下发**。主客观由前端按 `typeCode` 判断（笔译 `translation_written` 走文本输入，口译 `translation_oral` 走录音）。
+> **不再下发 `answerMode`**。`answerMode` 是「`typeCode` → 一套自定义枚举」的二次映射，而 `question.layout` 已经是落库的答题形式，直接透传即可——**少一层映射就少一处漏配**（写作 `WritingLayoutType` 的 switch 白名单漏了 3.0 的 `chart_analysis` / `topic_essay` 就是现成教训，B-04）。
 > **三语实测填充率 132/132**，前端可放心直接取，不需要回退。
 
 **各接口原本有没有这些字段（决定「新增」还是「改名」）**
@@ -239,6 +242,90 @@
 - 行被物理删除 → 板块**仍出现**（名称为 `第N部分`）
 
 运营只能改 `enabled`，不能删行。这条必须分别测试（§8 用例 29）。
+
+#### 4.0.5 答题形式：`question.layout` 是唯一真源
+
+**结论**：前端「这道题怎么作答」只看 `question.layout`，不看 `typeCode`，也不需要服务端另造 `answerMode` 枚举。
+
+`typeCode`（题型编码）管**业务语义**——叫什么题型、走哪套评分策略；`layout` 管**交互形态**。两者**不能互推**，实测：
+
+| 环境 | `type_id_mapping` | 对应 `layout` 种类 |
+|---|---|---|
+| PROD | `listening_single` | **4 种**（`imageChoice` / `passageGroup` / `textChoice` / `textChoice_shareAudio`） |
+| PROD | `listening_detail_choice` | **4 种** |
+| TEST | `SINGLE` | 3 种（`clozeGroup` / `passageGroup` / `textChoice`） |
+| TEST | `example_question` | 6 种（示例题，各种题型都有） |
+
+所以「按 `typeCode` 猜答题形式」在 PROD 上必然猜错，必须读 `layout`。
+
+**TEST 的规范化值域（7 个，纯交互形态）**
+
+| `layout` | 交互 | 作答值 | 出现在 |
+|---|---|---|---|
+| `choice` | 单选：点一个选项 | 单值 | 听 / 读（主力，7377 题） |
+| `choiceGrid` | 网格选择：多选 / 匹配，棋盘格布局 | 多值 | 听 / 读 / 写（1935 题） |
+| `judge` | 对错判断 | 单值（T/F） | 听 / 读（1150 题） |
+| `order` | 排序：拖动词卡 / 句子排序 | 有序多值 | 读 / 写（749 题） |
+| `input` | 长文本输入 | 文本 | 写 / 译（246 题） |
+| `shortInput` | 短文本输入（填空，逐字） | 文本 | 写（156 题） |
+| `record` | 录音 | 音频 | 说 / 译（7 题） |
+
+> 实测口径：TEST `question` 中 `section_mapping` 非空的 11620 行，`layout` 非空率 **100%**、值域正好这 7 个。
+> 另有 **1904 行** `section_mapping IS NULL` 且 `layout='textChoice'`（老值，涉及 31 张卷），属**未纳入练习模块的卷**，不进目录，本次不处理。
+
+**PROD 的值域是另一套，且缺失近半（🔴 阻断级）**
+
+| 项 | TEST | PROD |
+|---|---|---|
+| `layout` 非空率 | **100%**（13524/13524） | **52.3%**（7105/13574） |
+| 值域 | 上表 7 个 | 老值：`textChoice` / `textChoice_shareAudio` / `passageGroup` / `textJudge` / `imageMatch` / `imageJudge` / `imageChoice` / `clozeGroup` |
+| 缺失分布 | 无 | `SEC_READ` **100% NULL（5108）**、`SEC_WRITE` **100% NULL（927）**、`SEC_TRANSLATION` 4、`SEC_SPEAKING` 5；只有 `SEC_LISTEN` 有值，且是老值域 |
+
+老值域混了**题面形态**（`passageGroup` / `clozeGroup` 是「材料 + 一组小题」，不是答题形式），所以 PROD 现在的 `layout` **不能直接当答题形式用**。
+
+**回填只能按 `question.id` 从 TEST 复制，不能按值映射**
+
+实测两库 `question.id` **完全嵌套**：TEST 13524 行全部包含在 PROD 13574 行里（PROD 仅多 50 行）。据此：
+
+| 项 | 行数 |
+|---|---|
+| PROD `layout` 为 NULL | 6469 |
+| 其中 TEST 同 id 有值 → **可直接回填** | **6439** |
+| 其中 PROD 独有 id（无参照） | 30 |
+| 两边都有值但不一致（TEST 已规范化） | 5181 |
+
+```sql
+-- ⚠️ 必须先确认两库连接指向正确（五闸门 G1：SELECT @@hostname）
+-- 由 TEST 导出 id → layout 到临时表，再在 PROD 按 id 更新
+UPDATE question q
+JOIN tmp_layout_map m ON m.id = q.id
+SET q.layout = m.layout
+WHERE q.layout IS NULL OR q.layout = '';
+-- 预期影响 6439 行；剩 30 行 PROD 独有题需人工判定
+```
+
+**为什么不能按值映射**：老值 `textChoice` 在 TEST 里对应 **3 个**新值（`choice` 2419 / `choiceGrid` 200 / 其他），`textChoice_shareAudio` 也对应 3 个（`choice` 929 / `judge` 10 / `input` 6）。按值映射会把多选错成单选。
+
+**口语是例外：那张表没有 `layout`**
+
+口语内容不在 `question`，在 `speaking_exam_paper_question`，**该表没有 `layout` 列**（`question` 里 `SEC_SPEAK` 的 5 条是造数残留，不读）。所以：
+
+- 口语答题形式 P0 **按模块直接定**：全部 `record`（口语就是录音，没有别的交互）
+- 若要支持「朗读 vs 自由说话」的差异化录音 UI，需给该表补 `layout` 列，或按 `question_type_mapping` 映射——**P1 再定**（§10 第 9 条）
+
+**四个模块的现状（决定改动量）**
+
+| 模块 | 取题接口 | 当前是否下发 | 处置 |
+|---|---|---|---|
+| 听力 | `GET /listening/records/{recordId}/questions` | ✅ 已有 `layout`，原样透传 | 不动 |
+| 阅读 | `GET /reading/records/{recordId}/questions` | ❌ **没有**（只有 `typeId` / `typeIdMapping` / `content` / `passage` / `optionContent`） | **补 `layout`** |
+| 写作 | `GET /writing/attempts/{attemptId}/questions` | ⚠️ 有 `layoutType`，但**不是读 `layout`**，是按 `type_id_mapping` 硬编码 switch 出来的枚举 | **改为读 `layout` 原样透传**（顺带修 B-04） |
+| 翻译 | `GET /translation/attempts/{attemptId}/questions` | ❌ 新增接口 | **直接下发 `layout`** |
+| 口语 | `GET /speaking/attempts/{attemptId}/questions` | ❌ 没有 | P0 恒 `record`，前端按模块写死；P1 补 |
+
+**写作这一处必须改，否则 3.0 直接挂**：`WritingQuestionNormalizer` 的 `switch (question.getTypeIdMapping())` 只覆盖 5 个老题型（`write_complete_sent` / `write_character_writing` / `write_make_sent` / `write_short_essay` / `write_summary`），3.0 新增的 `chart_analysis` / `topic_essay` 不在其中 → 落到 default 分支（抛异常或空）。改为读 `layout` 后，加题型**不需要改代码**，只要运营填对 `layout`。
+
+**一条 UI 约定（沿用 CSCA 既有做法）**：`layout` **原样透传、不推算、不做 enum 换算**。理由是 `CscaQuestionResponse` 已经这么做了，且注释写得很明确——「取哪个字段只由 `layout` 决定，**不能按『字段是否为空』猜形态**」（`clozeGroup` 的 `content` 与 `passage` 可能都为空）。四个 HSK 模块沿用同一约定，前端一套解析逻辑。
 
 ---
 
@@ -1084,12 +1171,14 @@ Authorization: Bearer xxx
 }
 ```
 
-**返回字段说明**：与 A13 完全同构（`WritingPartResponse` 复用）。**前端按 `typeCode` 渲染两张卡**：
+**返回字段说明**：与 A13 完全同构（`WritingPartResponse` 复用）。**前端按 `layouts` 渲染两张卡**（答题形式看 `layouts`，不看 `typeCode`，§4.0.5）：
 
-| `typeCode` | 卡片 | 作答交互 |
-|---|---|---|
-| `translation_written` | 笔译 | 文本输入（`answerType = TEXT`） |
-| `translation_oral` | 口译 | 录音上传（`answerType = AUDIO`） |
+| `layouts` | `typeCode` | 卡片 | 作答交互 |
+|---|---|---|---|
+| `["input"]` | `translation_written` | 笔译 | 文本输入 |
+| `["record"]` | `translation_oral` | 口译 | 录音上传 |
+
+> `typeCode` 用来显示题型名（「笔译」/「口译」），`layouts` 用来决定渲染哪个作答组件。两者在翻译这 4 题上恰好一一对应，但**判断分支要写在 `layouts` 上**——`typeCode` 是可扩展的（以后加题型不必改前端渲染分支）。
 
 **服务端内部执行顺序**
 
@@ -1222,11 +1311,12 @@ Authorization: Bearer xxx
   "message": "操作成功",
   "data": [
     { "questionId": 91001, "questionNumber": 1, "questionType": "translation_written",
-      "layoutType": "TEXT", "evaluationMode": "AI", "contentVersion": "v1", "policyVersion": "p1",
+      "layout": "input", "evaluationMode": "AI", "contentVersion": "v1", "policyVersion": "p1",
       "data": { "stem": "把下面的句子翻译成英文……", "sourceText": "…", "targetLanguage": "en" } },
-    { "questionId": 91002, "questionNumber": 2, "questionType": "translation_written",
-      "layoutType": "TEXT", "evaluationMode": "AI", "contentVersion": "v1", "policyVersion": "p1",
-      "data": { "stem": "…", "sourceText": "…", "targetLanguage": "en" } }
+    { "questionId": 91002, "questionNumber": 2, "questionType": "translation_oral",
+      "layout": "record", "evaluationMode": "AI", "contentVersion": "v1", "policyVersion": "p1",
+      "data": { "stem": "听音频后口头翻译……", "sourceText": "…", "targetLanguage": "en",
+                "recordingRules": { "maxSeconds": 90 } } }
   ]
 }
 ```
@@ -1237,11 +1327,11 @@ Authorization: Bearer xxx
 |---|---|---|---|
 | `questionId` | Long | 【新增】 | |
 | `questionNumber` | Integer | 【新增】 | 板块内题号，从 1 开始 |
-| `questionType` | String | 【新增】 | 等于 `typeCode`（`translation_written` / `translation_oral`） |
-| `layoutType` | String | 【新增】 | 渲染布局，`TEXT` / `RECORD` 等 |
+| `questionType` | String | 【新增】 | 等于 `typeCode`（`translation_written` / `translation_oral`），**表业务语义，不表交互** |
+| `layout` | String | 【新增】 | **答题形式，直取 `question.layout` 原样透传**（§4.0.5）。翻译实测只有两个值：`input`（笔译，2 题）/ `record`（口译，2 题）。前端按它选渲染组件，**不要按 `questionType` 判断** |
 | `evaluationMode` | String | 【新增】 | `AI` / `RULE` / `NONE` |
 | `contentVersion` / `policyVersion` | String | 【新增】 | 内容与评分策略版本 |
-| `data` | Object | 【新增】 | **题目内容原始结构，字段随题型变化**（题干 / 原文 / 目标语言 / 参考要点等），前端按 `questionType` 解析 |
+| `data` | Object | 【新增】 | **题目内容原始结构，字段随题型变化**（题干 / 原文 / 目标语言 / 参考要点等），前端按 `layout` 决定取哪些字段渲染 |
 
 **服务端内部执行顺序**：登录 → 校验 attempt 归属 → 按 attempt 快照的 `question_ids`（或三元组）取题（`deleted=0 AND enabled_prac=1`）→ 组装
 
@@ -1878,11 +1968,13 @@ available = 存在 enabled=1 的 level_config 行
 
 | 场景 | 规则 |
 |---|---|
-| 翻译两张卡 | 按 `parts[].typeCode` 区分：`translation_written` → 文本输入；`translation_oral` → 录音 |
-| 语言切换 | `parts[]` 三语同发，前端本地切换无需重新请求；`abilityDesc` / `levelName` / `header` 仍随 `Accept-Language` |
+| **答题形式** | **只看 `layout`**（题目接口）与 `layouts`（板块接口），原样值不换算。`typeCode` 只用于显示题型名与选择评分策略 |
+| 翻译两张卡 | 按 `parts[].layouts` 区分：`["input"]` → 文本输入；`["record"]` → 录音 |
+| 三语切换 | `parts[]` 三语同发，前端本地切换无需重新请求；`abilityDesc` / `levelName` / `header` 仍随 `Accept-Language` |
 | 模块卡片置灰 | `available=false` 时置灰 + Toast 提示，**不要隐藏卡片**（保持 5 卡/4 卡布局稳定），`disabledReason` 映射文案 |
 | 版本切换 | 清空已选 `levelCode`、卷列表、滚动位置、本地「上次练习」。**不要复用旧 `levelCode` 打新版本接口**：2.0 的 `HSK1` 在 3.0 下虽存在但卷集合不同；`HSK7-9` 在 2.0 下直接 404 |
 | `questionCount = 0` | 该板块不会下发，前端不需要处理空板块 |
+| `layouts` 有多个值 | 说明该板块混了两种交互（TEST 有 2 个板块、PROD 有 48 个）。前端按题渲染即可，**不要在板块层强制选一种** |
 
 ---
 
@@ -1980,6 +2072,11 @@ POST /translation/attempts/{attemptId}/submissions
 | 8 | 新路径 `/listening/papers/{paperId}/parts/{section}/reports/latest` | 200；无报告时 `data=null` |
 | 9 | 阅读/写作/口语 parts | 字段为 `typeCode` / `typeName`，**没有** `questionType` / `questionTypeName` |
 | 10 | `parts[]` 三语 | `partNameEn` / `partNameVi` / `typeNameEn` / `typeNameVi` 全部非空 |
+| 10a | 任一 parts 接口 | 每个板块都有 `layouts`，且非空数组 |
+| 10b | 阅读 / 翻译取题接口 | 每道题都有 `layout`，值在 7 个规范值内；**阅读系本次新补字段** |
+| 10c | 写作取题接口 | `layout` 直取 `question.layout`，**与 `type_id_mapping` 无耦合**：造一条 `type_id_mapping='chart_analysis'` + `layout='input'` 的题，能正常返回（B-04 回归） |
+| 10d | 🔴 PROD 回填后 | `SEC_READ` / `SEC_WRITE` 的 `layout` 非空率 **100%**（回填前分别是 0% / 0%） |
+| 10e | 混 `layouts` 的板块 | `layouts` 返回 2 个元素；前端逐题渲染不出错（TEST 有 2 个这样的板块） |
 
 ### 翻译独立
 
@@ -2111,7 +2208,8 @@ WHERE version = 'HSK3.0' AND exam_type = 1 AND deleted = 0;
 | `core/support/PracticeVersion.java` | 新增：version 白名单解析，非法抛 400 |
 | `core/support/PracticeLevelCode.java` | 新增：`HSK7-9` ↔ `7` 双向映射 + `dbLevels()` 候选集 |
 | `core/support/PracticeModuleCatalog.java` | 新增：模块元数据常量（code / mapping / icon / theme / sortOrder / 各版本可用性） |
-| `core/support/PracticeTypeRegistry.java` | 新增：`typeCode → answerMode` 字典（**仅服务端内部用，不下发**） |
+| `core/support/PracticeTypeRegistry.java` | 新增：`typeCode → 题型显示名 / 评分策略` 字典。**不再承担 `answerMode` 判定**——答题形式一律读 `question.layout`（§4.0.5） |
+| `core/support/PracticeLayout.java` | 新增：`layout` 值域常量 + `isSubjective(layout)` 等轻量判定（`input` / `shortInput` / `record` 为主观）。**只判语义，不做值换算** |
 | `core/support/SharedPaperEligibility.java` | **补判 `enabledPrac == 1`**（B-17，当前缺失 → 下架卷可直达） |
 | `core/support/PracticeCatalogBatchLoader.java` | 删 setting 查询；板块骨架改读 `practice_module_part_config` |
 | `listening/service/impl/ListeningCatalogServiceImpl.java` | `selectOne` 带 version；板块换源；`HSK7-9` 解析 |
@@ -2124,6 +2222,10 @@ WHERE version = 'HSK3.0' AND exam_type = 1 AND deleted = 0;
 | `translation/service/impl/TranslationCatalogServiceImpl.java` | 新增：`SEC_TRANSLATION` 目录装配 |
 | `translation/support/TranslationPartGuard.java` | 新增：统一前置归属校验（返回空集 → 404，模块不符 → 400） |
 | `writing/service/impl/WritingAttemptServiceImpl.java` | **`validatePart` 放宽 `contentType` 白名单**（唯一侵入点） |
+| `writing/content/WritingQuestionNormalizer.java` | **`switch (getTypeIdMapping())` 改为读 `question.layout`**（§4.0.5）。现白名单只有 5 个老题型，3.0 的 `chart_analysis` / `topic_essay` 落 default → 直接挂（B-04） |
+| `writing/content/WritingLayoutType.java` | 若保留枚举：补 `CHART_ANALYSIS` / `TOPIC_ESSAY`，并加 `fromLayout(String)`；否则整体退化为直接透传 `layout` 字符串 |
+| `reading/dto/ReadingQuestionResponse.java` | **补 `layout` 字段**（直取 `question.getLayout()`）。当前只有 `typeId` / `typeIdMapping`，前端无据可判交互 |
+| `speaking/dto/attempt/SpeakingQuestionResponse.java` | 补 `layout`；P0 恒 `record`（`speaking_exam_paper_question` 无该列） |
 | `hsk/controller/HskModuleController.java` | 新增：`GET /hsk/modules` |
 | `hsk/controller/ModuleConfigController.java` | 新增：`GET` / `PATCH /hsk/module-config/parts` |
 | `listening/controller/ListeningReportController.java` | 路径 `parts/{structureId}` → `papers/{paperId}/parts/{section}` |
@@ -2158,3 +2260,8 @@ WHERE version = 'HSK3.0' AND exam_type = 1 AND deleted = 0;
 | 6 | `SEC_SPEAKING` 残留配置清理 | 删 TEST 的 1 行模块配置 + 3 行板块配置；`question` 里 5 条造数软删。PROD 无此问题 | 运营 |
 | 7 | `enabled_exam` 何时真正生效 | **当前有列无逻辑**：考试侧所有 SQL 未加 `enabled_exam = 1`。值全 1 时行为不变；要生效需另行接入 exam-service | 产品 + 后端 |
 | 8 | 批量上下架是否本期做 | 不做。运营逐条 `PATCH` | 产品 |
+| 9 | PROD `layout` 回填口径 | **按 `question.id` 从 TEST 复制**（可覆盖 6439/6469），不按值映射（`textChoice` 一对多，映射必错）。剩 30 行 PROD 独有题人工判定（§4.0.5） | DBA + 运营 |
+| 10 | 口语要不要补 `layout` 列 | P0 不补，口语恒 `record`，前端按模块写死。若要做「朗读 / 自由说话」差异化录音 UI，再给 `speaking_exam_paper_question` 加列（P1） | 产品 |
+| 11 | `layout` 值域是否要收敛到跨模块统一枚举 | **不收敛，原样透传**（沿用 CSCA 既有约定）。7 个值已经是交互形态，换算只会多一层漏配 | 前端 + 后端 |
+| 12 | 混 `layouts` 的板块（TEST 2 个 / PROD 48 个）如何处理 | 前端逐题渲染，不做板块级归一。若产品要求「一个板块一种交互」，那是**内容问题**（该板块题填错了 `layout`），回内容侧修，不改接口 | 产品 + 运营 |
+| 13 | PROD 老值域 `passageGroup` / `clozeGroup` 的语义 | 它们是**题面形态**不是答题形式（篇章组 / 完形组）。回填后由 TEST 值覆盖；未被覆盖的 30 行若仍是这两个值，需人工判成 `choice` / `choiceGrid` | 运营 |

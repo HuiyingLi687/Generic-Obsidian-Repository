@@ -139,7 +139,7 @@ speaking_exam_paper（2.0 + 3.0 口语）
 | 内容  | `question_group`                                     | 板块内的材料 / 大题容器（1 板块 : N group），**不参与结构装配**；带 `enabled_prac` 但练习侧不单独判（材料随题走） | ✅     |
 | 内容  | `speaking_exam_paper` / `_question`                  | 口语内容（**2.0 与 3.0 共用**，`level` 2.0 为 `Beginner/Intermediate/Advanced`、3.0 为 `3..7-9`） | ✅     |
 | 配置  | `practice_module_level_config`                       | 版本 × 等级 × 模块：模块开关、标准总题量、时长、能力描述三语                    | ✅     |
-| 配置  | **`practice_module_part_config`**                    | 版本 × 等级 × 模块 × **板块**：名三语、题型编码、标准题量、**板块开关 `enabled`**、`deleted` 逻辑删除（`answerMode` 由 `type_code` 映射，不入库） | ✅     |
+| 配置  | **`practice_module_part_config`**                    | 版本 × 等级 × 模块 × **板块**：名三语、题型编码、标准题量、**板块开关 `enabled`**、`deleted` 逻辑删除（**不含 `answerMode`**，答题形式逐题读 `question.layout`，§3.2.2b） | ✅     |
 | 作答  | `practice_record` / `practice_report` / `writing_*` / `speaking_*` | 练习记录，统一用 `(paper_id, section_mapping, section)` 定位 | 只引用上层 |
 | 退场  | `practice_paper_structure` / `practice_part_setting` / `practice_paper_setting` | 三张表 **P0 直接 drop**，不保留 ID 注册表（§3.2.6 / §3.2.7） | —     |
 
@@ -229,7 +229,7 @@ CREATE TABLE `practice_module_part_config` (
 | ------------------ | -------------------------------- | -------------------------------------------------------------- |
 | **板块开关**           | `enabled tinyint NOT NULL DEFAULT 1` | ✅ **已加**（TEST 132 行全为 1）                                  |
 | 逻辑删除 `deleted`     | `int NOT NULL DEFAULT 0`         | ✅ 保留，**不再当开关用**                                              |
-| 作答模式 `answer_mode` | 无此列                              | **不加列**：由 `type_code` 经 `PracticeTypeRegistry` 映射              |
+| 作答模式 `answer_mode` | 无此列 | **不加列，也不做字典**：答题形式直接读 `question.layout`（逐题、已落库，§3.2.2b） |
 | 唯一键                | 只有 `PRIMARY (id)`                | 建议补 `uk_module_part`：既防重，又能保证「关了一个板块后仍只有一行，改 `enabled` 即可重新开放」 |
 
 ```sql
@@ -276,17 +276,61 @@ ORDER BY level, sort_order;
 >
 > 两张配置表现在**列结构一致**：都是 `enabled`（开关）+ `deleted`（逻辑删除）两列分工。`level_config` 的 `enabled` 管整卡，`part_config` 的 `enabled` 管单个板块。
 
-**`answer_mode` 的取值（字典，不入库）**：`type_code` → 作答交互。
+#### 3.2.2b 答题形式读 `question.layout`，不做 `type_code` 字典
 
-| `type_code` 段 | `answerMode` |
-|---|---|
-| `listen_*` / `read_*` / `*_choose` 类 | `SINGLE` |
-| `*_match` / `*_img_match` / `*_sent_match` | `MATCH` |
-| `*_order` / `*_sentence_order` | `ORDER` |
-| `*_speak` / `*_repeat` / `*_retell` / `read_aloud` / `answer_question` | `RECORD` |
-| `translation_written` / `*_essay` / `chart_analysis` / `topic_essay` | `TEXT` |
+**结论**：`answer_mode` 既不进 `part_config`，也不该用 `type_code` 现场映射。答题形式只认 `question.layout`。
 
-映射表与现网 `practice_part_setting.answer_mode` 逐行比对一次（旧表是服役值），差异记入附录 A 的 B-09。
+**为什么不能用 `type_code` 映射**（实测，2026-11-10）：
+
+| 环境 | `type_id_mapping` | 对应 `layout` 种类 |
+|---|---|---|
+| PROD | `listening_single` | **4 种**（`imageChoice` / `passageGroup` / `textChoice` / `textChoice_shareAudio`） |
+| PROD | `listening_detail_choice` | **4 种** |
+| TEST | `SINGLE` | 3 种 |
+| TEST | `example_question` | 6 种 |
+
+同一个题型编码在真实数据里横跨多种交互形态，字典一映射就会把「看图选择」渲成「篇章组」。而 `layout` 是**题目行自己的值**，天然准确。
+
+**TEST 的规范化值域（7 个，纯交互形态，非空率 100%）**
+
+| `layout` | 交互 | 出现在 |
+|---|---|---|
+| `choice` | 单选，点一个选项 | 听 / 读（7377 题） |
+| `choiceGrid` | 网格选择（多选 / 匹配） | 听 / 读 / 写（1935 题） |
+| `judge` | 对错判断 | 听 / 读（1150 题） |
+| `order` | 排序（拖词卡 / 排句子） | 读 / 写（749 题） |
+| `input` | 长文本输入 | 写 / 译（246 题） |
+| `shortInput` | 短文本输入（填空） | 写（156 题） |
+| `record` | 录音 | 说 / 译（7 题） |
+
+> 统计口径：TEST `question` 中 `section_mapping` 非空的 11620 行。另有 1904 行 `section_mapping IS NULL` + `layout='textChoice'`（老值，涉及 31 张未纳入练习的卷），本期不处理。
+
+**PROD 现状是阻断级（D14 未解决前不能当依据）**
+
+| 项 | TEST | PROD |
+|---|---|---|
+| 非空率 | 100%（13524） | **52.3%**（7105/13574） |
+| 值域 | 上表 7 个 | 老值域：`textChoice` / `textChoice_shareAudio` / `passageGroup` / `textJudge` / `imageMatch` / `imageJudge` / `imageChoice` / `clozeGroup` |
+| 缺失分布 | 无 | `SEC_READ` **100% NULL（5108）**、`SEC_WRITE` **100% NULL（927）**、`SEC_TRANSLATION` 4、`SEC_SPEAKING` 5 |
+
+老值域混了**题面形态**（`passageGroup` / `clozeGroup` 是「材料 + 一组小题」），不是答题形式，所以 PROD 现在这半球值也不能直接用。
+
+**回填：按 `question.id` 从 TEST 复制，禁止按值映射**
+
+两库 `question.id` 完全嵌套——TEST 13524 行全在 PROD 13574 行之内（PROD 仅多 50 行）。据此可覆盖 6439/6469 行 NULL，剩 30 行（PROD 独有 id）人工判定。
+
+**不能按值映射**：老值 `textChoice` 在 TEST 对应 3 个新值（`choice` 2419 / `choiceGrid` 200 / 其他），`textChoice_shareAudio` 也对应 3 个（`choice` 929 / `judge` 10 / `input` 6）。按值映射必把多选错成单选。
+
+**口语是例外**：口语内容在 `speaking_exam_paper_question`，**该表没有 `layout` 列**（`question` 里 `SEC_SPEAK` 的 5 条是造数残留）。所以口语 P0 直接按模块定 `record`；要做「朗读 / 自由说话」差异化录音 UI 再补列（P1）。
+
+**下发放哪一层**：
+
+| 层 | 字段 | 说明 |
+|---|---|---|
+| 题目接口 | `layout`（单值） | 原样透传，前端据此选渲染组件 |
+| 板块接口 | `layouts`（去重数组） | 该板块内实际题目的 `layout` 集合。正常 1 个元素；2 个说明混了交互（TEST 2 个板块 / PROD 48 个） |
+
+**不做 enum 换算**：沿用 CSCA 既有约定（`CscaQuestionResponse` 注释：「取哪个字段只由 `layout` 决定，不能按『字段是否为空』猜形态」）。少一层换算就少一处漏配——写作 `WritingLayoutType` 的 switch 白名单只覆盖 5 个老题型，3.0 的 `chart_analysis` / `topic_essay` 直接落 default（B-04），就是现成教训。
 
 
 #### 3.2.4 目录装配（读时装配，不写中间表）
@@ -311,14 +355,18 @@ WHERE deleted = 0 AND exam_type = 1 AND enabled_prac = 1
   AND version = ? AND level IN (?, ...)      -- 7-9 候选集（R3）
 ORDER BY level, id;                          -- 原 setting.sort_order 与 id 升序 100% 等价
 
--- ④ 每卷每板块实际题量（按卷批量，勿逐卷查；题级上下架在这里生效）
-SELECT paper_id, section_mapping, CAST(section AS SIGNED) AS section_no, COUNT(*) AS actual_count
+-- ④ 每卷每板块实际题量 + 答题形式（按卷批量，勿逐卷查；题级上下架在这里生效）
+SELECT paper_id, section_mapping, CAST(section AS SIGNED) AS section_no,
+       COUNT(*) AS actual_count,
+       GROUP_CONCAT(DISTINCT layout ORDER BY layout) AS layouts   -- → parts[].layouts 数组
 FROM question
 WHERE deleted = 0 AND enabled_prac = 1 AND paper_id IN (...)
   AND (type_id_mapping IS NULL OR type_id_mapping <> 'example_question')
   AND section IS NOT NULL AND section <> ''
 GROUP BY paper_id, section_mapping, section;
 ```
+
+> `layouts` 直接 `GROUP_CONCAT` 出来，不需要额外查询——④ 本来就要扫这批行。`NULL` 的 `layout` 会被 `GROUP_CONCAT` 自动跳过；若某板块全为 NULL 则返回 `NULL`，服务端兜底为空数组并记 `WARN`（PROD 回填前会大量命中，见 D14）。
 
 装配顺序（服务端内存）：
 1. 把 ② 的结果分两拨：`enabled = 1 AND deleted = 0` → 骨架（按 `sort_order` 排序）；`enabled = 0 AND deleted = 0` → `closedSections` 集合；`deleted = 1` 的行直接丢；
@@ -327,7 +375,7 @@ GROUP BY paper_id, section_mapping, section;
 4. `actual_count = 0` 的板块不下发（R6）——**这一条同时兜住了「板块开着但题全被单题下架」**；
 5. 模块 `enabled = 0` → 整模块不下发，**不再求值板块**；
 6. 板块在 `closedSections` 里 → 该板块不下发，历史记录不受影响（R13）；
-7. `answerMode` 由 `type_code` 经 `PracticeTypeRegistry` 映射后下发（不入库，§3.2.2）。
+7. `answerMode` **不再下发**：板块级给 `layouts`（④ 的去重结果），题目级给单值 `layout`，均原样透传（§3.2.2b）。
 
 **口语是唯一走另一张内容表的模块**：②③④ 换成 `speaking_exam_paper`（`enabled_prac = 1`）+ `speaking_exam_paper_question`（`enabled_prac = 1`）的计数，板块骨架仍来自 `practice_module_part_config`（`section_mapping = 'SEC_SPEAK'`，`section` 为 1/2/3）。
 
@@ -648,9 +696,9 @@ WHERE p.exam_type = 1 AND p.deleted = 0
 | T1  | `GET /translation/levels?version=HSK3.0`         | 2.0 → `[]`                    |
 | T2  | `GET /translation/levels/{levelCode}/intro`      | 单对象，`sections[]` 来自板块配置       |
 | T3  | `GET /translation/papers?level=7&version=HSK3.0` | 卷清单，过滤 `totalQuestionCount=0` |
-| T4  | `GET /translation/papers/{paperId}/parts`        | 板块列表，**必须下发 `answerMode`**    |
+| T4  | `GET /translation/papers/{paperId}/parts`        | 板块列表，**必须下发 `layouts`**    |
 
-`answerMode` = `TEXT`（笔译）/ `RECORD`（口译），正是两张卡渲染不同的根因。
+`layouts` = `["input"]`（笔译）/ `["record"]`（口译），正是两张卡渲染不同的根因——来自 `question.layout`，不是 `type_code` 字典。
 
 **写链路 6 个（P0，薄封装委托 `Writing*Service`）**
 
@@ -705,7 +753,7 @@ WHERE paper_id = ? AND deleted = 0 AND enabled_prac = 1 AND CAST(section AS SIGN
 | 运营端（卷 / 题） | 改 `exam_paper.enabled_prac`、`question.enabled_prac`（`1` 上架 / `0` 下架），整卷 / 单题生效；考试侧改对应的 `enabled_exam` | 沿用题库管理侧现有卷 / 题编辑能力，**本次不新增接口** |
 | 本次不做 | 批量上下架、板块级灰度、按用户差异化 | — |
 
-> C 端响应结构不变（`parts[]` 仍只有 `partCode / partName×3 / typeCode / answerMode / questionCount`），保证 2.0 现网响应可逐字段 diff。
+> C 端响应结构只增不改（`parts[]` = `partCode / section / partName×3 / typeCode / typeName×3 / questionCount / sortOrder / layouts`；`structureId` 删除，`answerMode` 不下发）。
 
 ---
 
@@ -914,6 +962,21 @@ POST /translation/attempts/start {paperId, section}
 
 **行数不增长**：新表挂 `(version, level, section_mapping, section)`，132 行封顶，由等级数决定，不随卷数膨胀；旧 `practice_part_setting` 挂 `structure_id`（卷级），1294 行且随题库扩容增长。这是**降粒度**，不是复活旧表。
 
+### 9.5b 答题形式读 `question.layout`，不造 `answerMode` 字典
+
+原本打算在 `PracticeTypeRegistry` 里维护 `type_code → answerMode`（`SINGLE` / `MATCH` / `ORDER` / `RECORD` / `TEXT`），再下发到 `parts[]`。实测否决：
+
+| 方案 | 结论 |
+|---|---|
+| `type_code → answerMode` 字典 | ❌ PROD `listening_single` 一个编码对 **4 种** `layout`、`listening_detail_choice` 也对 4 种；TEST `SINGLE` 对 3 种。字典一映射就把「看图选择」渲成「篇章组」 |
+| 落 `part_config.answer_mode` 列 | ❌ 粒度不够：答题形式是**题级**的，一个板块混两种交互（TEST 2 个板块、PROD 48 个）就无处可写 |
+| 前端按 `typeCode` 猜 | ❌ 同上，且题型名与交互形态本来是两回事 |
+| **读 `question.layout` 原样透传** | ✅ 已经是落库的答题形式，逐题准确；加题型不用改代码；沿用 CSCA 既有约定（`CscaQuestionResponse`：「只由 `layout` 决定，不能按字段是否为空猜形态」） |
+
+**少一层映射就少一处漏配**：写作 `WritingLayoutType` 的 `switch (getTypeIdMapping())` 白名单只覆盖 5 个老题型，3.0 的 `chart_analysis` / `topic_essay` 直接落 default（B-04）。读 `layout` 之后，这类问题从根上不会再有。
+
+**代价**：`layout` 在 PROD 缺失 47.7% 且值域是老的一套（混了 `passageGroup` / `clozeGroup` 这种题面形态）。**必须先把 D14 回填掉**，否则这个方案在 PROD 不可用——好消息是两库 `question.id` 完全嵌套，按 id 从 TEST 复制可覆盖 6439/6469 行，且**不能按值映射**（老值 `textChoice` 一对 3 个新值）。口语内容在 `speaking_exam_paper_question`，那张表没这一列，P0 按模块定 `record`。
+
 ### 9.6 `practice_record` 用三元组、删 `practice_name`
 
 `structure_id` 是 `(paper_id, section_mapping, section)` 的代理键（`selectByStructure` 内部即三元组 JOIN），而 `practice_record` 三列本来就齐备，是第 4 份等价信息；实测新旧路径取题数 PROD 1343/1343 零差异。`practice_name` 与 `section_name` 100% 一致，纯复制。
@@ -965,9 +1028,9 @@ POST /translation/attempts/start {paperId, section}
 | 期 | 范围 | 前置 | 完成判据 |
 |---|---|---|---|
 | **P0-a** | 修三条存量缺陷（附录 A：B-01/B-02/B-03） | — | TEST 听力 intro 不 500；PROD 听力列表不混版；HSK7-9 写作可开练 |
-| **P0-b** | 四个支撑类：`PracticeVersion` / `PracticeLevelCode` / `PracticeModuleCatalog` / `PracticeTypeRegistry`（题型字典 `typeCode → answerMode`） | — | 单测覆盖 `HSK7-9`、`'7-9'`、非法版本、5 种 `answerMode` |
+| **P0-b** | 四个支撑类：`PracticeVersion` / `PracticeLevelCode` / `PracticeModuleCatalog` / `PracticeLayout`（`layout` 值域 + 主客观判定，**不做值换算**） | — | 单测覆盖 `HSK7-9`、`'7-9'`、非法版本、7 个 `layout` 值 |
 | **P0-c** | 16 个目录端点加 `version` | P0-b | 2.0 全链路零回归 |
-| **P0-c2** | **`practice_module_part_config` 收尾**：TEST 已建表迁数据（132 行）+ 已补 `enabled` 列 → 补唯一键（`answer_mode` 不入库走字典、开关读 `enabled` 而非 `deleted`）→ 清 `SEC_SPEAKING` 残留配置 | P0-b | 表含 `uk_module_part`；132 行 `enabled` 全 1；`type_code` 全部能映射到 `answerMode`；关板块后目录不出现 |
+| **P0-c2** | **`practice_module_part_config` 收尾**：TEST 已建表迁数据（132 行）+ 已补 `enabled` 列 → 补唯一键（`answer_mode` 不入库、答题形式读 `question.layout`；开关读 `enabled` 而非 `deleted`）→ 清 `SEC_SPEAKING` 残留配置 | P0-b | 表含 `uk_module_part`；132 行 `enabled` 全 1；`layouts` 取值全部落在 7 个规范值内；关板块后目录不出现 |
 | **P0-c3** | 板块开关接口 `PATCH /hsk/module-config/parts/{id}` | P0-c2 | 关板块后目录不出现，新练习不下发其题目，历史记录不受影响 |
 | **P0-d** | 聚合接口 `GET /hsk/modules` | P0-c | 2.0 四卡 / 3.0 五卡，布局角标正确 |
 | **P0-e** | **重写 `PracticeCatalogBatchLoader`**：从「查 structure + part_setting」改为「读板块配置 + 算题量」 | P0-c2 | 2.0 四模块目录与现网**逐字段一致** |
@@ -976,7 +1039,7 @@ POST /translation/attempts/start {paperId, section}
 | **P0-h** | **作答表统一三元组**：`practice_record` 删 2 列 + 重建索引；`writing_attempt` / `speaking_attempt` 加两列 → 回填 → 校验 0 残留；7 处 Mapper 改三元组；接口改 `(paperId, section)`；CSCA 3 处改 `SEC_CSCA + 科目码` | P0-e | 抽 100 条历史记录新旧路径取题 ID 一致；`EXPLAIN` 走新索引；新记录 `question_ids` 非空且长度 = `total_questions`；回填校验 0 残留 |
 | **P0-i** | **`practice_paper_setting` 退场**：删 `PracticeCatalogBatchLoader` 里的 setting 查询；`ReadingRecordServiceImpl` / `WritingAttemptServiceImpl` 的准入改判 `enabled_prac`；3 处 `getSortOrder()` 排序改 `id`；`SharedPaperEligibility` 补判 `enabled_prac`（B-17）；最后 `DROP TABLE practice_paper_setting` | P0-g 数据已铺好 | 4 模块目录与现网逐字段一致；下架卷在列表/详情/作答三处均不可达；表已 drop |
 | **P0-j** | **结构表 drop**：确认代码中 `structureId` 出现次数 = 0 → `DROP TABLE practice_part_setting` → `DROP TABLE practice_paper_structure` | P0-h 回填校验通过 + P0-e 已换源 | 两表不存在；`grep -r structure_id` 源码零命中；全链路回归通过 |
-| P1 | 偏好表加 `version`；ID 改 String；`dataVersion` ETag；角标后台可配；补 `TRANSLATION_WRITTEN` 策略；collation 对齐（D10 随表退场自动消失）；B-09 修正；板块级时长/满分/提示语加列 | P0 上线观察 | — |
+| P1 | 偏好表加 `version`；ID 改 String；`dataVersion` ETag；角标后台可配；补 `TRANSLATION_WRITTEN` 策略；collation 对齐（D10 随表退场自动消失）；板块级时长/满分/提示语加列；口语表补 `layout` 列 | P0 上线观察 | — |
 | P2 | `option_pool` 三步退场（补 90 条 → `pool_code` 去 structureId → 快照现算）；口译 ASR + 自动评分 | P0-j 稳定 | — |
 
 > 🔴 **最大风险点是 P0-e**：唯一会改变 2.0 现网行为的改造（目录换源）。验收法：同一批请求（4 模块 × 版本 × 等级），新旧响应 **JSON 逐字段 diff 必须为空**，建议先存旧实现快照。
@@ -999,12 +1062,12 @@ POST /translation/attempts/start {paperId, section}
 | B-06 | `levelCode` 裸 `parseInt` | `ReadingCatalogServiceImpl#requireModule`、`ListeningCatalogServiceImpl#parseLevel` | `HSK7-9` → 404/500 | 🟡 中 |
 | B-07 | 目录 ID 为 `Long` | 各 Paper 响应 | 19 位雪花丢精度（新增端点改 String，存量 P1） | 🟡 中 |
 | B-08 | `writing_evaluation_policy` 缺 3 个题型 | 表数据 | `TRANSLATION_WRITTEN` / `CHART_ANALYSIS` / `TOPIC_ESSAY` 交卷后报告永久「生成中」 | 🟡 中 |
-| B-09 | `answer_mode` 与题型语义错配：写作类 `layout=input` 却标 `SINGLE`，而翻译标 `TEXT` | `practice_part_setting` 数据 | 3.0 作文按单选渲染 | 🟡 中（3.0 未上线） |
+| ~~B-09~~ | ~~`answer_mode` 与题型语义错配~~ | — | **已消解**（2026-11-10）：不再有 `answer_mode` 这一层，答题形式直接读 `question.layout`，错配源头消失（§3.2.2b） | ✅ 关闭 |
 | B-10 | 3.0 口语在 `question`（5 条）与 `speaking_exam_paper`（5 张卷 78 题）双录，且 `question` 那条是造数残留 | 题库数据 | 若按 `question` 配料会读到 1 张假卷 → 口语目录近乎空 | 🟡 中（P0-c2 软删 5 条） |
 | B-11 | `practice_paper_setting` 孤儿行：TEST 69（38 活跃 + 31 软删）/ PROD 56（全活跃），占全表 34% / 48% | 运营表数据 | 现网被 `IN` 天然过滤；**退场后自然消失，无需清理** | 🟢 低（已被 P0-i 覆盖） |
 | B-12 | `practice_paper_setting` 三个开关在真实卷上零使用：`enabled=0` 的 2/5 行、`deleted=1` 的 31 行**全是孤儿行**，`visible` 全表为 1 | 运营表数据 | 这张表对真实卷只剩「行是否存在」；`sort_order` 也与 `id` 升序完全一致 → 由 `enabled_prac` 替代（§3.2.7） | 🟢 低（P0-i 退场） |
 | B-13 | 共享选项池缺记录：`reading_cloze` TEST 90/690 无池记录、PROD 90/90 全无；`pool_code` 内嵌 `structureId` | `practice_question_option_pool` | 选词填空退化成每题重复渲染 6 个选项 | 🟡 中（P2 前置） |
-| B-14 | `question.layout` PROD 缺失 47.7%（6469/13574），TEST 100% | `question` 数据 | 4 处代码依赖它渲染 → 近一半题交互错乱 | 🔴 高（P0-g 回填） |
+| B-14 | `question.layout` PROD 缺失 47.7%（6469/13574），TEST 100%；且**两库值域不同**（TEST 7 个纯交互值，PROD 老值域混了题面形态） | `question` 数据 | `layout` 现在是答题形式**唯一真源** → 近一半题交互错乱；`SEC_READ` / `SEC_WRITE` 甚至 100% NULL | 🔴 高（P0-g 回填，按 id 从 TEST 复制） |
 | B-15 | 口语编码分裂：`SEC_SPEAK` 与 `SEC_SPEAKING` 并存（TEST 配置 `SEC_SPEAKING` 1 行模块 + 3 行板块，与 `SEC_SPEAK` L7 重复），代码 4 处只用 `SEC_SPEAK` | 配置数据 | 保留 `SEC_SPEAKING` 就是永久孤儿配置 | 🟡 中（P0-c2 删 4 行） |
 | B-16 | PROD `HSK2.0 L2 SEC_LISTEN` 的 `total_question_count=35`，但四板块求和 40 | 配置数据 | 进度条分母口径不一 | 🟢 低（拆表时以实际计数为准） |
 | B-17 | `SharedPaperEligibility.isEligible` 只判 `deleted` + `examType`，**不判 `enabledPrac`**；而 4 个 Catalog 已改为 `enabled_prac = 1` | 4 处调用（阅读/写作 Catalog、Record） | **口径已经分叉**：目录看不到下架卷，详情 / 开始作答却能进入 → 下架卷可直达。补一行 `&& enabledPrac == 1` 即修 | 🔴 高（P0-i 必改，建议提前到 P0-c 后立刻做） |
@@ -1024,7 +1087,7 @@ POST /translation/attempts/start {paperId, section}
 | **D4** | 3.0 的模块配置行 | 28 行 | **0 行** | 补 28 行 + 对应板块明细行 |
 | **D11** | `enabled_prac` / `enabled_exam` 两列不存在 | **5 表已有**（`exam_paper`/`question`/`question_group`/`speaking_exam_paper`/`_question`） | **5 表全缺** | 上线前 DDL，**最先做**；`DEFAULT 1` 必须与「16 张无 setting 行活卷置 0」同一批次（§3.2.7） |
 | **D13** | 3.0 卷全部未上架 | 15/15 | **0/15** | 迁移时随缺行规则置 `enabled_prac = 0`；3.0 正式放开的那一版改回 `1`（不是新增 setting 行） |
-| **D14** | `question.layout` 大面积缺失 | 100% 有值 | **47.7% NULL** | 按 TEST 同题回填 |
+| **D14** | `question.layout` 大面积缺失 | 100% 有值（7 个规范值） | **47.7% NULL**（`SEC_READ` / `SEC_WRITE` 全空） | **按 `question.id` 从 TEST 复制**（可覆盖 6439/6469）；**禁止按值映射**——老值 `textChoice` 一对 3 个新值（§3.2.2b） |
 | **D15** | 2.0 的板块配置只有听力有值 | 46/49 | **6/21**（阅读 6 / 写作 6 / 口语 3 行全 NULL） | 与 D4 同批，按题库 `question.section` 生成 |
 | D5 | `writing_evaluation_policy` 无 `TRANSLATION_WRITTEN` | 缺 | 缺 | P0 不入队，直接 `UNAVAILABLE`；P1 补 |
 | D6 | 翻译 4 题 `answer` 全为 `(略)` | 4/4 | 4/4 | 题库补参考译文（P1） |
@@ -1058,6 +1121,7 @@ POST /translation/attempts/start {paperId, section}
 | 3.0 口语内容源 | `speaking_exam_paper` 5 卷 78 题 | 0 卷（未放开） |
 | `total_question_count` == `SUM(parts)` | 46/46 | 5/6（L2 听力 35≠40） |
 | `parts_config` 是否含 `section` / `typeCode` / `answerMode` | **均不含** | 同 |
+| `question.layout` 值域（`section_mapping` 非空） | 7 个规范值，非空率 100% | 老值域 + 非空率 52.3%（D14） |
 | `enabled_prac` 列 | 5 表已有 | **5 表全缺** |
 | `practice_paper_structure` 2.0 / 3.0 | 1066 / 135 行 | — / **0** 行 |
 | 三表行数（structure / part_setting / level_config） | 1201 / 1201 / 49 | 1066 / — / 21 |
