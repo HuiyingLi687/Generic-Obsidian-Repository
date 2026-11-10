@@ -3,13 +3,14 @@
 > 定位：本文档回答【怎么做】——HSK 练习如何同时支撑 2.0 / 3.0 两套大纲，以及「翻译」如何从写作模块里拆成独立入口。
 > 服务：`practice-service`（网关前缀 `/api/practice`）
 > 依据：2026-11-10 双版本首页 UI 截图（2.0 四宫格 / 3.0 五行列表）+ 代码基线 + TEST / PROD 实测
-> 文档版本：v1.4｜更新日期：2026-11-10｜状态：**待评审**
+> 文档版本：v1.5｜更新日期：2026-11-10｜状态：**待评审**
 > 前置：[HSK练习模块首页-设计方案](HSK练习模块首页-设计方案.md)、[HSK翻译练习-独立模块接口方案](HSK翻译练习-独立模块接口方案.md)、[HSK练习-共用题库方案](HSK练习-共用题库方案.md)
 > 🔴 **本文纠正前置文档的三处过时结论**，见 §9 ADR-06
 > 🔴 **v1.2 口径（架构简化）**：**`practice_paper_structure` 与 `practice_part_setting` 退场**，板块配置只保留 `practice_module_level_config` 一张表（用其 `parts_config` JSON）。内容侧不新建任何表，翻译 4 题、口语 3.0 的 5 题都已在 `question` 里，只是 `section_mapping` 归属不同。
 > ⚠️ **`structure_id` 分层退出**：`practice_record`（963/1364 行）与 `practice_report` 本次**直接删列**，改用 `(paper_id, section_mapping, section)` 三元组；`writing_attempt` / `speaking_attempt` / `option_pool` 因缺部分号，P2 再改。详见 §3.2.7 / §3.2.8。
 > 🔴 **v1.3 新增**：`practice_record` 删 `structure_id` + `practice_name`，**启用已存在但空着的 `question_ids` 作题目快照**；接口从 `structureId` 改为 `paperId + section`（ADR-11）。
 > ✅ **v1.4 新增**：评审提出「卷级上下架能否并入 `practice_module_level_config`（加字段）」→ **核查后否决**，§3.2.9 / ADR-12 给出实测证据（PROD 每级 20 卷只上架 10 卷，粒度 1:N 反向）。顺带查出 **D12**（setting 孤儿行 69/56）、**D13**（PROD 的 3.0 卷 0 上架）、**B-11/B-12**；新增规则 R11/R12。
+> 🔴 **v1.5 新增**：评审追问「`question_group` 不能当板块配置吗 / `practice_paper_structure` 不能直接从 `exam_paper` 推吗 / `option_pool` 也用不上」→ §3.2.10 逐项核查：**① 不能**（层级低一层 + 覆盖率仅 50%，丢 588 个板块）；**② 能，且 v1.2 已定退场**；**③ 能推但自己就不完整**（`reading_cloze` PROD 0/90）→ P2 退场。新增 **D14 / B-13 / B-14**（PROD `layout` 缺 47.7%）。**结论：板块结构 = `question` 去重 + `parts_config` 取名，不需要任何结构表。**
 
 ---
 
@@ -301,7 +302,7 @@ practice_part_setting   : type_name='笔译',      type_name_en='Written Transla
 
 裁定：**必须给 `parts_config` 元素补两个键** —— `typeCode`（稳定题型编码，取 `question.type_id_mapping` 的取值域）与 `answerMode`（`SINGLE/MATCH/ORDER/RECORD/TEXT`）。补齐前，`answer_mode` 只能靠 `PracticeTypeRegistry` 按 `typeName` 反查，属于临时兜底。
 
-#### 3\.2\.3 数据缺口（9 条消失/降级，剩 5 条真阻塞）
+#### 3\.2\.3 数据缺口（9 条消失/降级，剩 6 条真阻塞）
 
 | # | 缺口 | TEST | PROD | 影响 | 处置 | 级别 |
 |---|---|---|---|---|---|---|
@@ -318,13 +319,15 @@ practice_part_setting   : type_name='笔译',      type_name_en='Written Transla
 | **D11** | `deleted_prac` 列 PROD 不存在 | 5 表已有 | **5 表全缺** | 目录 SQL 带 `deleted_prac=0` → `Unknown column` | 上线前 DDL | **P0 阻塞** |
 | **D12** | `practice_paper_setting` 孤儿行（`paper_id` 无对应卷） | **69**（38 活跃 + 31 软删） | **56**（全活跃） | 现网无感（`IN` 天然过滤）；合并/迁移会带走脏行，运营后台按卷查为空 | P0 收尾 `DELETE ... WHERE paper_id NOT IN (SELECT id FROM exam_paper)`，五闸门 + DRY-RUN | P0 收尾 |
 | **D13** | PROD 的 HSK3.0 卷 **全部未上架**（15 张卷、`practice_paper_setting` 0 行） | 15/15 已上架 | **0/15** | 3.0 开了配置也看不到卷 | 随 D4 一起补 15 行 setting（`enabled=1, visible=1, sort_order` 按导入序） | **P0 阻塞（随 D4）** |
+| **D14** | `question.layout` PROD 大面积缺失 | 0 / 13524 为空（100% 有值） | **6469 / 13574 为 NULL（47.7%）**（2.0 缺 5846、3.0 缺 623） | practice-service 有 4 处依赖 `layout` 做渲染 → PROD 一半题渲染不出交互 | 按 TEST 同题回填（`type_id_mapping` → `layout` 映射）；P0 前 | **P0 阻塞** |
 | **N4** | `parts_config` 元素缺 `typeCode` | 缺 | 缺 | 只能用中文 `typeName` 匹配题型 → 改名即崩 | 补键（28 + 21 行配置一次性刷） | **P0 阻塞** |
 | **N5** | `parts_config` 元素缺 `answerMode` | 缺 | 缺 | 前端无法确定作答交互 | 补键 | **P0 阻塞** |
 | N6 | 板块级 `enabled` / `durationMinutes` / `fullScore` / `description` | 缺 | 缺 | 板块无法单独关停、无板块级时长满分与提示语 | P1 按需补键；`duration` 可先用表级 `suggested_duration_minutes` | P1 |
 
-> 🔴 **真阻塞只剩 5 条**：D3（level 取值）、D11（`deleted_prac` DDL）、D4 + **D13**（PROD 补 28 行配置 + 15 行卷上架）、N4/N5（`parts_config` 补两个键）。
+> 🔴 **真阻塞只剩 6 条**：D3（level 取值）、D11（`deleted_prac` DDL）、D4 + **D13**（PROD 补 28 行配置 + 15 行卷上架）、N4/N5（`parts_config` 补两个键）、**D14（PROD 回填 `layout`）**。
 > 相比 v1.1 的 11 条，删掉两张表反而让缺口清单**短了一半**——因为「结构行」这个中间层不再需要复刻。
 > v1.4 新增 D12/D13：前者是历史脏数据，后者是"配置补了但卷没上架"这一层被漏掉——**`level_config` 与 `paper_setting` 是两道闸，补配置不等于能练**（§3.2.9）。
+> v1.5 新增 D14：`question.layout` 在 PROD 缺 47.7%，是 §3.2.10 核查 `option_pool` 能否现算时顺带查出来的——**它同时堵死了"用 `layout` 推断共享选项池"这条路**。
 
 #### 3\.2\.4 目录装配口径（不再"派生写库"，改为"读时装配"）
 
@@ -648,6 +651,97 @@ HSK 真题卷本身是"一份卷含听力/阅读/写作"，运营下架**整张�
 孤儿行不影响现网（`IN candidatePaperIds` 天然过滤），但**任何"把 setting 并进别的表"的迁移都会把它们带过去**。P0 收尾时顺手 `DELETE FROM practice_paper_setting WHERE paper_id NOT IN (SELECT id FROM exam_paper)`（走五闸门，DRY-RUN 先跑）。
 
 **最终裁定**：`practice_paper_setting` **保留、不改结构、不合并**。本次改造只做一件事——在读取侧明确它的定位是"卷级运营态"，与 `level_config`（模块级能力开关）**互补而非冗余**，并在 R11 里把"缺行=下架"这个隐含语义写成显式规则。
+
+#### 3\.2\.10 能不能只用「内容 + 配置」把板块结构推出来（`question_group` / `option_pool` 逐项核查）
+
+评审提出两问：① 前端板块配置能否直接取 `question_group`；② `practice_paper_structure` 能否直接从 `exam_paper` 结构推。**②能，①不能**，`option_pool` 是第三种情况（能推但不完整）。
+
+##### ① `question_group` 不能当结构源：层级低一层 + 覆盖率只 50%
+
+`question_group` **不是板块表，是板块内的"材料/大题"分组**——一篇阅读材料带 5 题、一段音频带 10 题、一个翻译大题带 2 题，各成一行。实测每板块的 group 行数：
+
+| 一个板块内 group 行数 | TEST 板块数 |
+|---|---|
+| 1 行 | 380 |
+| 2 行 | 102 |
+| 3 行 | 35 |
+| 4 行 | 32 |
+| 5 行 | 43 |
+
+**212 个板块有 2~5 个 group 行**——它是板块的**下一层**，直接当结构源会把同一个板块算成 2~5 个。
+
+更要命的是覆盖率。从 `question` 能算出的板块组合共 **1180 个**（卷 × 模块 × 板块），其中：
+
+| 项 | TEST |
+|---|---|
+| `question` 有题、`question_group` **无行**（会整块丢失） | **588 个** ← 🔴 |
+| `question_group` 有行、`question` 无题（空板块） | 0 |
+| `question_group` 去重板块数 | 592 / 1180 = **50%** |
+
+丢的集中在阅读与写作（样本如 `(2072872258363949058, SEC_READ, 1)` 有 10 题但无 group 行）。**用它当结构源，一半板块直接消失。**
+
+还有个细节：`section_title` 存的是 **"第1-10题:请判断对错."** 这种**题目区间描述**，不是板块名"第一部分"；`title1_text` 是"听力"（模块名，重复）。而且**没有 `_en` / `_vi`**——三语只能来自 `parts_config`。
+
+> ✅ **`question_group` 的正确用法**：翻译/阅读/听力的**大题容器**（共用题干、共用音频、共用选项区间）。它与板块是 1:N，本次改造**不动它**，只在取题时按 `group_id` 挂载。
+
+##### ② `practice_paper_structure` 确实可以从内容推出来 —— 这正是本次的既定方案
+
+不是取 `exam_paper` 单表（那上面没有板块信息），而是 **`exam_paper` + `question` + `parts_config`** 三样拼：
+
+| 要什么 | 从哪来 |
+|---|---|
+| 有哪些板块、顺序 | `question` 按 `(paper_id, section_mapping, section)` 去重 → 1180 个，**100% 覆盖** |
+| 板块中文名 / 英文名 / 越南语名 | `parts_config[].partName / partNameEn / partNameVi`（按 `(version, level, section_mapping, sortOrder)` 对齐） |
+| 题型名三语 / 题型编码 | `parts_config[].typeName × 3 / typeCode` |
+| 标准题量 | `parts_config[].questionCount`（会被实际题量覆盖，R8） |
+| **实际题量** | `COUNT(question)` 现算 |
+
+这就是 §3.2.4 的"读时装配"——**`practice_paper_structure` 与 `practice_part_setting` 在 v1.2 就已判定退场**，不存在"一定要用它们"。
+
+> ⚠️ 二者仍然留在库里，只因 `writing_attempt`(217) / `speaking_attempt`(283) / `question_option_pool`(2505) 还在引用它们的主键；它们是 **ID 注册表**，不再是配置源（§3.2.7）。
+
+##### ③ `practice_question_option_pool`：数据可推，但**现在推不全**，P2 才能删
+
+这张表是**多题共用一组选项**的池（选词填空、句子匹配、图片匹配）。实测一池 5 题，且**池内 5 题的 `option_content` 完全相同**：
+
+```
+reading_cloze（选词填空）第 51–55 题，5 题的 option_content 均为：
+{"A":"向","B":"关","C":"突然","D":"同意","E":"声音","F":"世界"}
+```
+
+所以"池"在数据上是**冗余的**——同板块内 `option_content` 相同的题自然成池。理论上可用
+`sha256(option_content)` 现算，不必落表。
+
+**但现在不能删，两个硬理由：**
+
+| 理由 | 实测 |
+|---|---|
+| **它自己不完整** | `reading_cloze` TEST 有 690 题、**90 题无池记录**；**PROD 的 90 道题一条池记录都没有**（0/90）→ 这张表从来不是权威源，只是某次批量导入的副产品 |
+| **`pool_code` 已嵌 `structureId` 且进了答题快照** | 编码格式 `SEC_READ_{structureId}_{sha256}`；`ReadingSnapshotSupport` 把它写进 `questionSnapshot.optionPoolCode`，并带 `exclusiveSharedOptions=false`。删表要同时改快照生成 + 确认前端消费方式 |
+
+**又不能用 `layout` 现算替代**：PROD 的 `question.layout` **有 6469 / 13574 = 47.7% 为 NULL**（HSK2.0 缺 5846、HSK3.0 缺 623），TEST 则 100% 有值。同一个题型在 PROD 一半有 `layout` 一半没有，判据不可靠。
+
+**裁定**：`option_pool` 保留，**P2 与 `practice_paper_structure` 一起退场**。前置三件事：
+1. 补 90 条缺失的池记录；
+2. `pool_code` 构造去掉 `structureId`，改为 `{section_mapping}_{paperId}_{section}_{sha256(option_content)}`；
+3. 答题快照里的 `optionPoolCode` 改成现算写入，不再读表。
+
+> 🔴 顺带确认一个 D 级缺口（**D14**）：`question.layout` 在 PROD 大面积缺失（47.7%），而 practice-service 有 4 处依赖它做渲染。**3.0 上线前必须按 TEST 回填**，否则 PROD 切 3.0 会有一半题渲染不出交互。这与铁律「`layout` 是练习侧服役列、48% 空」完全对上。
+
+##### ④ 最终表清单：5 张，一张不多
+
+| 层 | 表 | 角色 | 本次动作 |
+|---|---|---|---|
+| **内容层** | `exam_paper` | 版本 / 等级 / 卷 | 零改 |
+| | `question` | 板块归属 / 部分号 / 题型 / 题干 / 实际题量 | 零改（PROD 需回填 `layout`，D14） |
+| | `question_group` | 板块内的材料 / 大题容器（1:N） | 零改，**不参与结构装配** |
+| | `speaking_exam_paper` / `_question` | 仅 2.0 口语 | 零改 |
+| **配置层** | `practice_module_level_config` | 版本×等级×模块：开关、三语板块模板、时长 | 补 2 键（N4/N5） |
+| **运营层** | `practice_paper_setting` | 卷级上下架 + 卷序 | 零改（ADR-12） |
+| **（退场中）** | `practice_paper_structure` / `practice_part_setting` | 板块模板的行式投影 | 停写，仅作 ID 注册表 |
+| **（P2 退场）** | `practice_question_option_pool` | 共享选项池 | 补 90 条 → 改 `pool_code` → 退场 |
+
+> 🎯 **一句话**：板块结构 = `question` 去重 + `parts_config` 取名；卷能不能练 = `practice_paper_setting`；模块开不开 = `level_config`。**三张退场表都是"中间投影"，没有一张承载独有信息。**
 
 ### 3\.3 接口设计
 
@@ -1187,6 +1281,7 @@ structureRegistry(structureId).content_type == "SEC_TRANSLATION"  否则 400 SEC
 | **v1.2** | **架构简化：两张行式表退场**。① `practice_paper_structure` + `practice_part_setting`（1201+1201 行）退场，板块配置只保留 `practice_module_level_config.parts_config`（49 行，实测 100% 覆盖 §3.2.6）；② §3.1.2 改为「内容层 / 配置层」两层，编排层消失；③ **基址映射与 D1/D2/D7/D9 四条缺口一并消失**；④ 新增 §3.2.4 读时装配口径（不再派生写库）、§3.2.7 `structure_id` 归属；⑤ 新增 ADR-10（ID 注册表不可删）、重写 ADR-08/09；⑥ 新增缺口 N4/N5（`parts_config` 缺 `typeCode`/`answerMode`）、规则 R7/R8/R9；⑦ 附录 C 重排（先换源后补数据，P0-e 为最大回归点） | | 2026-11-10 |
 | **v1.3** | **`practice_record` 瘦身 + `structure_id` 分层退出**。① §3.2.8 新增：删 `structure_id` + `practice_name`，**启用已存在但空着的 `question_ids` 作题目快照**；② 接口从 `structureId` 改为 `(paperId, section)`，`structureId` 不再落库；③ §3.2.7 重写为分层退出（`practice_record` 963 / `practice_report` 477 先走，`writing_attempt` / `speaking_attempt` / `option_pool` 留 P2）；④ **ADR-10 翻案**（不再"整表必须留"），新增 ADR-11；⑤ 新增规则 R10、阶段 P0-h；⑥ 附录 A 补 `practice_record` 专项实测（含 `practice_name` 数字体系混用、`structure_id` 脏值、`question_ids` 填充率） | | 2026-11-10 |
 | **v1.4** | **卷级上下架归属裁定（评审提案否决）**。① 新增 §3.2.9：从粒度、跨模块、开关正交三个角度证明 `practice_paper_setting` 不能并入 `level_config`，并给出「若真要砍表应并回 `exam_paper`」的正解；② 新增 **ADR-12**；③ 新增规则 **R11**（缺行 = 下架）/ **R12**（卷状态只写一处）；④ 新增缺口 **D12**（setting 孤儿行 TEST 69 / PROD 56）、**D13**（PROD 的 HSK3.0 卷 0 上架）；⑤ 附录 B 新增 **B-11/B-12**；⑥ **附录 A 更正 PROD HSK2.0 卷数 61 → 122**（原数实为"上架卷数"，内容卷数被低估）；⑦ §3.2.1 补 `practice_paper_setting` 行数，P0-g 补「3.0 卷上架 + 孤儿行清理」 | | 2026-11-10 |
+| **v1.5** | **「只用内容+配置能否推出板块结构」专项核查**。① 新增 §3.2.10：`question_group` 不能当结构源（层级低一层，一板块含 1~5 个 group；覆盖率 592/1180 = 50%，丢 588 个板块；`section_title` 是题号区间描述且无三语）；`practice_paper_structure` 可由 `exam_paper + question + parts_config` 现算（v1.2 已定退场）；`option_pool` 数据冗余可推但自身不完整（`reading_cloze` PROD 0/90），P2 带 3 步前置退场；② 新增最终表清单（5 张：3 内容 + 1 配置 + 1 运营）；③ 新增缺口 **D14**（PROD `question.layout` 缺 47.7%）、缺陷 **B-13/B-14**；④ P0-g 补 `layout` 回填，P2 补 `option_pool` 三步前置；⑤ 附录 A 补 `question_group` / `option_pool` / `layout` 基线 | | 2026-11-10 |
 
 ---
 
@@ -1202,6 +1297,14 @@ structureRegistry(structureId).content_type == "SEC_TRANSLATION"  否则 400 SEC
 | **`practice_paper_setting` 字段取值域** | `enabled` 1×203/0×2；`visible` **全 1**；`deleted` 0×174/1×31 | `enabled` 全 1；`visible` 全 1；`deleted` 全 0 |
 | **一张卷覆盖几个模块**（`DISTINCT section_mapping`） | 2 个×43 卷 / 3 个×92 卷 / 5 个×1 卷 | 2 个×44 / 3 个×92 / 5 个×1 ← 卷级状态不可按模块拆 |
 | **`level_config` 开但 0 卷在架的组合数** | **11 组** | **5 组** ← 两个开关正交，ADR-12 |
+| **`question_group` 去重板块数** vs `question` 推出的板块数 | **592 / 1180（50%）** ← 不能当结构源 | — |
+| **`question` 有题但 `question_group` 无行的板块** | **588 个**（集中阅读 / 写作） | — |
+| **`question_group` 一板块内的 group 行数** | 1 行×380 / 2 行×102 / 3 行×35 / 4 行×32 / 5 行×43 | — |
+| **`practice_question_option_pool`** | 2505 行 / 522 池（每池最多 5 题）/ 306 个 `structure_id` | 1150 行 / 240 池 / 140 个 |
+| **共享池覆盖题型** | 6 种全覆盖（`reading_cloze` 600 / `listening_img_match` 575 / `reading_sent_match` 575 / `reading_word_fill` 325 / `reading_img_match` 230 / `reading_sent_fill` 200） | **5 种**：`reading_cloze` **0 条**（90 道题全缺）← 🔴 B-13 |
+| **`reading_cloze` 缺池记录的题** | **90 / 690** ← 🔴 B-13 | **90 / 90**（一条都没有） |
+| **共享池内各题 `option_content`** | **完全相同**（5 题共用一组 A–F） | 同 |
+| **`question.layout` 填充率** | **13524 / 13524（100%）** | **7105 / 13574（52.3%）** ← 🔴 D14 |
 | `exam_paper`（`exam_type=1`）HSK3.0 | 15 卷（L1–4 各 3、L5/L6/L7 各 1） | 15 卷（同） |
 | HSK7-9 卷的 `level` 原值 | **`"7"`** | **`"7-9"`** ← 🔴 两库不一致 |
 | `practice_module_level_config` HSK2.0 | 21 行（LISTEN 6 / READ 6 / SPEAK 3 / WRITE 6，WRITE 中 4 行 enabled） | 同 |
@@ -1237,7 +1340,7 @@ structureRegistry(structureId).content_type == "SEC_TRANSLATION"  否则 400 SEC
 | **`practice_record` 索引** | 仅 `idx_record_active (user_id,paper_id,structure_id,status)` | 同 |
 | **`practice_report`** | 477 行，有 `practice_record_id`，`structure_id` 冗余 | — |
 | **`writing_attempt` / `speaking_attempt`** | 217 / 283 行，**只有 `paper_id + structure_id`，无部分号** | — |
-| **`practice_question_option_pool`** | 2505 行，只有 `structure_id + question_id` | — |
+| **`practice_question_option_pool`** | 2505 行，`structure_id + question_id + pool_code`（详见 §3.2.10③） | — |
 | **`part_setting.section_code` = `question.section`** | **1087/1087 一致，0 差异** | 480/480 一致 |
 | **新旧取题路径等价性**（`structure_id` vs 三元组） | **905/907**（1 条 `SEC_CSCA section=1` 脏记录） | **1343/1343 零差异** |
 | **三元组查不到题的 record** | 1 条（`SEC_CSCA / section=1 / structure_id=111`） | **0 条** |
@@ -1262,6 +1365,8 @@ structureRegistry(structureId).content_type == "SEC_TRANSLATION"  否则 400 SEC
 | **B-10** | HSK3.0 口语在 `question` 与 `speaking_exam_paper` 双录（同源，number 87–91 一致） | 题库数据 | 改一处不改另一处会造成同题不同内容 | 🟢 低（已由 ADR-07 冻结一侧，不再读第二份） |
 | **B-11** | `practice_paper_setting` 有孤儿行（`paper_id` 指向已不存在的卷）：TEST 69 行（38 活跃 + 31 软删）、PROD 56 行（全活跃） | 运营表数据 | 现网无感（查询走 `IN candidatePaperIds` 天然过滤）；但任何合并/迁移会把脏行带走，运营后台按卷查会命中空记录 | 🟡 中（P0 收尾清理，见 D12） |
 | **B-12** | `practice_paper_setting.visible` 与 `enabled` 语义重复：现网 `visible` **全表为 1**，实际起作用的只有 `enabled` | 运营表数据 | 运营分不清「下架」该改哪个；本次不合并（删列有回归风险），只在 R11 明确二者共同构成"在架" | 🟢 低（P1 评估收敛为单字段） |
+| **B-13** | 共享选项池记录缺失：`reading_cloze`（选词填空）TEST **90/690** 无池记录，**PROD 90/90 全无**；且 `pool_code` 内嵌 `structureId`（`SEC_READ_{structureId}_{sha256}`） | `practice_question_option_pool` | 前端拿不到 `optionPoolCode` → 选词填空题退化成"每题 6 个选项重复渲染"，而不是一个共享选项网格；`structureId` 一删，编码规则即失效 | 🟡 中（P2 前置：补 90 条 + 改编码不含 `structureId` + 改快照现算） |
+| **B-14** | `question.layout` PROD 缺失 47.7%（6469/13574），TEST 100% 有值 | `question` 数据 | practice-service 4 处依赖它渲染 → PROD 近一半题交互错乱；同时堵死"用 `layout` 推断共享选项池"的替代方案 | 🔴 高（见 D14，P0 前回填） |
 
 > B-01 / B-02 / B-03 三条**不需要等本次改造上线就该修**：前两条现网已发生，第三条是 HSK3.0 放开的必炸点。
 
@@ -1280,10 +1385,10 @@ structureRegistry(structureId).content_type == "SEC_TRANSLATION"  否则 400 SEC
 | **P0-d** | 聚合接口 `GET /hsk/modules` | P0-c | 2.0 四卡 / 3.0 五卡，布局与角标正确 |
 | **P0-e** | **重写 `PracticeCatalogBatchLoader`**：从「查 structure + part_setting」改为「读 `parts_config` + 算题量」 | P0-c2 | 2.0 四个模块目录与现网**逐字段一致**；结构表停写 |
 | **P0-f** | 翻译目录 4 + 写链路 6 + `validatePart` 放宽 | P0-e（目录装配已换源） | 翻译笔译/口译都可练到交卷；写作 `structureId` 打翻译 → 400 |
-| **P0-g** | **数据补全：PROD 补 28 行 `parts_config`（D4）+ level 收敛（D3）+ `deleted_prac` DDL（D11）+ 3.0 卷上架（15 行 `practice_paper_setting`）+ 孤儿行清理（D12）** | **D11 的 DDL 最先**；五闸门 + DRY-RUN + 备份 | PROD 切 3.0 五卡有数据；`practice_paper_setting` 孤儿行 = 0；3.0 卷在目录可见 |
+| **P0-g** | **数据补全：PROD 补 28 行 `parts_config`（D4）+ level 收敛（D3）+ `deleted_prac` DDL（D11）+ 3.0 卷上架（15 行 `practice_paper_setting`）+ 孤儿行清理（D12）+ `question.layout` 回填（D14）** | **D11 的 DDL 最先**；五闸门 + DRY-RUN + 备份 | PROD 切 3.0 五卡有数据；`practice_paper_setting` 孤儿行 = 0；3.0 卷在目录可见；PROD `layout` 非空率 = 100% |
 | **P0-h** | **`practice_record` 瘦身**：删 `structure_id` + `practice_name`；重建 `idx_record_active` 为 `(user_id, paper_id, section_mapping, section, status)`；7 处 Mapper 改三元组（`selectByStructure` → 已存在的 `selectByPart`）；`question_ids` 全模块启用；接口 `structureId` → `(paperId, section)` | P0-e（目录已换源，前端已能拿 `partCode`） | ① 抽 100 条历史记录，新旧路径取题 **ID 列表完全一致**（PROD 已实测 1343/1343）；② `EXPLAIN` 走新索引；③ HSK 新记录 `question_ids` 非空且 `JSON_LENGTH = total_questions` |
 | P1 | 偏好表加 `version`；ID 改 String；`dataVersion` ETag；角标后台可配；补 `TRANSLATION_WRITTEN` 策略；**D10 collation 对齐**；B-09 修正；`parts_config` 补 N6（板块级 enabled/时长/满分/提示语） | P0 上线观察 | — |
-| P2 | **彻底删 `practice_paper_structure`**：先给 `writing_attempt`(217) / `speaking_attempt`(283) / `option_pool`(2505) 加 `section_mapping + section` 并回填，再 drop；口译 ASR + 自动评分 | P0-h 稳定运行 + 回填核对完 479 条雪花 ID | — |
+| P2 | **彻底删 `practice_paper_structure`**：先给 `writing_attempt`(217) / `speaking_attempt`(283) / `option_pool`(2505) 加 `section_mapping + section` 并回填，再 drop；**`option_pool` 退场前置 3 步**（§3.2.10③）：① 补 `reading_cloze` 缺失记录（TEST 90 / PROD 90）② `pool_code` 改为 `{section_mapping}_{paperId}_{section}_{sha256(option_content)}` 不含 `structureId` ③ 答题快照 `optionPoolCode` 改现算；口译 ASR + 自动评分 | P0-h 稳定运行 + 回填核对完 479 条雪花 ID | — |
 
 > 🔴 **最大的风险点是 P0-e**：它是唯一会改变 2.0 现网行为的改造（目录数据源换源）。
 > 验收方法：同一批 16 个请求（4 模块 × versions × levels），新旧接口响应 **JSON 逐字段 diff 必须为空**。建议先把旧实现的结果快照存盘再对比。
