@@ -1849,24 +1849,45 @@ Accept-Language: zh
   "message": "操作成功",
   "data": {
     "version": "HSK3.0",
+    "layout": "LIST",
     "header": "专项突破 · 听力/阅读/写作/翻译/口语",
     "modules": [
       { "moduleCode": "LISTENING", "sectionMapping": "SEC_LISTEN",
         "name": "听力", "nameEn": "Listening", "nameVi": "Nghe",
-        "icon": "headphone", "theme": "#5B6CF9",
-        "badge": null, "available": true, "disabledReason": null,
-        "entryLevelCode": null, "sortOrder": 1,
+        "sortOrder": 1, "available": true, "disabledReason": null,
         "progress": { "totalPapers": 15, "completedPapers": 2,
                       "inProgressPaperId": "2104193520701620225" } },
+      { "moduleCode": "READING", "sectionMapping": "SEC_READ",
+        "name": "阅读", "nameEn": "Reading", "nameVi": "Đọc",
+        "sortOrder": 2, "available": true, "disabledReason": null,
+        "progress": { "totalPapers": 15, "completedPapers": 0, "inProgressPaperId": null } },
+      { "moduleCode": "WRITING", "sectionMapping": "SEC_WRITE",
+        "name": "写作", "nameEn": "Writing", "nameVi": "Viết",
+        "sortOrder": 3, "available": true, "disabledReason": null,
+        "progress": { "totalPapers": 15, "completedPapers": 0, "inProgressPaperId": null } },
       { "moduleCode": "TRANSLATION", "sectionMapping": "SEC_TRANSLATION",
         "name": "翻译", "nameEn": "Translation", "nameVi": "Dịch",
-        "icon": "translate", "theme": "#8B5CF6",
-        "badge": "NEW", "available": true, "disabledReason": null,
-        "entryLevelCode": "HSK7-9", "sortOrder": 4,
-        "progress": { "totalPapers": 1, "completedPapers": 0, "inProgressPaperId": null } }
+        "sortOrder": 4, "available": true, "disabledReason": null,
+        "progress": { "totalPapers": 1, "completedPapers": 0, "inProgressPaperId": null } },
+      { "moduleCode": "SPEAKING", "sectionMapping": "SEC_SPEAK",
+        "name": "口语", "nameEn": "Speaking", "nameVi": "Nói",
+        "sortOrder": 5, "available": true, "disabledReason": null,
+        "progress": { "totalPapers": 5, "completedPapers": 1, "inProgressPaperId": null } }
     ]
   }
 }
+```
+
+2.0 只有四张卡，`layout` 换成 `GRID_2`（除 `layout` 与卡表外结构完全相同）：
+
+```json
+{ "version": "HSK2.0", "layout": "GRID_2", "header": "专项突破 · 听力/阅读/写作/口语",
+  "modules": [
+    { "moduleCode": "LISTENING",   "sectionMapping": "SEC_LISTEN", "sortOrder": 1 },
+    { "moduleCode": "READING",     "sectionMapping": "SEC_READ",   "sortOrder": 2 },
+    { "moduleCode": "WRITING",     "sectionMapping": "SEC_WRITE",  "sortOrder": 3 },
+    { "moduleCode": "SPEAKING",    "sectionMapping": "SEC_SPEAK",  "sortOrder": 4 }
+  ] }
 ```
 
 **返回字段说明**
@@ -1874,20 +1895,19 @@ Accept-Language: zh
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `version` | String | 回显解析后的版本 |
-| `layout` | String | `GRID_2`（2.0）/ `LIST`（3.0）。**前端据此切换布局，不写死** |
+| `layout` | String | `GRID_2`（2.0）/ `LIST`（3.0）。**前端据此切换布局，不写死**（服务端取自 `sys_dict.remark`） |
 | `header` | String | 首页副标题，按 `Accept-Language` 本地化 |
-| `modules[].moduleCode` | String | `LISTENING` / `READING` / `WRITING` / `TRANSLATION` / `SPEAKING` |
-| `modules[].sectionMapping` | String | `SEC_LISTEN` / `SEC_READ` / `SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAK` |
+| `modules[].moduleCode` | String | `LISTENING` / `READING` / `WRITING` / `TRANSLATION` / `SPEAKING`（← `sys_dict_item.description`） |
+| `modules[].sectionMapping` | String | `SEC_LISTEN` / `SEC_READ` / `SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAK`（← `item_value`） |
 | `modules[].name` / `nameEn` / `nameVi` | String | 三语模块名：`name` ← `item_text`，`nameEn`/`nameVi` ← `item_properties` |
-| `modules[].icon` / `theme` | String | 图标名 / 主题色。**前端按 `moduleCode` 内置，服务端不提供**（`null` 或不出现） |
-| `modules[].badge` | String | `NEW` / `HOT` / `null`。**前端按 `moduleCode` 内置，服务端不提供**；P1 若需运营可配再入字典 |
 | `modules[].available` | Boolean | `false` 时**置灰 + Toast，不隐藏**（保持卡片数稳定） |
 | `modules[].disabledReason` | String | `MODULE_NOT_IN_VERSION` / `NO_CONTENT` / `LOAD_FAILED` |
-| `modules[].entryLevelCode` | String | 非空 → 跳过等级选择页直达卷列表（翻译固定 `HSK7-9`）。**前端按 `moduleCode` 内置，服务端不提供** |
 | `modules[].sortOrder` | Integer | 卡片顺序 |
 | `modules[].progress.totalPapers` | Integer | 该模块在**当前版本全部等级**下可练卷数（`enabled_prac=1` 且题量 > 0） |
 | `modules[].progress.completedPapers` | Integer | 已完成卷数。**未登录恒为 0** |
 | `modules[].progress.inProgressPaperId` | String | 进行中卷 ID，**String 避免 19 位精度丢失**，无则 `null` |
+
+> **接口不返回的字段**：`icon`（图标名）、`theme`（主题色）、`badge`（`NEW` / `HOT`）、`entryLevelCode`（翻译直达 `HSK7-9`）。这四项全是前端按 `moduleCode` 内置的展示资产，服务端不下发、字典也不存（见下「模块卡取自字典表」）。前端若漏配 `moduleCode`，卡片会缺图标/角标，**这不是接口缺陷**。
 
 **模块卡取自字典表（不写死常量）**
 
@@ -2083,8 +2103,8 @@ POST /translation/attempts/{attemptId}/submissions
 
 | # | 场景 | 预期结果 |
 |---|---|---|
-| 1 | 不传 `version` | 按 `HSK2.0` 处理，`/hsk/modules` 返回 `layout=GRID_2`、4 卡、翻译 `available=false` |
-| 2 | `version=HSK3.0` | `layout=LIST`、5 卡、翻译 `entryLevelCode=HSK7-9` |
+| 1 | 不传 `version` | 按 `HSK2.0` 处理，`/hsk/modules` 返回 `layout=GRID_2`、**4 卡且不含翻译卡**（字典 v2 本就无 `SEC_TRANSLATION` 项） |
+| 2 | `version=HSK3.0` | `layout=LIST`、5 卡；翻译在写作与口语之间（`sortOrder=4`）；**响应 `modules[]` 里不存在 `icon` / `theme` / `badge` / `entryLevelCode` 键**（前端按 `moduleCode` 内置） |
 | 3 | `hsk3.0`（小写）/ `HSK4.0` | 400 `PRACTICE_VERSION_INVALID`，**不得静默降级** |
 | 4 | `/reading/levels?version=HSK3.0` | 含 `HSK7-9`；2.0 不含 |
 | 5 | `/reading/papers?level=HSK7-9&version=HSK3.0` | 能查到卷（验证候选集）。⚠️ TEST 的 `level` 存 `'7'`，验不到 `'7-9'` 那条腿 → **必须补单测**：把 `level` 造为 `'7-9'` 仍能查到（差异 E11，最易漏） |

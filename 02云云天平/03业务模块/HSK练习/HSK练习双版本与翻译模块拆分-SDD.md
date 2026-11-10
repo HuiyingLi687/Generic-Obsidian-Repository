@@ -21,7 +21,7 @@
 | # | 覆盖 |
 |---|---|
 | 1 | 目录层（等级 → 卷 → 板块）全面支持 `version` 入参，缺省 `HSK2.0` |
-| 2 | 新增首页聚合接口 `GET /hsk/modules`，下发卡片顺序、布局、角标、可用性 |
+| 2 | 新增首页聚合接口 `GET /hsk/modules`，下发卡片顺序、布局、可用性（**角标/图标/主题色由前端按 `moduleCode` 内置，不下发**） |
 | 3 | 翻译（`SEC_TRANSLATION`）剥离为独立入口 `/translation/**` |
 | 4 | `HSK7-9` ↔ 数字 `7` 双向映射收口，消灭 4 处硬编码版本常量与 3 处 `level` 解析缺陷 |
 | 5 | 上下架统一为**正向布尔 + 双场景**：`enabled_prac` / `enabled_exam` 两列铺到 5 张内容表（卷 / 题组 / 题 / 口语卷 / 口语题），练习侧只读 `_prac`；板块开关改用新表 `practice_module_part_config.enabled`；三张旧表（`practice_paper_structure` / `practice_part_setting` / `practice_paper_setting`）**全部 drop** |
@@ -872,8 +872,8 @@ POST /translation/attempts/start {paperId, section}
 ## 8. 测试要点
 
 **版本隔离**
-1. 不传 `version` → `layout=GRID_2`、4 卡、`TRANSLATION.available=false`。
-2. `version=HSK3.0` → `layout=LIST`、5 卡、翻译 `entryLevelCode=HSK7-9`。
+1. 不传 `version` → `layout=GRID_2`、**4 卡且不含翻译卡**（字典 v2 无 `SEC_TRANSLATION` 项）。
+2. `version=HSK3.0` → `layout=LIST`、5 卡、翻译在第 4 位；响应里**不含** `icon` / `theme` / `badge` / `entryLevelCode` 键。
 3. `hsk3.0`（小写）/ `HSK4.0` → 400，不得静默降级。
 4. `/reading/levels?version=HSK3.0` → 7 个等级含 `HSK7-9`；2.0 → 6 个不含。
 5. `/reading/papers?level=HSK7-9&version=HSK3.0` 在 **PROD** 能查到卷（验证 R3 候选集）。🔴 最易漏。
