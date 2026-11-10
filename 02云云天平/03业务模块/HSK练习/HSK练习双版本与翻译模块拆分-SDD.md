@@ -135,16 +135,16 @@ speaking_exam_paper（仅 2.0 口语）         answer_mode / standard_question_
              作答层：practice_record 用 (paper_id, section_mapping, section) 定位
 ```
 
-| 层 | 表 | 承载 | 真相源 |
-|---|---|---|---|
-| 内容 | `exam_paper` / `question` | 版本、等级、**卷级上下架**、模块归属、部分号、题型、题干、**实际题量** | ✅ |
-| 内容 | `question_group` | 板块内的材料 / 大题容器（1 板块 : N group），**不参与结构装配** | ✅ |
-| 内容 | `speaking_exam_paper` / `_question` | 仅 2.0 口语（`level` 用 `Beginner/Intermediate/Advanced`） | ✅ |
-| 配置 | `practice_module_level_config` | 版本 × 等级 × 模块：模块开关、标准总题量、时长、能力描述三语 | ✅ |
-| 配置 | **`practice_module_part_config`** | 版本 × 等级 × 模块 × **板块**：名三语、题型、作答模式、标准题量、**板块开关** | ✅ |
-| 作答 | `practice_record` / `practice_report` / `writing_*` | 练习记录 | 只引用上层 |
-| 退场 | `practice_paper_setting` | 卷级运营态，**已被 `exam_paper.deleted_prac` 完整替代**（§3.2.7） | — |
-| 退场 | `practice_paper_structure` / `practice_part_setting` | 板块模板的卷级投影（1201+1201 行），**仅供 `structureId` 映射** | ⚠️ |
+| 层   | 表                                                    | 承载                                                   | 真相源   |
+| --- | ---------------------------------------------------- | ---------------------------------------------------- | ----- |
+| 内容  | `exam_paper` / `question`                            | 版本、等级、**卷级上下架**、模块归属、部分号、题型、题干、**实际题量**              | ✅     |
+| 内容  | `question_group`                                     | 板块内的材料 / 大题容器（1 板块 : N group），**不参与结构装配**            | ✅     |
+| 内容  | `speaking_exam_paper` / `_question`                  | 仅 2.0 口语（`level` 用 `Beginner/Intermediate/Advanced`） | ✅     |
+| 配置  | `practice_module_level_config`                       | 版本 × 等级 × 模块：模块开关、标准总题量、时长、能力描述三语                    | ✅     |
+| 配置  | **`practice_module_part_config`**                    | 版本 × 等级 × 模块 × **板块**：名三语、题型、作答模式、标准题量、**板块开关**      | ✅     |
+| 作答  | `practice_record` / `practice_report` / `writing_*`  | 练习记录                                                 | 只引用上层 |
+| 退场  | `practice_paper_setting`                             | 卷级运营态，**已被 `exam_paper.deleted_prac` 完整替代**（§3.2.7）  | —     |
+| 退场  | `practice_paper_structure` / `practice_part_setting` | 板块模板的卷级投影（1201+1201 行），**仅供 `structureId` 映射**       | ⚠️    |
 
 > **一句话**：`question` 去重出「有哪些板块」，`part_config` 给「板块叫什么、能不能练」，`exam_paper.deleted_prac` 给「哪些卷能练」，`level_config` 给「哪些模块开放」。中间那三张表都没有独有信息。
 
