@@ -104,19 +104,6 @@ practice-service
 | `dbLevels(level)` | `7` → `["7","7-9"]` | DB 侧 `exam_paper.level` 候选集（两库取值不一致） |
 | `parseDbLevel(dbLevel)` | `"7"` / `"7-9"` → `7` | 从 `exam_paper.level` 反解 |
 
-#### 3.1.2 模块注册表（`PracticeModuleCatalog`）
-
-5 个模块元数据，`sortOrder` / `layout` / `badge` 按版本分别配置：
-
-| moduleCode | sectionMapping | 名称 | icon | theme | badge 2.0 | badge 3.0 | sort 2.0 | sort 3.0 | 可用版本 |
-|---|---|---|---|---|---|---|---|---|---|
-| `LISTENING` | `SEC_LISTEN` | 听力 | headphone | `#5B6CF9` | — | — | 1 | 1 | 2.0 / 3.0 |
-| `READING` | `SEC_READ` | 阅读 | book | `#34C759` | HOT | HOT | 2 | 2 | 2.0 / 3.0 |
-| `WRITING` | `SEC_WRITE` | 写作 | pen | `#FFB020` | — | — | 3 | 3 | 2.0 / 3.0 |
-| `TRANSLATION` | `SEC_TRANSLATION` | 翻译 | translate | `#8B5CF6` | 不出现 | NEW | — | 4 | **仅 3.0** |
-| `SPEAKING` | `SEC_SPEAK` / `SEC_SPEAKING` | 口语 | mic | `#FF4D8D` | NEW | — | 4 | 5 | 2.0 / 3.0 |
-
-`layout`：`HSK2.0 → GRID_2`（2 列网格）、`HSK3.0 → LIST`（1 列 5 行）。由接口下发，前端不写死。
 
 #### 3.1.3 数据模型：两层
 
