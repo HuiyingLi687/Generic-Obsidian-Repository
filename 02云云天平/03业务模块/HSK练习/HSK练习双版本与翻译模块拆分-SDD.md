@@ -190,56 +190,7 @@ speaking_exam_paper（仅 2.0 口语）         answer_mode / standard_question_
 | `writing_attempt` / `speaking_attempt` | 217 / 283 | ⏳ P2 | 缺部分号，需先补两列 |
 | `practice_question_option_pool` | 2505 | ⏳ P2 | 数据可推但自身不完整（§3.2.6） |
 
-#### 3.2.2 新增表 `practice_module_part_config`
 
-```sql
-CREATE TABLE `practice_module_part_config` (
-  `id`                      bigint       NOT NULL COMMENT '板块配置ID（雪花ID，不自增）',
-  `version`                 varchar(30)  NOT NULL COMMENT '考试大纲版本（HSK2.0 / HSK3.0）',
-  `level`                   int          NOT NULL COMMENT 'HSK等级；与主表同类型同口径，3.0 的 7-9 级统一存 7',
-  `section_mapping`         varchar(50)  NOT NULL COMMENT '模块编码（SEC_LISTEN/READ/WRITE/TRANSLATION/SPEAKING）',
-  `section`                 int          NOT NULL COMMENT '模块内部分号 1..N；对齐 question.section，唯一键第四列',
-  `part_name`               varchar(100) NOT NULL COMMENT '板块名中文（第一部分）',
-  `part_name_en`            varchar(255)          DEFAULT NULL COMMENT '板块名英文',
-  `part_name_vi`            varchar(255)          DEFAULT NULL COMMENT '板块名越南语',
-  `type_code`               varchar(64)  NOT NULL COMMENT '题型稳定编码，取值域 = question.type_id_mapping',
-  `type_name`               varchar(100)          DEFAULT NULL COMMENT '题型名中文',
-  `type_name_en`            varchar(255)          DEFAULT NULL COMMENT '题型名英文',
-  `type_name_vi`            varchar(255)          DEFAULT NULL COMMENT '题型名越南语',
-  `answer_mode`             varchar(20)  NOT NULL DEFAULT 'SINGLE' COMMENT '作答交互：SINGLE/MATCH/ORDER/RECORD/TEXT',
-  `standard_question_count` int          NOT NULL DEFAULT '0' COMMENT '标准题量；下发前必须被 question 实际计数覆盖',
-  `sort_order`              int          NOT NULL DEFAULT '0' COMMENT '展示顺序',
-  `enabled`                 tinyint      NOT NULL DEFAULT '1' COMMENT '板块开关：0关闭，1开放',
-  `deleted`                 int          NOT NULL DEFAULT '0' COMMENT '逻辑删除标记：0正常，1删除',
-  `created_by`              bigint                DEFAULT NULL COMMENT '创建人ID',
-  `update_by`               bigint                DEFAULT NULL COMMENT '更新人ID',
-  `created_time`            bigint                DEFAULT NULL COMMENT '创建时间',
-  `updated_time`            bigint                DEFAULT NULL COMMENT '修改时间',
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `uk_module_part` (`version`,`level`,`section_mapping`,`section`) USING BTREE,
-  KEY `idx_part_on` (`version`,`level`,`section_mapping`,`enabled`,`sort_order`) USING BTREE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci ROW_FORMAT=DYNAMIC
-  COMMENT='练习板块级配置表（等级级模板 + 板块开关）';
-
--- 主表随之收窄
-ALTER TABLE `practice_module_level_config` DROP COLUMN `parts_config`;
-```
-
-**字段口径**
-
-| 字段 | 口径 | 依据 |
-|---|---|---|
-| `id` | 雪花，不自增 | 与现网两张配置表一致 |
-| `level` | `int`，与主表同类型 | 主表 `level` 就是 `int`，同类型才能无转换 JOIN |
-| `type_code` | `varchar(64)` | 旧表实测最长 25 字符，与 `question.type_id_mapping` 同域 |
-| `type_name_en/_vi`、`part_name_en/_vi` | `varchar(255)` | 旧表即 255，不收窄以免多语言扩写截断 |
-| `answer_mode` | `varchar(20)` | 旧表即 20；实测取值 `SINGLE/MATCH/ORDER/TEXT/RECORD` |
-| `standard_question_count` | 前缀 `standard_` | 把「这是标准题量、不是实际题量」写进列名，防 R8 被违反 |
-| 唯一键 | 不含 `deleted` | 沿用现网 `uk_module_level` 风格；代价是软删后**不能重建同键**，需复用原行或物理清理 |
-
-> 🔴 **`level` 的类型桥**：`exam_paper.level` 是 `varchar`（TEST `'7'` / PROD `'7-9'`），主表 `level` 是 `int`。新表是主表子表，**必须跟 `int`**：读侧 `exam_paper.level IN ('7','7-9')` 归档到 `level = 7`；写侧永远写 `7`，不要试图把 `'7-9'` 塞进 `int`。若把新表定成 `varchar`，与主表就是跨类型 JOIN，索引失效。
-
-**`total_question_count` 本次不删**：TEST 46/46 行它等于 `SUM(parts.questionCount)`，看着纯派生；但 PROD 有 15 行没有板块配置，它是这些模块唯一的题量来源。等补齐且 SUM 校验一致后再评估（P2）。
 
 #### 3.2.3 板块配置迁移（`sortOrder` → `section`）
 
