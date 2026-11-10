@@ -161,14 +161,14 @@ practice-service
 
 **结论先行：`practice_paper_structure` 与 `practice_part_setting` 在信息层面已经多余。** 它们承载的「板块名三语 / 题型名三语 / 顺序 / 题量」，已被 `practice_module_level_config.parts_config` 这个 JSON 数组**全覆盖**（键名逐一对得上，见 §3.2.6）。所以板块配置只需要**一张表**。
 
-| 层 | 表 | 承载什么 | 是否真相源 |
-|---|---|---|---|
-| **内容层** | `exam_paper` / `question` / `question_group` | 版本、等级、模块归属（`section_mapping`）、题型编码（`type_id_mapping`）、部分号（`section`）、音频、题干、答案、**实际题量** | ✅ **唯一真相源** |
-| （口语分支） | `speaking_exam_paper` / `speaking_exam_paper_question` | HSK**2.0** 口语卷与题（`level` 用 `Beginner/Intermediate/Advanced` 三档） | ✅ 2.0 口语唯一真相源 |
-| **配置层** | **`practice_module_level_config`** | 版本 × 等级 × 模块：开关、标准题量、建议时长、能力描述三语、**`parts_config`（板块模板数组）** | ✅ **唯一配置表** |
-| | `practice_paper_setting` | 卷级上下架（运营态） | ✅ 运营 |
-| **作答层** | `practice_record` / `writing_attempt` / `speaking_attempt` / `practice_report` | 练习记录 | 只引用上层 ID |
-| **（退场中）** | `practice_paper_structure` / `practice_part_setting` | 板块模板的**行式投影**（1201 + 1201 行，1:1 冗余） | ⚠️ 降级为 **ID 注册表**，见 §3.2.7 |
+| 层         | 表                                                                              | 承载什么                                                                                   | 是否真相源                      |
+| --------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- | -------------------------- |
+| **内容层**   | `exam_paper` / `question` / `question_group`                                   | 版本、等级、模块归属（`section_mapping`）、题型编码（`type_id_mapping`）、部分号（`section`）、音频、题干、答案、**实际题量** | ✅ **唯一真相源**                |
+| （口语分支）    | `speaking_exam_paper` / `speaking_exam_paper_question`                         | HSK**2.0** 口语卷与题（`level` 用 `Beginner/Intermediate/Advanced` 三档）                        | ✅ 2.0 口语唯一真相源              |
+| **配置层**   | **`practice_module_level_config`**                                             | 版本 × 等级 × 模块：开关、标准题量、建议时长、能力描述三语、**`parts_config`（板块模板数组）**                            | ✅ **唯一配置表**                |
+|           | `practice_paper_setting`                                                       | 卷级上下架（运营态）                                                                             | ✅ 运营                       |
+| **作答层**   | `practice_record` / `writing_attempt` / `speaking_attempt` / `practice_report` | 练习记录                                                                                   | 只引用上层 ID                   |
+| **（退场中）** | `practice_paper_structure` / `practice_part_setting`                           | 板块模板的**行式投影**（1201 + 1201 行，1:1 冗余）                                                    | ⚠️ 降级为 **ID 注册表**，见 §3.2.7 |
 
 ```
 ┌────────── 内容层（真相源）──────────┐    ┌──── 配置层（唯一配置表）────┐
