@@ -181,7 +181,7 @@ speaking_exam_paper（仅 2.0 口语）         answer_mode / standard_question_
 | `speaking_exam_paper` / `_question` | 33 | ✅ 零改，仅 2.0 用 | 3.0 口语走 `exam_paper`（R5） |
 | `practice_module_level_config` | 49 | ✅ 保留，删 `parts_config` 列 | 模块级配置 |
 | **`practice_module_part_config`** | **132** | ✅ **新建** | 板块级配置 + 板块开关 |
-| `practice_paper_setting` | 205 | ⚠️ **退场 → 由 `exam_paper.deleted_prac` 替代** | 对真实卷只保留「在不在练习里」一个信息（§3.2.7） |
+| `practice_paper_setting` | 205 / 116 | ⚠️ **退场 → 由 `exam_paper.deleted_prac` 替代** | 对真实卷只保留「在不在练习里」一个信息，三开关零使用（§3.2.7） |
 | `hsk_level_config` | 13 | ✅ 零改 | 等级三语名称 |
 | `practice_paper_structure` | 1201 | ⚠️ 退场 → 5 列 ID 注册表 | `id` 仍被 3 张作答表引用（§3.2.6） |
 | `practice_part_setting` | 1201 | ⚠️ 退场 → 停写 | 与 structure 1:1，信息已并入新表 |
