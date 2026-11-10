@@ -225,21 +225,21 @@ practice-service
 
 #### 3\.2\.1 表的取舍总表（两退场 / 一留作配置 / 一瘦身）
 
-| 表 | TEST 行数 | 处理 | 理由 |
-|---|---|---|---|
-| `exam_paper` | 136 卷 | ✅ 保留，**零改** | `version` 是版本开关；`level` 是等级；`deleted_prac` 是练习侧停用 |
-| `question` | 万余 | ✅ 保留，**零改** | `section_mapping` 定模块、`section` 定部分号、`type_id_mapping` 定题型 |
-| `question_group` | — | ✅ 保留，**零改** | 翻译 2 个大题组已在（笔译 / 口译） |
-| `speaking_exam_paper` / `_question` | 33 / — | ✅ 保留，**仅 2.0 用** | 3.0 口语走 `exam_paper`（ADR-07） |
-| **`practice_module_level_config`** | **49** | ✅ **保留，作为唯一配置表** | `parts_config` 已 100% 覆盖全部 49 行（2.0 21 + 3.0 28），见 §3.2.6 |
-| `practice_paper_setting` | **205** | ✅ **保留，零改** | 卷级运营态（`visible` / `enabled` / 卷序），PROD 116 行。**粒度 = 1 卷 / 行，与 `level_config` 的 1 模块 / 行是 1:N，不可合并**（§3.2.9 / ADR-12） |
-| `hsk_level_config` | 13 | ✅ 保留 | 等级三语名称，与本议题无关 |
-| **`practice_paper_structure`** | **1201** | ⚠️ **退场 → 瘦身为 ID 注册表** | 展示字段 100% 冗余；但 `id` 被 7 张作答表引用，不能直接drop（§3.2.7） |
-| **`practice_part_setting`** | **1201** | ⚠️ **退场 → 停写** | 与 `structure` 是 **1:1**（1201:1201），且一 section 一题型，信息可并入 `parts_config` 元素 |
-| **`practice_record`** | **963** | ⚠️ **瘦身：删 2 列、启用 1 列** | 删 `structure_id`（三元组已完整）+ `practice_name`（脏快照）；启用 `question_ids` 存题目快照（§3.2.8） |
-| `practice_report` | 477 | ⚠️ 瘦身：删 `structure_id` | 有 `practice_record_id` 可回溯，冗余 |
-| `writing_attempt` / `speaking_attempt` | 217 / 283 | ⏳ P2 才动 | 只有 `paper_id + structure_id`，需先补 `section_mapping + section` |
-| `practice_question_option_pool` | 2505 | ⏳ P2 才动 | 只有 `structure_id + question_id`，是板块题目池 |
+| 表                                      | TEST 行数   | 处理                     | 理由                                                                                                                   |
+| -------------------------------------- | --------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `exam_paper`                           | 136 卷     | ✅ 保留，**零改**            | `version` 是版本开关；`level` 是等级；`deleted_prac` 是练习侧停用                                                                    |
+| `question`                             | 万余        | ✅ 保留，**零改**            | `section_mapping` 定模块、`section` 定部分号、`type_id_mapping` 定题型                                                           |
+| `question_group`                       | —         | ✅ 保留，**零改**            | 翻译 2 个大题组已在（笔译 / 口译）                                                                                                 |
+| `speaking_exam_paper` / `_question`    | 33 / —    | ✅ 保留，**仅 2.0 用**       | 3.0 7-9口语走 `exam_paper`<br>3\4\5\6走`speaking_exam_paper` / `_question`                                               |
+| **`practice_module_level_config`**     | **49**    | ✅ **保留，作为唯一配置表**       | `parts_config` 已 100% 覆盖全部 49 行（2.0 21 + 3.0 28），见 §3.2.6                                                            |
+| `practice_paper_setting`               | **205**   | ✅ **保留，零改**            | 卷级运营态（`visible` / `enabled` / 卷序），PROD 116 行。**粒度 = 1 卷 / 行，与 `level_config` 的 1 模块 / 行是 1:N，不可合并**（§3.2.9 / ADR-12） |
+| `hsk_level_config`                     | 13        | ✅ 保留                   | 等级三语名称，与本议题无关                                                                                                        |
+| **`practice_paper_structure`**         | **1201**  | ⚠️ **退场 → 瘦身为 ID 注册表** | 展示字段 100% 冗余；但 `id` 被 7 张作答表引用，不能直接drop（§3.2.7）                                                                      |
+| **`practice_part_setting`**            | **1201**  | ⚠️ **退场 → 停写**         | 与 `structure` 是 **1:1**（1201:1201），且一 section 一题型，信息可并入 `parts_config` 元素                                            |
+| **`practice_record`**                  | **963**   | ⚠️ **瘦身：删 2 列、启用 1 列** | 删 `structure_id`（三元组已完整）+ `practice_name`（脏快照）；启用 `question_ids` 存题目快照（§3.2.8）                                       |
+| `practice_report`                      | 477       | ⚠️ 瘦身：删 `structure_id` | 有 `practice_record_id` 可回溯，冗余                                                                                        |
+| `writing_attempt` / `speaking_attempt` | 217 / 283 | ⏳ P2 才动                | 只有 `paper_id + structure_id`，需先补 `section_mapping + section`                                                         |
+| `practice_question_option_pool`        | 2505      | ⏳ P2 才动                | 只有 `structure_id + question_id`，是板块题目池                                                                               |
 
 **核心事实：`parts_config` 一个 JSON 数组元素，正好等于 `structure` 一行 + `part_setting` 一行。**
 
