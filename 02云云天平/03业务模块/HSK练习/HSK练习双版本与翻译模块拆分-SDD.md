@@ -835,33 +835,53 @@ reading_cloze（选词填空）第 51–55 题，5 题的 option_content 均为�
 
 ```sql
 CREATE TABLE `practice_module_part_config` (
-  `id`                      bigint       NOT NULL COMMENT '板块配置ID',
+  `id`                      bigint       NOT NULL COMMENT '板块配置ID（雪花ID，与现网表一致不自增）',
   `version`                 varchar(30)  NOT NULL COMMENT '考试大纲版本（HSK2.0 / HSK3.0）',
-  `level`                   int          NOT NULL COMMENT 'HSK等级',
-  `section_mapping`         varchar(50)  NOT NULL COMMENT '模块映射编码',
-  `section`                 int          NOT NULL COMMENT '模块内部分号，1..N；语义对齐 question.section',
+  `level`                   int          NOT NULL COMMENT 'HSK等级；与 practice_module_level_config.level 同类型同口径，HSK3.0 的 7-9 级统一存 7',
+  `section_mapping`         varchar(50)  NOT NULL COMMENT '模块映射编码（SEC_LISTEN/SEC_READ/SEC_WRITE/SEC_TRANSLATION/SEC_SPEAKING）',
+  `section`                 int          NOT NULL COMMENT '模块内部分号 1..N；严格对齐 question.section，是唯一键第四列',
   `part_name`               varchar(100) NOT NULL COMMENT '板块名中文（第一部分）',
-  `part_name_en`            varchar(150)          DEFAULT NULL COMMENT '板块名英文',
-  `part_name_vi`            varchar(150)          DEFAULT NULL COMMENT '板块名越南语',
+  `part_name_en`            varchar(255)          DEFAULT NULL COMMENT '板块名英文',
+  `part_name_vi`            varchar(255)          DEFAULT NULL COMMENT '板块名越南语',
   `type_code`               varchar(64)  NOT NULL COMMENT '题型稳定编码，取值域 = question.type_id_mapping',
   `type_name`               varchar(100)          DEFAULT NULL COMMENT '题型名中文',
-  `type_name_en`            varchar(150)          DEFAULT NULL COMMENT '题型名英文',
-  `type_name_vi`            varchar(150)          DEFAULT NULL COMMENT '题型名越南语',
-  `answer_mode`             varchar(16)  NOT NULL DEFAULT 'SINGLE' COMMENT 'SINGLE/MATCH/ORDER/RECORD/TEXT',
-  `standard_question_count` int          NOT NULL DEFAULT '0' COMMENT '标准题量（每卷实际题量仍由 question 现算）',
-  `sort_order`              int          NOT NULL DEFAULT '0' COMMENT '展示顺序',
+  `type_name_en`            varchar(255)          DEFAULT NULL COMMENT '题型名英文',
+  `type_name_vi`            varchar(255)          DEFAULT NULL COMMENT '题型名越南语',
+  `answer_mode`             varchar(20)  NOT NULL DEFAULT 'SINGLE' COMMENT '作答交互类型：SINGLE/MATCH/ORDER/RECORD/TEXT（长度对齐旧 practice_part_setting）',
+  `standard_question_count` int          NOT NULL DEFAULT '0' COMMENT '标准题量；下发前必须被 question 实际计数覆盖',
+  `sort_order`              int          NOT NULL DEFAULT '0' COMMENT '展示顺序（与 section 可不等，仅用于编辑态排序）',
   `enabled`                 tinyint      NOT NULL DEFAULT '1' COMMENT '板块开关：0关闭，1开放',
-  `deleted`                 int          NOT NULL DEFAULT '0' COMMENT '逻辑删除：0正常，1删除',
-  `created_by`              bigint                DEFAULT NULL,
-  `update_by`               bigint                DEFAULT NULL,
-  `created_time`            bigint                DEFAULT NULL,
-  `updated_time`            bigint                DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_module_part` (`version`,`level`,`section_mapping`,`section`),
-  KEY `idx_part_on` (`version`,`level`,`section_mapping`,`enabled`,`sort_order`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='练习板块级配置（等级级模板 + 板块开关）';
+  `deleted`                 int          NOT NULL DEFAULT '0' COMMENT '逻辑删除标记：0正常，1删除',
+  `created_by`              bigint                DEFAULT NULL COMMENT '创建人ID',
+  `update_by`               bigint                DEFAULT NULL COMMENT '更新人ID',
+  `created_time`            bigint                DEFAULT NULL COMMENT '创建时间',
+  `updated_time`            bigint                DEFAULT NULL COMMENT '修改时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `uk_module_part` (`version`,`level`,`section_mapping`,`section`) USING BTREE,
+  KEY `idx_part_on` (`version`,`level`,`section_mapping`,`enabled`,`sort_order`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci ROW_FORMAT=DYNAMIC
+  COMMENT='练习板块级配置表（等级级模板 + 板块开关）';
 ```
+
+**字段设计口径（每条都有实测依据）**：
+
+| 字段 | 口径 | 依据 |
+|---|---|---|
+| `id` | `bigint` 雪花，**不自增** | 与 `practice_module_level_config` / `practice_part_setting` 完全一致 |
+| `level` | **`int`**，与主表同类型 | 主表 `level` 就是 `int`；新表是它的子表，**同类型才能 JOIN 不加转换** |
+| `type_code` | `varchar(64)` | 旧表实测最长 25 字符，`question.type_id_mapping` 同域 |
+| `type_name_en` / `_vi` | `varchar(255)` | **旧表就是 255**（实测最长 33），不收窄到 150，避免多语言扩写被截断 |
+| `answer_mode` | `varchar(20)` | 旧表就是 20；实测取值只有 `SINGLE/MATCH/ORDER/TEXT/RECORD`（PROD 无 `TEXT`） |
+| `standard_question_count` | 有默认值 0 | 命名带 `standard_` 前缀，是为了让"这是标准题量、不是实际题量"这件事写在列名里（防 R8 被违反） |
+| `enabled` | `tinyint` 默认 1 | 与主表、旧表同类型 |
+| 唯一键 | **不含 `deleted`** | 沿用现网 `uk_module_level` 风格 → ⚠️ 软删后**不能重建同键**，必须复用原行或物理清理 |
+
+> 🔴 **`level` 的类型桥（必读）**：`exam_paper.level` 是 **`varchar`**，且两库取值不一致——TEST 是 `'7'`，**PROD 是 `'7-9'`**（D3）。而 `practice_module_level_config.level` 是 **`int`**，TEST 的 3.0 配置用的就是 `1..7`。
+> 所以新表**必须跟主表走 `int`**，并在迁移/写入时把 `'7-9'` 归一到 `7`：
+> - 读：`exam_paper.level IN ('7','7-9')`（D3 候选集）→ 归档到 `level = 7` 的板块配置；
+> - 写：永远写 `7`，**不要**把 `'7-9'` 塞进 `int` 列（会截断成 7，MySQL 非严格模式下静默通过，严格模式下直接报错）。
+>
+> 反过来若为省事把新表 `level` 定成 `varchar`，就与主表 `int` 跨类型 JOIN，索引失效 + 隐式转换 - 得不偿失。
 
 主表随之收窄：
 
