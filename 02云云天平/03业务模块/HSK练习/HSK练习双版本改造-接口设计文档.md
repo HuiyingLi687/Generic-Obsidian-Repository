@@ -102,41 +102,41 @@
 > 路径为 service 内路径，客户端实际调用加网关前缀 `/api/practice`。
 > 鉴权：**全部端点必须登录**（`Authorization: Bearer <JWT>` + `X-Client-Type: APP`）。
 
-| # | Method | Path | 用途 | 接口类型 | 改动简述 |
-|---|---|---|---|---|---|
-| A1 | GET | `/listening/levels` | 听力等级概览 + 卷列表 | 改造 | 加 `version`、补 `exam_type=1`、走 `enabled_prac` 判定 |
-| A2 | GET | `/listening/levels/{levelCode}/intro` | 听力等级备考说明 | 改造 | `selectOne` 带 `version` + `deleted=0`；`parts[]` 三语 + `typeCode` |
-| A3 | GET | `/listening/papers/{paperId}/parts` | 听力卷板块列表 | 改造 | 加 `version`；板块换源配置表；`structureId` → `section` |
-| A4 | GET | `/reading/levels` | 阅读等级列表 | 改造 | 常量改 `version` 参数 |
-| A5 | GET | `/reading/levels/{levelCode}/intro` | 阅读等级备考说明 | 改造 | `version` + `PracticeLevelCode` 解析；`sections[]` 三语 + `typeCode` |
-| A6 | GET | `/reading/papers` | 阅读卷列表 | 改造 | `version` + `level IN (候选集)` |
-| A7 | GET | `/reading/papers/{paperId}/parts` | 阅读卷板块列表 | 改造 | 卷 `version` 与入参不符 → 404；`structureId` → `section` |
-| A8 | GET | `/reading/preferences` | 阅读偏好 | 无变更 | P0 不动（表无 `version` 列） |
-| A9 | PUT | `/reading/preferences/level` | 更新阅读偏好 | 无变更 | P0 仅 2.0 可写 |
-| A10 | GET | `/writing/levels` | 写作等级列表 | 改造 | 常量改参数；补 `HSK7-9` 分支 |
-| A11 | GET | `/writing/levels/{levelCode}/intro` | 写作等级备考说明 | 改造 | `parseLevel` 正则扩到 `HSK7-9`；`sections[]` 三语 |
-| A12 | GET | `/writing/papers` | 写作卷列表 | 改造 | 常量改参数 |
-| A13 | GET | `/writing/papers/{paperId}/parts` | 写作卷板块列表 | 改造 | `parseDbLevel` 替代裸 `parseInt`；`structureId` → `section` |
-| A14 | GET | `/speaking/levels` | 口语等级列表 | 改造 | 常量改参数 |
-| A15 | GET | `/speaking/papers` | 口语卷列表 | 改造 | 常量改参数；2.0 / 3.0 都读 `speaking_exam_paper` |
-| A16 | GET | `/speaking/papers/{paperId}/parts` | 口语卷板块列表 | 改造 | 板块换源配置表；`structureId` → `section` |
-| B1 | GET | `/translation/levels` | 翻译等级列表 | 新增 | 2.0 → `[]` |
-| B2 | GET | `/translation/levels/{levelCode}/intro` | 翻译等级备考说明 | 新增 | `sections[]` 来自板块配置 |
-| B3 | GET | `/translation/papers` | 翻译卷列表 | 新增 | 过滤 `totalQuestionCount=0` |
-| B4 | GET | `/translation/papers/{paperId}/parts` | 翻译卷板块列表 | 新增 | 2 个板块：笔译 / 口译 |
-| B5 | POST | `/translation/attempts/start` | 开始翻译练习 | 新增 | 委托 `WritingAttemptService#start` |
-| B6 | GET | `/translation/attempts/{attemptId}` | 练习详情 | 新增 | 委托 `#get` |
-| B7 | GET | `/translation/attempts/{attemptId}/questions` | 题目列表 | 新增 | 委托 `#listQuestions` |
-| B8 | PUT | `/translation/attempts/{attemptId}/answers` | 批量保存答案 | 新增 | 委托 `WritingAnswerService#save` |
-| B9 | POST | `/translation/attempts/{attemptId}/submissions` | 交卷 | 新增 | 委托 `WritingSubmissionService#submit` |
-| B10 | GET | `/translation/reports/{reportId}` | 报告详情 | 新增 | 委托 `WritingReportService#get` |
-| C1 | GET | `/listening/papers/{paperId}/parts/{section}/reports/latest` | 听力板块最近报告 | 改造 | 路径 `structureId` → `paperId + section` |
-| C2 | GET | `/reading/papers/{paperId}/parts/{section}/reports/latest` | 阅读板块最近报告 | 改造 | 同上 |
-| C3 | GET | `/writing/papers/{paperId}/parts/{section}/reports/latest` | 写作板块最近报告 | 改造 | 同上 |
-| C4 | GET | `/speaking/papers/{paperId}/parts/{section}/reports/latest` | 口语板块最近报告 | 改造 | 同上 |
-| D1 | GET | `/hsk/module-config/parts` | 运营：查板块配置 | 新增 | 按 `version + level + sectionMapping` 查，**含 `enabled=0` 行** |
-| D2 | PATCH | `/hsk/module-config/parts/{id}` | 运营：开关板块 | 新增 | 只改 `enabled`（可选 `sort_order`），不建行不删行 |
-| E1 | GET | `/hsk/modules` | 首页模块卡聚合 | 新增 | 一次返回布局 + 卡片 + 可用性 + 进度 |
+| #   | Method | Path                                                         | 用途           | 接口类型 | 改动简述                                                            |
+| --- | ------ | ------------------------------------------------------------ | ------------ | ---- | --------------------------------------------------------------- |
+| A1  | GET    | `/listening/levels`                                          | 听力等级概览 + 卷列表 | 改造   | 加 `version`、补 `exam_type=1`、走 `enabled_prac` 判定                 |
+| A2  | GET    | `/listening/levels/{levelCode}/intro`                        | 听力等级备考说明     | 改造   | `selectOne` 带 `version` + `deleted=0`；`parts[]` 三语 + `typeCode` |
+| A3  | GET    | `/listening/papers/{paperId}/parts`                          | 听力卷板块列表      | 改造   | 加 `version`；板块换源配置表；`structureId` → `section`                   |
+| A4  | GET    | `/reading/levels`                                            | 阅读等级列表       | 改造   | 常量改 `version` 参数                                                |
+| A5  | GET    | `/reading/levels/{levelCode}/intro`                          | 阅读等级备考说明     | 改造   | `version` + `PracticeLevelCode` 解析；`sections[]` 三语 + `typeCode` |
+| A6  | GET    | `/reading/papers`                                            | 阅读卷列表        | 改造   | `version` + `level IN (候选集)`                                    |
+| A7  | GET    | `/reading/papers/{paperId}/parts`                            | 阅读卷板块列表      | 改造   | 卷 `version` 与入参不符 → 404；`structureId` → `section`               |
+| A8  | GET    | `/reading/preferences`                                       | 阅读偏好         | 无变更  | P0 不动（表无 `version` 列）                                           |
+| A9  | PUT    | `/reading/preferences/level`                                 | 更新阅读偏好       | 无变更  | P0 仅 2.0 可写                                                     |
+| A10 | GET    | `/writing/levels`                                            | 写作等级列表       | 改造   | 常量改参数；补 `HSK7-9` 分支                                             |
+| A11 | GET    | `/writing/levels/{levelCode}/intro`                          | 写作等级备考说明     | 改造   | `parseLevel` 正则扩到 `HSK7-9`；`sections[]` 三语                      |
+| A12 | GET    | `/writing/papers`                                            | 写作卷列表        | 改造   | 常量改参数                                                           |
+| A13 | GET    | `/writing/papers/{paperId}/parts`                            | 写作卷板块列表      | 改造   | `parseDbLevel` 替代裸 `parseInt`；`structureId` → `section`         |
+| A14 | GET    | `/speaking/levels`                                           | 口语等级列表       | 改造   | 常量改参数                                                           |
+| A15 | GET    | `/speaking/papers`                                           | 口语卷列表        | 改造   | 常量改参数；2.0 / 3.0 都读 `speaking_exam_paper`                        |
+| A16 | GET    | `/speaking/papers/{paperId}/parts`                           | 口语卷板块列表      | 改造   | 板块换源配置表；`structureId` → `section`                               |
+| B1  | GET    | `/translation/levels`                                        | 翻译等级列表       | 新增   | 2.0 → `[]`                                                      |
+| B2  | GET    | `/translation/levels/{levelCode}/intro`                      | 翻译等级备考说明     | 新增   | `sections[]` 来自板块配置                                             |
+| B3  | GET    | `/translation/papers`                                        | 翻译卷列表        | 新增   | 过滤 `totalQuestionCount=0`                                       |
+| B4  | GET    | `/translation/papers/{paperId}/parts`                        | 翻译卷板块列表      | 新增   | 2 个板块：笔译 / 口译                                                   |
+| B5  | POST   | `/translation/attempts/start`                                | 开始翻译练习       | 新增   | 委托 `WritingAttemptService#start`                                |
+| B6  | GET    | `/translation/attempts/{attemptId}`                          | 练习详情         | 新增   | 委托 `#get`                                                       |
+| B7  | GET    | `/translation/attempts/{attemptId}/questions`                | 题目列表         | 新增   | 委托 `#listQuestions`                                             |
+| B8  | PUT    | `/translation/attempts/{attemptId}/answers`                  | 批量保存答案       | 新增   | 委托 `WritingAnswerService#save`                                  |
+| B9  | POST   | `/translation/attempts/{attemptId}/submissions`              | 交卷           | 新增   | 委托 `WritingSubmissionService#submit`                            |
+| B10 | GET    | `/translation/reports/{reportId}`                            | 报告详情         | 新增   | 委托 `WritingReportService#get`                                   |
+| C1  | GET    | `/listening/papers/{paperId}/parts/{section}/reports/latest` | 听力板块最近报告     | 改造   | 路径 `structureId` → `paperId + section`                          |
+| C2  | GET    | `/reading/papers/{paperId}/parts/{section}/reports/latest`   | 阅读板块最近报告     | 改造   | 同上                                                              |
+| C3  | GET    | `/writing/papers/{paperId}/parts/{section}/reports/latest`   | 写作板块最近报告     | 改造   | 同上                                                              |
+| C4  | GET    | `/speaking/papers/{paperId}/parts/{section}/reports/latest`  | 口语板块最近报告     | 改造   | 同上                                                              |
+| D1  | GET    | `/hsk/module-config/parts`                                   | 运营：查板块配置     | 新增   | 按 `version + level + sectionMapping` 查，**含 `enabled=0` 行**      |
+| D2  | PATCH  | `/hsk/module-config/parts/{id}`                              | 运营：开关板块      | 新增   | 只改 `enabled`（可选 `sort_order`），不建行不删行                            |
+| E1  | GET    | `/hsk/modules`                                               | 首页模块卡聚合      | 新增   | 一次返回布局 + 卡片 + 可用性 + 进度                                          |
 
 **统计（共 33 个）**
 
