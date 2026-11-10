@@ -638,42 +638,6 @@ WHERE p.exam_type = 1 AND p.deleted = 0
 
 > 统一约定：`version` 必须**同时**作为 `practice_module_level_config.version` 与 `exam_paper.version` 的条件，漏一处会出现「等级列表是 2.0、卷列表是 3.0」。
 
-#### 3.3.3 首页聚合接口
-
-```
-GET /hsk/modules?version=HSK3.0
-```
-
-```json
-{
-  "version": "HSK3.0",
-  "layout": "LIST",
-  "header": "专项突破 · 听力/阅读/写作/翻译/口语",
-  "modules": [
-    { "moduleCode": "LISTENING", "sectionMapping": "SEC_LISTEN", "name": "听力",
-      "nameEn": "Listening", "icon": "headphone", "theme": "#5B6CF9",
-      "badge": null, "available": true, "disabledReason": null,
-      "entryLevelCode": null, "sortOrder": 1,
-      "progress": { "totalPapers": 15, "completedPapers": 2, "inProgressPaperId": "2104193520701620225" } },
-    { "moduleCode": "TRANSLATION", "sectionMapping": "SEC_TRANSLATION", "name": "翻译",
-      "badge": "NEW", "available": true, "disabledReason": null,
-      "entryLevelCode": "HSK7-9", "sortOrder": 4,
-      "progress": { "totalPapers": 1, "completedPapers": 0, "inProgressPaperId": null } }
-  ]
-}
-```
-
-| 字段 | 规则 |
-|---|---|
-| `layout` | `GRID_2` / `LIST`，前端据此切换，不写死 |
-| `available` | `false` 时置灰 + Toast，不隐藏（保持卡片数稳定）。判定 = 存在 `enabled=1` 的配置行且至少一个等级有题 |
-| `disabledReason` | 文案键：`MODULE_NOT_IN_VERSION` / `NO_CONTENT` / `LOAD_FAILED` |
-| `entryLevelCode` | 非空表示跳过等级选择页直达卷列表（翻译固定 `HSK7-9`） |
-| `badge` | 按版本配置，P1 改后台可配 |
-| `progress` | 未登录恒为 `{0,0,null}`；`paperId` 一律 String |
-
-**服务端执行顺序**（SQL ≤ 5 次，与模块数无关）：
-1. 解析 `version` → 2. 取模块元数据（按版本过滤 + 排序）→ 3. 批量查 `level_config` 得各模块可用等级 → 4. 批量查 `exam_paper` 统计 `totalPapers`（题数 0 的卷剔除）→ 5. 带 `userId` 时批量查进行中 / 已完成记录 → 6. 按 `sortOrder` 返回。
 
 #### 3.3.4 翻译模块
 
