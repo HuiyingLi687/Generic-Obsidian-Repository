@@ -1847,7 +1847,6 @@ Accept-Language: zh
   "message": "操作成功",
   "data": {
     "version": "HSK3.0",
-    "layout": "LIST",
     "header": "专项突破 · 听力/阅读/写作/翻译/口语",
     "modules": [
       { "moduleCode": "LISTENING", "sectionMapping": "SEC_LISTEN",
