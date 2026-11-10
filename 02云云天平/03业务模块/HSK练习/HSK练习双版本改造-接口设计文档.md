@@ -1,9 +1,11 @@
 # HSK 练习双版本（2.0 / 3.0）与翻译模块拆分 · 接口设计文档
 
-> 版本：v1.0｜更新日期：2026-11-10
+> 版本：v1.1｜更新日期：2026-11-10
 > 影响服务：practice-service（改造 + 新增）；exam-service / manage 仅实体加字段
 > 关联文档：[HSK练习双版本与翻译模块拆分-SDD](HSK练习双版本与翻译模块拆分-SDD.md)
 > 开发：待填｜测试：待填｜前端：待填
+>
+> 🧭 **基线声明**：本文所有字段、值域、用例、验收**一律以 TEST 库为准**。生产库与 TEST 的差异只在 **§9.1** 登记（明细见 SDD 附录 D），生产改造另行安排，不在本文档范围内。
 
 ---
 
@@ -31,6 +33,7 @@
 | 8 | 板块开关 | `practice_module_part_config.enabled`：`1` 开放 / `0` 关闭。`deleted` 回到纯逻辑删除，不作开关 |
 | 9 | 翻译版本门槛 | 翻译仅 `HSK3.0` 有数据。2.0 调目录接口返回**空数组 / 空对象**，不报 404 |
 | 10 | 翻译作答复用写作链路 | 6 个写链路端点薄封装委托 `Writing*Service`，唯一侵入点是 `validatePart` 放宽 `contentType` 白名单 |
+| 11 | 环境基线 | **以 TEST 为准**。生产差异只在 §9.1 登记，不改字段契约、不写进接口行为 |
 
 ---
 
@@ -59,13 +62,13 @@
 
 | 表名 | 改动内容 |
 |---|---|
-| `exam_paper` | 【新增】`enabled_prac tinyint NOT NULL DEFAULT 1`（练习侧上下架）、`enabled_exam tinyint NOT NULL DEFAULT 1`（考试侧）。原名 `deleted_prac`，**PROD 从未有过该列** |
+| `exam_paper` | 【新增】`enabled_prac tinyint NOT NULL DEFAULT 1`（练习侧上下架）、`enabled_exam tinyint NOT NULL DEFAULT 1`（考试侧）。原名 `deleted_prac`，本次一并改名并反转 0/1 |
 | `question` | 【新增】同上两列。`question.enabled_prac` 为**题级上下架** |
 | `question_group` | 【新增】同上两列（练习侧不单独判，材料随题走） |
 | `speaking_exam_paper` | 【新增】同上两列 |
 | `speaking_exam_paper_question` | 【新增】同上两列 |
 | `practice_module_part_config` | 【新增】`enabled tinyint NOT NULL DEFAULT 1`（板块开关），位置在 `sort_order` 之后、`deleted` 之前。**仍缺唯一键** `uk_module_part (version, level, section_mapping, section)` |
-| `practice_module_level_config` | 【删除】`parts_config` 列（板块配置已拉平成行式表）。TEST 已删，PROD 仍在 |
+| `practice_module_level_config` | 【删除】`parts_config` 列（板块配置已拉平成行式表） |
 | `practice_paper_setting` | 【删除】整表 drop（卷级上下架由 `exam_paper.enabled_prac` 替代） |
 | `practice_paper_structure` | 【删除】整表 drop |
 | `practice_part_setting` | 【删除】整表 drop |
@@ -73,6 +76,8 @@
 | `practice_report` | 【删除】`structure_id` |
 | `writing_attempt` | 【新增】`section_mapping`、`section` 两列（回填后删 `structure_id`） |
 | `speaking_attempt` | 【新增】同上两列（`section_code` 是 `PART_1/2/3`，回填取 `SUBSTRING(section_code, 6)`） |
+
+> 以上均为 **TEST 现状**（5 张内容表两列已就位、`part_config` 132 行含 `enabled`）。生产库缺哪些列 / 表不在此展开，统一见 §9.1。
 
 ### 2.2 枚举与取值域更新
 
@@ -273,38 +278,17 @@
 > 实测口径：TEST `question` 中 `section_mapping` 非空的 11620 行，`layout` 非空率 **100%**、值域正好这 7 个。
 > 另有 **1904 行** `section_mapping IS NULL` 且 `layout='textChoice'`（老值，涉及 31 张卷），属**未纳入练习模块的卷**，不进目录，本次不处理。
 
-**PROD 的值域是另一套，且缺失近半（🔴 阻断级）**
+**生产库的值域是另一套、缺失近半（差异登记，不影响接口契约）**
 
-| 项 | TEST | PROD |
+| 项 | TEST（契约基线） | PROD（差异） |
 |---|---|---|
 | `layout` 非空率 | **100%**（13524/13524） | **52.3%**（7105/13574） |
 | 值域 | 上表 7 个 | 老值：`textChoice` / `textChoice_shareAudio` / `passageGroup` / `textJudge` / `imageMatch` / `imageJudge` / `imageChoice` / `clozeGroup` |
 | 缺失分布 | 无 | `SEC_READ` **100% NULL（5108）**、`SEC_WRITE` **100% NULL（927）**、`SEC_TRANSLATION` 4、`SEC_SPEAKING` 5；只有 `SEC_LISTEN` 有值，且是老值域 |
 
-老值域混了**题面形态**（`passageGroup` / `clozeGroup` 是「材料 + 一组小题」，不是答题形式），所以 PROD 现在的 `layout` **不能直接当答题形式用**。
+老值域混了**题面形态**（`passageGroup` / `clozeGroup` 是「材料 + 一组小题」，不是答题形式）。
 
-**回填只能按 `question.id` 从 TEST 复制，不能按值映射**
-
-实测两库 `question.id` **完全嵌套**：TEST 13524 行全部包含在 PROD 13574 行里（PROD 仅多 50 行）。据此：
-
-| 项 | 行数 |
-|---|---|
-| PROD `layout` 为 NULL | 6469 |
-| 其中 TEST 同 id 有值 → **可直接回填** | **6439** |
-| 其中 PROD 独有 id（无参照） | 30 |
-| 两边都有值但不一致（TEST 已规范化） | 5181 |
-
-```sql
--- ⚠️ 必须先确认两库连接指向正确（五闸门 G1：SELECT @@hostname）
--- 由 TEST 导出 id → layout 到临时表，再在 PROD 按 id 更新
-UPDATE question q
-JOIN tmp_layout_map m ON m.id = q.id
-SET q.layout = m.layout
-WHERE q.layout IS NULL OR q.layout = '';
--- 预期影响 6439 行；剩 30 行 PROD 独有题需人工判定
-```
-
-**为什么不能按值映射**：老值 `textChoice` 在 TEST 里对应 **3 个**新值（`choice` 2419 / `choiceGrid` 200 / 其他），`textChoice_shareAudio` 也对应 3 个（`choice` 929 / `judge` 10 / `input` 6）。按值映射会把多选错成单选。
+> 这是**环境差异**，不是接口设计问题：本接口只约定「原样透传 `layout`」，值域按 TEST 的 7 个走。生产要补数据时**只能按 `question.id` 从 TEST 复制**（可覆盖 6439/6469）、**禁止按值映射**（老值 `textChoice` 一对 3 个新值、`textChoice_shareAudio` 也一对 3，映射必把多选错成单选）——口径登记在 §9.1，本文档不执行。
 
 **口语是例外：那张表没有 `layout`**
 
@@ -338,16 +322,16 @@ WHERE q.layout IS NULL OR q.layout = '';
 
 **入参说明**
 
-| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
-|---|---|---|---|---|
-| `version` | query | String | 是 | 【新增】`HSK2.0` / `HSK3.0`，缺省 2.0 |
-| `levelCode` | query | String | 否 | 【无变更】不传则取用户上次选择，再缺省 `HSK1` |
-| `X-Client-Type` | header | String | 否 | 【无变更】 |
+| 参数名             | 位置     | 类型     | 必填  | 约束&说明                          |
+| --------------- | ------ | ------ | --- | ------------------------------ |
+| `version`       | query  | String | 是   | 【新增】`HSK2.0` / `HSK3.0`，缺省 2.0 |
+| `level`         | query  | String | 否   | 【无变更】不传则取用户上次选择，再缺省 `HSK1`     |
+| `X-Client-Type` | header | String | 否   | 【无变更】                          |
 
 **请求示例**
 
 ```http
-GET /api/practice/listening/levels?version=HSK2.0&levelCode=HSK1
+GET /api/practice/listening/levels?version=HSK2.0&levelCode=1
 Authorization: Bearer xxx
 X-Client-Type: APP
 ```
@@ -359,7 +343,7 @@ X-Client-Type: APP
   "code": 200,
   "message": "操作成功",
   "data": {
-    "levelCode": "HSK1",
+    "level": "1",
     "paperCount": 20,
     "papers": [
       { "paperId": 2104193520701620225, "paperCode": "HSK1听力模拟卷1",
@@ -1959,7 +1943,7 @@ available = 存在 enabled=1 的 level_config 行
 
 1. `partCode` **值域不变**（口语仍是 `PART_1/2/3`，其它仍是 `"1"/"2"`），本地如有按 `partCode` 的分支逻辑不受影响
 2. 新增字段（`section`、三语、`sortOrder`）对旧客户端是**增量**，但 `structureId` 的删除是**硬破坏**，不可灰度
-3. `questionCount` 改为现算，数值可能与旧的配置值不同（尤其 PROD 的 `total_question_count` 与板块求和不一致，见 D16）。**不要在前端做「进度条 = completedCount / 旧的固定值」的硬编码**
+3. `questionCount` 改为现算，数值可能与旧的配置值不同（生产库存在 `total_question_count` 与板块求和不一致的情况，差异 E13）。**不要在前端做「进度条 = completedCount / 旧的固定值」的硬编码**
 4. 状态枚举大小写不统一是历史遗留：听力用 `not_started / in_progress / completed`，阅读/写作/口语用 `NOT_STARTED / IN_PROGRESS / COMPLETED`。本期**不统一**，前端按模块分别处理
 5. `paperId` 仍是 `Long`（19 位），JSON 里会有精度风险。`/hsk/modules` 的 `inProgressPaperId` 已改 String，其余接口 P1 再改；**过渡期前端必须用字符串接收或配置 JS 的 bigint 处理**
 6. 翻译 P0 交卷后 `feedbackStatus = UNAVAILABLE`、`score = null` 是**预期行为**，不是 bug。前端应展示「暂无评分」而不是「生成中」或错误页
@@ -2061,7 +2045,7 @@ POST /translation/attempts/{attemptId}/submissions
 | 2 | `version=HSK3.0` | `layout=LIST`、5 卡、翻译 `entryLevelCode=HSK7-9` |
 | 3 | `hsk3.0`（小写）/ `HSK4.0` | 400 `PRACTICE_VERSION_INVALID`，**不得静默降级** |
 | 4 | `/reading/levels?version=HSK3.0` | 含 `HSK7-9`；2.0 不含 |
-| 5 | `/reading/papers?levelCode=HSK7-9&version=HSK3.0` **在 PROD** | 能查到卷（验证 `IN ('7','7-9')` 候选集）🔴 最易漏 |
+| 5 | `/reading/papers?levelCode=HSK7-9&version=HSK3.0` | 能查到卷（验证候选集）。⚠️ TEST 的 `level` 存 `'7'`，验不到 `'7-9'` 那条腿 → **必须补单测**：把 `level` 造为 `'7-9'` 仍能查到（差异 E11，最易漏） |
 
 ### 破坏性变更
 
@@ -2075,7 +2059,7 @@ POST /translation/attempts/{attemptId}/submissions
 | 10a | 任一 parts 接口 | 每个板块都有 `layouts`，且非空数组 |
 | 10b | 阅读 / 翻译取题接口 | 每道题都有 `layout`，值在 7 个规范值内；**阅读系本次新补字段** |
 | 10c | 写作取题接口 | `layout` 直取 `question.layout`，**与 `type_id_mapping` 无耦合**：造一条 `type_id_mapping='chart_analysis'` + `layout='input'` 的题，能正常返回（B-04 回归） |
-| 10d | 🔴 PROD 回填后 | `SEC_READ` / `SEC_WRITE` 的 `layout` 非空率 **100%**（回填前分别是 0% / 0%） |
+| 10d | 生产对齐后（差异 E6，本期不验） | `SEC_READ` / `SEC_WRITE` 的 `layout` 非空率回到 **100%**（现为 0% / 0%）；本期只验 TEST 的 100% |
 | 10e | 混 `layouts` 的板块 | `layouts` 返回 2 个元素；前端逐题渲染不出错（TEST 有 2 个这样的板块） |
 
 ### 翻译独立
@@ -2121,85 +2105,71 @@ POST /translation/attempts/{attemptId}/submissions
 | # | 场景 | 预期结果 |
 |---|---|---|
 | 34 | 2.0 四模块全链路（等级→卷→板块→答题→报告） | 除 `structureId→section` 与新增字段外，**与改造前逐字段一致** |
-| 35 | PROD `/listening/levels?levelCode=HSK1` | 不混入 3.0 卷，`totalCount > 0` |
+| 35 | `/listening/levels?levelCode=HSK1`（TEST） | 不混入 3.0 卷，`totalCount > 0` |
 | 36 | TEST `/listening/levels/HSK1/intro` | 不再 500 |
-| 37 | PROD `/writing/papers/{HSK7-9 卷}/parts` | 不再 500 |
-| 38 | 存量 `writing_attempt`（PROD 284 / TEST 217） | 仍可打开续练 |
+| 37 | `/writing/papers/{HSK7-9 卷}/parts` | 不再 500。⚠️ TEST 的 `level='7'` 走不到 `parseInt('7-9')` 分支，**须单测覆盖 `'7-9'`**（差异 E11） |
+| 38 | 存量 `writing_attempt`（TEST 217） | 仍可打开续练（生产 284 条待生产对齐后回归，SDD 附录 D D.3） |
 | 39 | 口语 3.0 L4/L5/L6 的 `listen_retell`、L7 的三个新题型 | **都能取到题**（B-19 回归判据） |
 | 40 | 源码 `grep -r structure_id` | 零命中；`practice_part_setting` / `practice_paper_structure` 已 drop |
 
 ---
 
-## 9. 上线执行事项【P0 阻断项】
+## 9. 环境差异与上线事项
 
-### 9.1 存量数据 / DDL
+### 9.1 环境差异登记（生产 vs TEST）
 
-**① 5 张内容表加两列**（TEST 已完成，PROD 全缺）
+> **本节只登记差异，不写生产改造方案。** 开发、联调、验收全部在 TEST 上做（TEST 现状见 §9.3）；将来上生产时照这张名单核对。每项的处置约束（例如「回填禁止按值映射」）见 SDD 附录 D。
+> 编号与 SDD 附录 D 共用（E1–E15），此处只列**跟接口行为相关**的项。
 
-```sql
--- 逐表执行，列定义必须逐字一致
-ALTER TABLE exam_paper
-  ADD COLUMN enabled_prac tinyint NOT NULL DEFAULT '1' COMMENT '练习是否启用：0否，1是',
-  ADD COLUMN enabled_exam tinyint NOT NULL DEFAULT '1' COMMENT '考试是否启用：0否，1是';
+**A. 结构差异（生产缺列 / 缺表 / 多列）**
 
-ALTER TABLE question
-  ADD COLUMN enabled_prac tinyint NOT NULL DEFAULT '1' COMMENT '练习是否启用：0否，1是',
-  ADD COLUMN enabled_exam tinyint NOT NULL DEFAULT '1' COMMENT '考试是否启用：0否，1是';
+| # | 项 | TEST（基线） | 生产 | 对本接口的影响 |
+|---|---|---|---|---|
+| E1 | `enabled_prac` / `enabled_exam` | 5 张内容表都有，取值全 `1` | **5 表全缺** | **生产部署前必须先加列**，否则启动即 `Unknown column 'enabled_prac'` |
+| E2 | `practice_module_part_config` | 132 行，含 `enabled` | **表不存在** | 板块骨架全走兜底 → `partName` 退化成「第 N 部分」、`typeCode` 缺失（口语板块会取不到题） |
+| E3 | `practice_module_level_config.parts_config` | 已 drop | 仍在 | 无（接口不再读该列） |
+| E4 | 3.0 模块配置行 | 28 行 | **0 行** | 生产 3.0 首页五卡无数据 |
+| E5 | `uk_module_part` 唯一键 | 仍缺（B-18） | — | 无（本期 TEST 侧补） |
 
-ALTER TABLE question_group
-  ADD COLUMN enabled_prac tinyint NOT NULL DEFAULT '1' COMMENT '练习是否启用：0否，1是',
-  ADD COLUMN enabled_exam tinyint NOT NULL DEFAULT '1' COMMENT '考试是否启用：0否，1是';
+**B. 数据差异（会改变接口返回值）**
 
-ALTER TABLE speaking_exam_paper
-  ADD COLUMN enabled_prac tinyint NOT NULL DEFAULT '1' COMMENT '练习是否启用：0否，1是',
-  ADD COLUMN enabled_exam tinyint NOT NULL DEFAULT '1' COMMENT '考试是否启用：0否，1是';
+| # | 项 | TEST | 生产 | 影响 |
+|---|---|---|---|---|
+| E6 | `question.layout` 非空率 | **100%** | **52.3%**（`SEC_READ` / `SEC_WRITE` 全空） | 生产近一半题 `layout = null`，前端判不了交互。只能按 `question.id` 从 TEST 复制，**禁止按值映射**（§4.0.5） |
+| E7 | `layout` 值域 | 7 个规范值 | 老 8 值（混 `passageGroup` / `clozeGroup` 题面形态） | 前端会收到契约外的枚举值 |
+| E9 | 「有卷但无 setting 行」的活卷 | 0 张 | **16 张**（2.0 L1 ×1 + 3.0 ×15） | 生产加列若用 `DEFAULT 1`，目录从 60 卷涨到 76 卷 → **必须同批置 0** |
+| E10 | 3.0 卷上架 | 15/15 | **0/15** | 生产 3.0 目录为空（属运营放量，非缺陷） |
+| E11 | `exam_paper.level`（HSK7-9） | `"7"` | `"7-9"` | **代码已兼容**：统一走 `IN ('7','7-9')` 候选集 |
+| E13 | `total_question_count` vs 板块求和 | 46/46 一致 | 5/6（L2 听力 `35` ≠ `40`） | 无（`questionCount` 已改为现算） |
 
-ALTER TABLE speaking_exam_paper_question
-  ADD COLUMN enabled_prac tinyint NOT NULL DEFAULT '1' COMMENT '练习是否启用：0否，1是',
-  ADD COLUMN enabled_exam tinyint NOT NULL DEFAULT '1' COMMENT '考试是否启用：0否，1是';
-```
+> 结论：**接口契约只按 TEST 写**，生产差异不产生第二个分支。唯一进过代码的兼容点是 E11 的等级候选集。
 
-**② 必须同批次：把 PROD 本该下架的 16 张活卷置 0**
-
-```sql
--- 🔴 DEFAULT 1 会让所有卷变「上架」→ PROD 目录从 60 卷涨到 76 卷
--- 注意 deleted = 0：那 61 张软删卷已被 deleted 挡住，不参与
-UPDATE exam_paper p
-SET p.enabled_prac = 0
-WHERE p.exam_type = 1 AND p.deleted = 0
-  AND NOT EXISTS (SELECT 1 FROM practice_paper_setting s WHERE s.paper_id = p.id);
--- 预期影响 16 行（2.0 L1 的 1 张 + 3.0 全 15 张）
-```
-
-**③ `practice_module_part_config` 补 `enabled` 列 + 唯一键**（PROD 连表都没有，D16）
+### 9.1.1 TEST 侧待补（本期动作）
 
 ```sql
--- TEST 已有 enabled 列，只需补唯一键
+-- 补唯一键（先查重，必须 0 行；实测 132 行无重复）
 SELECT version, level, section_mapping, section, COUNT(*) c
 FROM practice_module_part_config
-GROUP BY version, level, section_mapping, section HAVING c > 1;   -- 必须 0 行
+GROUP BY version, level, section_mapping, section HAVING c > 1;
 
 ALTER TABLE practice_module_part_config
   ADD UNIQUE KEY `uk_module_part` (`version`,`level`,`section_mapping`,`section`) USING BTREE;
 ```
 
-**执行闸门（五闸门，缺一不可）**
+- `SEC_SPEAKING` 残留：删 1 行模块配置 + 3 行板块配置，`question` 里 5 条造数题软删（§10 第 6 条）。
+- `question.layout`：TEST 已是 100% 填充，**本期不动**。
+
+**任何环境动库都得过五闸门（含 TEST）**
 
 | 闸门 | 动作 |
 |---|---|
-| G1 | 确认环境：`SELECT @@hostname` —— **TEST 与 PROD 库名都是 `xuexitest`，只能靠 hostname 区分** |
+| G1 | 确认环境：`SELECT @@hostname` —— **测试与生产库名都叫 `xuexitest`，只能靠 hostname 区分** |
 | G2 | 确认连接串指向预期的库 |
 | G3 | 执行前备份受影响表（备份已存在则跳过，不覆盖） |
 | G4 | DRY-RUN 先 `SELECT COUNT(*)` 统计将影响行数，与预期比对后再 `--apply` |
 | G5 | 幂等：重复执行不产生脏数据、不重复改行 |
 
-**④ 3.0 正式放开时**
-
-```sql
--- 把 3.0 那 15 张卷改回上架（不是新增 setting 行）
-UPDATE exam_paper SET enabled_prac = 1
-WHERE version = 'HSK3.0' AND exam_type = 1 AND deleted = 0;
-```
+> 3.0 放量口径（运营，非本期）：把该版本 15 张卷的 `enabled_prac` 改回 `1`，**不是新增 setting 行**。
 
 ### 9.2 文件级变更清单
 
@@ -2237,14 +2207,17 @@ WHERE version = 'HSK3.0' AND exam_type = 1 AND deleted = 0;
 
 **其它服务（仅实体加字段，无逻辑改动，已完成）**：`exam-service` 与 `manage` 各 5 个实体加 `enabledPrac` / `enabledExam`。
 
-### 9.3 环境状态
+### 9.3 TEST 现状（开发基线，已就绪）
 
-| 环境 | 状态 |
+| 项 | 状态 |
 |---|---|
-| TEST | 5 张内容表两列 **已加**（取值全 1）；`practice_module_part_config` **已建 132 行 + `enabled` 列已加**；`parts_config` 列已 drop；代码侧 `enabled_prac` 过滤**已改完并编译通过** |
-| TEST 待补 | `uk_module_part` 唯一键；清 `SEC_SPEAKING` 残留 4 行；`layout` 回填 |
-| PROD | **5 表两列全缺**；`practice_module_part_config` **表不存在**；`enabled_prac` 尚未迁移 → **代码合入前必须先跑 DDL，否则启动即 `Unknown column 'enabled_prac'`** |
-| PROD 待补 | 上述 DDL + 16 张卷置 0 + 28 行模块配置 + 15 行板块配置 + `layout` 回填（47.7% NULL）+ `level` 收敛 |
+| 5 张内容表 `enabled_prac` / `enabled_exam` | ✅ 已加，取值全 `1` |
+| `practice_module_part_config` | ✅ 已建 132 行 + `enabled` 列已加，三语 132/132 填充 |
+| `practice_module_level_config.parts_config` | ✅ 已 drop |
+| `question.layout` | ✅ 非空率 100%，7 个规范值 |
+| 代码侧 `enabled_prac` 过滤 | ✅ 已改完并编译通过 |
+| 待补 | `uk_module_part` 唯一键；清 `SEC_SPEAKING` 残留 4 行（§9.1.1） |
+| 生产库 | 差异见 §9.1，**本期不处理** |
 
 ---
 
@@ -2256,12 +2229,12 @@ WHERE version = 'HSK3.0' AND exam_type = 1 AND deleted = 0;
 | 2 | `paperId` 何时改 String | P0 保持 `Long`；仅 `/hsk/modules` 的 `inProgressPaperId` 用 String。P1 全量改（涉及所有目录与作答接口） | 前端 + 后端 |
 | 3 | 翻译 P0 无评分的用户可见文案 | 报告页展示「暂无评分」，不展示「生成中」，不报错 | 产品 |
 | 4 | 模块关闭时是否仍下发板块配置供前端置灰 | 暂定**不下发**（整卡消失）。若产品要「置灰但可点」，需后端在 `level_config.enabled=0` 时仍返回板块骨架 + `available=false` | 产品 |
-| 5 | `practice_module_part_config` 唯一键何时补 | 建议与 PROD 建表同批（§9.1 ③）；当前 132 行无重复，补键只防未来 | DBA |
-| 6 | `SEC_SPEAKING` 残留配置清理 | 删 TEST 的 1 行模块配置 + 3 行板块配置；`question` 里 5 条造数软删。PROD 无此问题 | 运营 |
+| 5 | `practice_module_part_config` 唯一键何时补 | **本期补**（§9.1.1）：当前 132 行无重复，补键只防未来 | DBA |
+| 6 | `SEC_SPEAKING` 残留配置清理 | 删 TEST 的 1 行模块配置 + 3 行板块配置；`question` 里 5 条造数软删（生产无此差异） | 运营 |
 | 7 | `enabled_exam` 何时真正生效 | **当前有列无逻辑**：考试侧所有 SQL 未加 `enabled_exam = 1`。值全 1 时行为不变；要生效需另行接入 exam-service | 产品 + 后端 |
 | 8 | 批量上下架是否本期做 | 不做。运营逐条 `PATCH` | 产品 |
-| 9 | PROD `layout` 回填口径 | **按 `question.id` 从 TEST 复制**（可覆盖 6439/6469），不按值映射（`textChoice` 一对多，映射必错）。剩 30 行 PROD 独有题人工判定（§4.0.5） | DBA + 运营 |
+| 9 | 生产 `layout` 对齐口径（差异 E6，本期不执行） | 已登记：**只能按 `question.id` 从 TEST 复制**（可覆盖 6439/6469），**禁止按值映射**（`textChoice` 一对多）；剩 30 行生产独有题人工判定（§4.0.5） | DBA + 运营 |
 | 10 | 口语要不要补 `layout` 列 | P0 不补，口语恒 `record`，前端按模块写死。若要做「朗读 / 自由说话」差异化录音 UI，再给 `speaking_exam_paper_question` 加列（P1） | 产品 |
 | 11 | `layout` 值域是否要收敛到跨模块统一枚举 | **不收敛，原样透传**（沿用 CSCA 既有约定）。7 个值已经是交互形态，换算只会多一层漏配 | 前端 + 后端 |
-| 12 | 混 `layouts` 的板块（TEST 2 个 / PROD 48 个）如何处理 | 前端逐题渲染，不做板块级归一。若产品要求「一个板块一种交互」，那是**内容问题**（该板块题填错了 `layout`），回内容侧修，不改接口 | 产品 + 运营 |
-| 13 | PROD 老值域 `passageGroup` / `clozeGroup` 的语义 | 它们是**题面形态**不是答题形式（篇章组 / 完形组）。回填后由 TEST 值覆盖；未被覆盖的 30 行若仍是这两个值，需人工判成 `choice` / `choiceGrid` | 运营 |
+| 12 | 混 `layouts` 的板块（TEST 2 个 / 生产 48 个）如何处理 | 前端逐题渲染，不做板块级归一。若产品要求「一个板块一种交互」，那是**内容问题**（该板块题填错了 `layout`），回内容侧修，不改接口 | 产品 + 运营 |
+| 13 | 老值域 `passageGroup` / `clozeGroup` 的语义（差异 E7） | 它们是**题面形态**不是答题形式（篇章组 / 完形组）。生产对齐时由 TEST 值覆盖；未被覆盖的 30 行若仍是这两个值，需人工判成 `choice` / `choiceGrid` | 运营 |
