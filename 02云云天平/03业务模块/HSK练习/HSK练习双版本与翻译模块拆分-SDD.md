@@ -181,7 +181,7 @@ speaking_exam_paper（2.0 + 3.0 口语）      standard_question_count
 | `question_group` | — | ✅ 零改 | 翻译两个大题组已在；不参与结构装配 |
 | `speaking_exam_paper` / `_question` | 33 + 5 卷 | ✅ 零改 | **2.0 与 3.0 口语内容都在这两张表**（R5） |
 | `practice_module_level_config` | 49 | ✅ 保留，删 `parts_config` 列（TEST 已删） | 模块级配置 |
-| **`practice_module_part_config`** | **132** | ✅ 新建（TEST 已建，**需补 3 项**） | 板块级配置 + 板块开关（§3.2.2） |
+| **`practice_module_part_config`** | **132** | ✅ TEST 已建，仅需补唯一键 | 板块级配置；**开关用 `deleted`，不加 `enabled` 列**（§3.2.2） |
 | `hsk_level_config` | 13 | ✅ 零改 | 等级三语名称 |
 | `practice_paper_setting` | 206 / 116 | ❌ **P0 drop** | 卷级上下架由 `exam_paper.deleted_prac` 完整替代（§3.2.7） |
 | `practice_paper_structure` | 1290 | ❌ **P0 drop** | 无独有信息：板块来自 `question` 去重 + `part_config` 取名（§3.2.6） |
