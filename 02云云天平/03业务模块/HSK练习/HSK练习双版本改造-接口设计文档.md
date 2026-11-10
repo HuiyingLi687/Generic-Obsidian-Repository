@@ -1825,7 +1825,7 @@ Authorization: Bearer xxx
 #### E1 `GET /hsk/modules`
 
 **用途**：首页一次拿到「版本 → 布局 → 模块卡」，避免前端串行发 5 个请求
-**鉴权**：需要登录
+**鉴权**：不需要登录
 
 **入参说明**
 
@@ -1837,7 +1837,6 @@ Authorization: Bearer xxx
 
 ```http
 GET /api/practice/hsk/modules?version=HSK3.0
-Authorization: Bearer xxx
 Accept-Language: zh
 ```
 
@@ -1854,25 +1853,24 @@ Accept-Language: zh
     "modules": [
       { "moduleCode": "LISTENING", "sectionMapping": "SEC_LISTEN",
         "name": "听力", "nameEn": "Listening", "nameVi": "Nghe",
-        "sortOrder": 1, "available": true, "disabledReason": null,
-        "progress": { "totalPapers": 15, "completedPapers": 2,
-                      "inProgressPaperId": "2104193520701620225" } },
+        "sortOrder": 1
+     },
       { "moduleCode": "READING", "sectionMapping": "SEC_READ",
         "name": "阅读", "nameEn": "Reading", "nameVi": "Đọc",
-        "sortOrder": 2, "available": true, "disabledReason": null,
-        "progress": { "totalPapers": 15, "completedPapers": 0, "inProgressPaperId": null } },
+        "sortOrder": 2
+     },
       { "moduleCode": "WRITING", "sectionMapping": "SEC_WRITE",
         "name": "写作", "nameEn": "Writing", "nameVi": "Viết",
-        "sortOrder": 3, "available": true, "disabledReason": null,
-        "progress": { "totalPapers": 15, "completedPapers": 0, "inProgressPaperId": null } },
+        "sortOrder": 3
+     },
       { "moduleCode": "TRANSLATION", "sectionMapping": "SEC_TRANSLATION",
         "name": "翻译", "nameEn": "Translation", "nameVi": "Dịch",
-        "sortOrder": 4, "available": true, "disabledReason": null,
-        "progress": { "totalPapers": 1, "completedPapers": 0, "inProgressPaperId": null } },
+        "sortOrder": 4
+     },
       { "moduleCode": "SPEAKING", "sectionMapping": "SEC_SPEAK",
         "name": "口语", "nameEn": "Speaking", "nameVi": "Nói",
-        "sortOrder": 5, "available": true, "disabledReason": null,
-        "progress": { "totalPapers": 5, "completedPapers": 1, "inProgressPaperId": null } }
+        "sortOrder": 5
+     }
     ]
   }
 }
@@ -1892,22 +1890,15 @@ Accept-Language: zh
 
 **返回字段说明**
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `version` | String | 回显解析后的版本 |
-| `layout` | String | `GRID_2`（2.0）/ `LIST`（3.0）。**前端据此切换布局，不写死**（服务端取自 `sys_dict.remark`） |
-| `header` | String | 首页副标题，按 `Accept-Language` 本地化 |
-| `modules[].moduleCode` | String | `LISTENING` / `READING` / `WRITING` / `TRANSLATION` / `SPEAKING`（← `sys_dict_item.description`） |
-| `modules[].sectionMapping` | String | `SEC_LISTEN` / `SEC_READ` / `SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAK`（← `item_value`） |
-| `modules[].name` / `nameEn` / `nameVi` | String | 三语模块名：`name` ← `item_text`，`nameEn`/`nameVi` ← `item_properties` |
-| `modules[].available` | Boolean | `false` 时**置灰 + Toast，不隐藏**（保持卡片数稳定） |
-| `modules[].disabledReason` | String | `MODULE_NOT_IN_VERSION` / `NO_CONTENT` / `LOAD_FAILED` |
-| `modules[].sortOrder` | Integer | 卡片顺序 |
-| `modules[].progress.totalPapers` | Integer | 该模块在**当前版本全部等级**下可练卷数（`enabled_prac=1` 且题量 > 0） |
-| `modules[].progress.completedPapers` | Integer | 已完成卷数。**未登录恒为 0** |
-| `modules[].progress.inProgressPaperId` | String | 进行中卷 ID，**String 避免 19 位精度丢失**，无则 `null` |
-
-> **接口不返回的字段**：`icon`（图标名）、`theme`（主题色）、`badge`（`NEW` / `HOT`）、`entryLevelCode`（翻译直达 `HSK7-9`）。这四项全是前端按 `moduleCode` 内置的展示资产，服务端不下发、字典也不存（见下「模块卡取自字典表」）。前端若漏配 `moduleCode`，卡片会缺图标/角标，**这不是接口缺陷**。
+| 字段                                     | 类型      | 说明                                                                                              |
+| -------------------------------------- | ------- | ----------------------------------------------------------------------------------------------- |
+| `version`                              | String  | 回显解析后的版本                                                                                        |
+| `layout`                               | String  | `GRID_2`（2.0）/ `LIST`（3.0）。**前端据此切换布局，不写死**（服务端取自 `sys_dict.remark`）                            |
+| `header`                               | String  | 首页副标题，按 `Accept-Language` 本地化                                                                   |
+| `modules[].moduleCode`                 | String  | `LISTENING` / `READING` / `WRITING` / `TRANSLATION` / `SPEAKING`（← `sys_dict_item.description`） |
+| `modules[].sectionMapping`             | String  | `SEC_LISTEN` / `SEC_READ` / `SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAK`（← `item_value`）       |
+| `modules[].name` / `nameEn` / `nameVi` | String  | 三语模块名：`name` ← `item_text`，`nameEn`/`nameVi` ← `item_properties`                                |
+| `modules[].sortOrder`                  | Integer | 卡片顺序                                                                                            |
 
 **模块卡取自字典表（不写死常量）**
 
@@ -1920,34 +1911,13 @@ Accept-Language: zh
 
 字段映射（**一列一义，不再往 JSON 里塞展示资产**）：
 
-| `sys_dict_item` 列 | 对应响应字段 | 说明 |
-|---|---|---|
-| `item_text` | `name` | 中文名（听力 / 阅读 / 写作 / 口语 / 翻译） |
-| `item_value` | `sectionMapping` | `SEC_xxx`，接口拿它查 `practice_module_level_config` 与内容表 |
-| `description` | `moduleCode` | `LISTENING` / `READING` / `WRITING` / `SPEAKING` / `TRANSLATION` |
-| `sort_order` | `sortOrder` | 卡片顺序 |
-| `item_properties` | `nameEn` / `nameVi` | JSON，**只有 `moduleCode` / `nameEn` / `nameVi` 三个键** |
-
-```json
-// item_properties 的完整形态，没有别的键
-{"moduleCode":"TRANSLATION","nameEn":"Translation","nameVi":"Dịch"}
-```
-
-> `icon` / `theme` / `badge` / `entryLevelCode` **不入字典**：前三个是前端资产，按 `moduleCode` 内置映射；`entryLevelCode`（翻译直达 `HSK7-9`）也由前端按 `moduleCode` 判定。将来要改成运营可配，再给字典加列/加键，不在本期。
-
-```sql
--- 一次取一个版本的卡片，按 sort_order 排序；status / deleted 都要判
-SELECT i.item_text, i.item_value, i.description, i.sort_order, i.item_properties
-FROM sys_dict d JOIN sys_dict_item i ON i.dict_id = d.id
-WHERE d.dict_code = ? AND d.deleted = 0 AND d.status = 0
-  AND i.deleted = 0 AND i.status = 0
-ORDER BY i.sort_order, i.id;
-```
-
-- `layout` 在 `sys_dict.remark` 里（`{"layout":"GRID_2"}`），随字典一起取
-- **`item_value` 必须等于 `sectionMapping`**，接口拿它去查 `practice_module_level_config` 与内容表；填 `moduleCode` 会导致全部卡片 `available=false`
-- 运营改 `item_text` / `sort_order` / `status` 即改卡片；`status=1` 是下架单个模块卡（与 `practice_module_level_config.enabled` 的模块级开关**不是一回事**，后者关的是配置层可用性）
-- 字典缺项 / `section_mapping` 不在配置层 → 记 `WARN` 并按缺少处理，不 500
+| `sys_dict_item` 列 | 对应响应字段              | 说明                                                               |
+| ----------------- | ------------------- | ---------------------------------------------------------------- |
+| `item_text`       | `name`              | 中文名（听力 / 阅读 / 写作 / 口语 / 翻译）                                      |
+| `item_value`      | `sectionMapping`    | `SEC_xxx`，接口拿它查 `practice_module_level_config` 与内容表              |
+| `description`     | `moduleCode`        | `LISTENING` / `READING` / `WRITING` / `SPEAKING` / `TRANSLATION` |
+| `sort_order`      | `sortOrder`         | 卡片顺序                                                             |
+| `item_properties` | `nameEn` / `nameVi` | JSON，**只有 `nameEn` / `nameVi` 两个键**                              |
 
 **`available` 判定规则**
 
