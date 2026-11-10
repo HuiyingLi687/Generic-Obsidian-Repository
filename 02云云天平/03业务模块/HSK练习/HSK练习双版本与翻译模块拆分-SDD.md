@@ -901,10 +901,6 @@ POST /translation/attempts/start {paperId, section}
 
 风险：放宽 `validatePart` 后写作与翻译共用 attempt 表，靠 `content_type` + `section_mapping` 双条件隔离，这两个条件必须成对评审。
 
-### 9.4 `level='7-9'` 用代码容错，不立刻改数据
-
-PROD 直接 `UPDATE exam_paper.level` 会动题库表，`exam-service` 读同一列，回归面大且违反「题库只读」。故先用 `IN ('7','7-9')`，P1 在导入流程统一写 `'7-9'` 后再删兼容分支。
-
 ### 9.5 板块配置拆成行式表
 
 产品要「第一部分、第二部分单独控制开关」。`parts_config` 元素**没有 `section`、只有 `sortOrder`**，与 `question.section` 靠数组位置隐式对齐（TEST 38/46 行成立）。一旦允许关板块，数组必须留占位元素，`sortOrder` 就退化成「不可删的编号」——那它本来就该是 `section` 列。
@@ -948,15 +944,15 @@ PROD 直接 `UPDATE exam_paper.level` 会动题库表，`exam-service` 读同一
 
 **代价是纪律**：两列并存意味着任何一侧都可能误读另一侧。练习侧全量 grep `enabled_exam` 必须零命中（B-20），这个靠 Code Review 卡点，不靠类型系统。
 
-### 9.8 口语内容统一读 `speaking_exam_paper`（2.0 / 3.0 都是）
+### 9.8 口语内容读speaking_exam_paper和exam_paperL7的SEC_SPEAKING
 
 一度以为 3.0 口语应该在 `exam_paper` + `SEC_SPEAKING` 里。实测推翻：
 
-| 事实 | TEST | PROD |
-|---|---|---|
+| 事实                          | TEST                       | PROD         |
+| --------------------------- | -------------------------- | ------------ |
 | `speaking_exam_paper` 3.0 卷 | 5 张（L3/L4/L5/L6/L7-9），78 题 | 0 张（3.0 未放开） |
-| `speaking_exam_paper` 2.0 卷 | 33 张，759 题 | 33 张，759 题 |
-| `question` 里 `SEC_SPEAKING` | 5 题，1 张卷 | 同 |
+| `speaking_exam_paper` 2.0 卷 | 33 张，759 题                 | 33 张，759 题   |
+| `question` 里 `SEC_SPEAKING` | 5 题，1 张卷                   | 同            |
 
 `question` 里那 5 题所在的 `paper_id` 在 `exam_paper` 是 L7 的一张卷，与 `speaking_exam_paper` 的 5 张口语卷**毫无关系**——它是造数残留。代码侧 4 处常量全部是 `SEC_SPEAK`，`SEC_SPEAKING` 从未被引用。
 
