@@ -643,12 +643,12 @@ WHERE p.exam_type = 1 AND p.deleted = 0
 
 **目录 4 个（P0）**
 
-| # | 路径 | 说明 |
-|---|---|---|
-| T1 | `GET /translation/levels?version=HSK3.0` | 2.0 → `[]` |
-| T2 | `GET /translation/levels/{levelCode}/intro` | 单对象，`sections[]` 来自板块配置 |
-| T3 | `GET /translation/papers?levelCode=HSK7-9&version=HSK3.0` | 卷清单，过滤 `totalQuestionCount=0` |
-| T4 | `GET /translation/papers/{paperId}/parts` | 板块列表，**必须下发 `answerMode`** |
+| #   | 路径                                               | 说明                            |
+| --- | ------------------------------------------------ | ----------------------------- |
+| T1  | `GET /translation/levels?version=HSK3.0`         | 2.0 → `[]`                    |
+| T2  | `GET /translation/levels/{levelCode}/intro`      | 单对象，`sections[]` 来自板块配置       |
+| T3  | `GET /translation/papers?level=7&version=HSK3.0` | 卷清单，过滤 `totalQuestionCount=0` |
+| T4  | `GET /translation/papers/{paperId}/parts`        | 板块列表，**必须下发 `answerMode`**    |
 
 `answerMode` = `TEXT`（笔译）/ `RECORD`（口译），正是两张卡渲染不同的根因。
 
