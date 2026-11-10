@@ -71,7 +71,7 @@ practice-service
 
 | 层                         | 包                                              | 职责                                    | 本次改动       |
 | ------------------------- | ---------------------------------------------- | ------------------------------------- | ---------- |
-| Controller                | `{listen,read,write,speak,trans}/*/controller` | 解析 `version` / `levelCode` / `userId` | 加参数        |
+| Controller                | `{listen,read,write,speak,trans}/*/controller` | 解析 `version` / `level` / `userId` | 加参数        |
 | Catalog Service           | `*/service/impl/*CatalogServiceImpl`           | 等级 / 卷 / 板块目录 + 进度聚合                  | 版本化 + 换配置源 |
 | Attempt / Answer / Submit | `writing/*`、各模块 `*ServiceImpl`                 | 作答、保存、交卷、报告                           | 仅准入校验      |
 | Domain Support            | `core/support`                                 | 值对象、模块注册表、目录装载                        | 新增 4 个类    |
@@ -152,7 +152,7 @@ speaking_exam_paper（2.0 + 3.0 口语）
 | #    | 规则                                                                                                                              | 落点                              |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
 | R1   | `version` 只有两个合法值，缺省 2.0，非法 → 400                                                                                               | `PracticeVersion.of`            |
-| R2   | `HSK7-9` 是一个等级，数值 `7`；禁止裸 `parseInt(levelCode)`                                                                                 | `PracticeLevelCode`             |
+| R2   | `HSK7-9` 是一个等级，数值 `7`；禁止裸 `parseInt(level)`                                                                                 | `PracticeLevelCode`             |
 | R3   | `exam_paper.level` 两库取值不一致（TEST `"7"` / PROD `"7-9"`，差异 E11），查询必须 `IN (候选集)`，禁止 `eq("7")`                                                    | `PracticeLevelCode.dbLevels`    |
 | R4   | 翻译仅 3.0；2.0 调 `/translation/**` 返回空数组 / 空对象，前端无这个模块展示                                                                           | `TranslationCatalogServiceImpl` |
 | R5   | 口语内容统一读 `speaking_exam_paper`（**2.0 与 3.0 都在这里**）；`question` 里的 `SEC_SPEAKING` 5 条为HSK7-9级试卷的口语题目，两边都要读                         | `SpeakingCatalogServiceImpl`    |
@@ -658,12 +658,14 @@ ALTER TABLE exam_paper
 | 大小写 | **敏感**，`hsk3.0` → 400 |
 | 特殊值 | 无（不提供 `ALL` / `LATEST`） |
 
+**等级入参命名**：请求侧（query / path / body）统一叫 **`level`**，弃用 `levelCode`；**响应字段仍叫 `levelCode`**，不改前端已有解析逻辑。路径变量名随之改为 `/levels/{level}/intro`（URL 实际取值不变）。
+
 #### 3.3.2 存量 16 端点改造
 
 | # | 方法 | 路径 | 现状 | 改造 |
 |---|---|---|---|---|
 | 1 | GET | `/listening/levels` | 无 `version`、无 `exam_type` 过滤 | 加 `version`、补 `exam_type=1`、走资格判定 |
-| 2 | GET | `/listening/levels/{levelCode}/intro` | `selectOne` 不带 version → 两版本同等级共存时抛 `TooManyResults` | `selectOne` 带 `version` + `deleted=0` |
+| 2 | GET | `/listening/levels/{level}/intro` | `selectOne` 不带 version → 两版本同等级共存时抛 `TooManyResults` | `selectOne` 带 `version` + `deleted=0` |
 | 3 | GET | `/listening/papers/{paperId}/parts` | 配置查询无 version | 同 2；板块来源改配置表 + 题量现算 |
 | 4 | GET | `/reading/levels` | `VERSION` 常量 | 常量改参数 |
 | 5 | GET | `/reading/levels/{code}/intro` | 常量 + 裸 `parseInt` → `HSK7-9` 必 404 | 改 `PracticeLevelCode` |
@@ -685,7 +687,7 @@ ALTER TABLE exam_paper
 | #   | 路径                                               | 说明                            |
 | --- | ------------------------------------------------ | ----------------------------- |
 | T1  | `GET /translation/levels?version=HSK3.0`         | 2.0 → `[]`                    |
-| T2  | `GET /translation/levels/{levelCode}/intro`      | 单对象，`sections[]` 来自板块配置       |
+| T2  | `GET /translation/levels/{level}/intro`      | 单对象，`sections[]` 来自板块配置       |
 | T3  | `GET /translation/papers?level=7&version=HSK3.0` | 卷清单，过滤 `totalQuestionCount=0` |
 | T4  | `GET /translation/papers/{paperId}/parts`        | 板块列表，**必须下发 `layouts`**    |
 
@@ -728,7 +730,7 @@ WHERE paper_id = ? AND deleted = 0 AND enabled_prac = 1 AND CAST(section AS SIGN
 | 场景 | 处理 |
 |---|---|
 | `version` 非法 | 400 `PRACTICE_VERSION_INVALID` |
-| `levelCode` 在该版本下不存在 | 404，沿用各模块原有文案 |
+| `level` 在该版本下不存在 | 404，沿用各模块原有文案 |
 | `paperId` 的 version 与入参不符 | 404「试卷不存在」（**不提示版本不符**，避免探测） |
 | `sectionMapping` 与模块不匹配 | 400 `SECTION_MAPPING_MISMATCH` |
 | 目录查询异常 | 整卡 `available=false` + `LOAD_FAILED`，**不 500 整页** |
@@ -792,9 +794,9 @@ POST /translation/attempts/start {paperId, section}
 
 **版本切换**
 ```
-清空已选 levelCode / 卷列表 / 滚动位置 / 本地「上次练习」→ GET /hsk/modules?version=<new>
+清空已选 level / 卷列表 / 滚动位置 / 本地「上次练习」→ GET /hsk/modules?version=<new>
 ```
-> 不要复用旧 `levelCode` 打新版本 `/papers`：2.0 的 `HSK1` 在 3.0 下虽存在但卷集合不同；`HSK7-9` 在 2.0 下直接 404。
+> 不要复用旧 `level` 打新版本 `/papers`：2.0 的 `HSK1` 在 3.0 下虽存在但卷集合不同；`HSK7-9` 在 2.0 下直接 404。
 
 ---
 
@@ -803,7 +805,7 @@ POST /translation/attempts/start {paperId, section}
 | 项 | 方案 |
 |---|---|
 | 模块元数据 | 进程内常量，无缓存 |
-| 目录结果 | P0 不缓存（单等级 ≤ 21 卷）；P1 可加 Caffeine，`key = version + levelCode + module`，TTL 60s |
+| 目录结果 | P0 不缓存（单等级 ≤ 21 卷）；P1 可加 Caffeine，`key = version + level + module`，TTL 60s |
 | 进度 | **禁止缓存**（用户态） |
 | `dataVersion` | P1 引入：相关表 `MAX(updated_time)` 作 ETag，供前端失效 |
 | 评分异步 | 翻译 P0 **不入队**：交卷先查 policy，无则直接 `UNAVAILABLE`；P1 补 `TRANSLATION_WRITTEN` 后开启 |
@@ -831,7 +833,7 @@ POST /translation/attempts/start {paperId, section}
 
 | 项 | 措施 |
 |---|---|
-| 参数注入 | `version` / `levelCode` 走白名单枚举；SQL 全部参数绑定 |
+| 参数注入 | `version` / `level` 走白名单枚举；SQL 全部参数绑定 |
 | 越权 | `attempt` 校验 `userId` 归属；翻译薄封装必须校验 `(paperId, section)` 的实际 `section_mapping`，否则可用写作板块串号 |
 | 版本探测 | 卷版本不符统一回「试卷不存在」 |
 | 答案泄露 | `answer` / `analysis` 不得在作答阶段 `/questions` 下发，只在报告接口给 |
@@ -874,7 +876,7 @@ POST /translation/attempts/start {paperId, section}
 2. `version=HSK3.0` → `layout=LIST`、5 卡、翻译 `entryLevelCode=HSK7-9`。
 3. `hsk3.0`（小写）/ `HSK4.0` → 400，不得静默降级。
 4. `/reading/levels?version=HSK3.0` → 7 个等级含 `HSK7-9`；2.0 → 6 个不含。
-5. `/reading/papers?levelCode=HSK7-9&version=HSK3.0` 在 **PROD** 能查到卷（验证 R3 候选集）。🔴 最易漏。
+5. `/reading/papers?level=HSK7-9&version=HSK3.0` 在 **PROD** 能查到卷（验证 R3 候选集）。🔴 最易漏。
 
 **翻译独立**
 6. 2.0 调 `/translation/levels` → `[]`，不 404。
@@ -886,7 +888,7 @@ POST /translation/attempts/start {paperId, section}
 
 **存量回归**
 12. 2.0 四模块全链路（等级→卷→板块→答题→报告）与改造前逐字段一致。
-13. `/listening/levels?levelCode=HSK1` 不再混入 3.0 卷（TEST 本身已有 3.0 卷，可直接验）。
+13. `/listening/levels?level=HSK1` 不再混入 3.0 卷（TEST 本身已有 3.0 卷，可直接验）。
 14. TEST `/listening/levels/HSK1/intro` 不再 500。
 15. `/writing/papers/{HSK7-9 卷}/parts` 不再 500。⚠️ TEST 的 `level='7'` 走不到 `parseInt('7-9')` 分支，**必须用单测/构造数据覆盖 `'7-9'`**（差异 E11 只能这样验）。
 16. 存量 `writing_attempt`（TEST 217）仍可打开续练；生产 284 条在生产对齐后回归（附录 D D.3）。
@@ -1050,7 +1052,7 @@ POST /translation/attempts/start {paperId, section}
 | B-03 | 裸 `Integer.parseInt(paper.getLevel())` | `WritingAttemptServiceImpl#requirePaper`、`WritingCatalogServiceImpl#listParts`、`ReadingCatalogServiceImpl#paperResponse` | PROD 的 `'7-9'` → `NumberFormatException` → 500 | 🔴 高 |
 | B-04 | `parseLevel` 只认 `HSK[1-6]` | `WritingCatalogServiceImpl#parseLevel` | `HSK7-9` → 404 | 🟡 中 |
 | B-05 | `"HSK" + level` 拼 code | 阅读/写作/口语 Catalog、`getPreference` | 返回 `"HSK7"`，前端查不到 | 🟡 中 |
-| B-06 | `levelCode` 裸 `parseInt` | `ReadingCatalogServiceImpl#requireModule`、`ListeningCatalogServiceImpl#parseLevel` | `HSK7-9` → 404/500 | 🟡 中 |
+| B-06 | `level` 裸 `parseInt` | `ReadingCatalogServiceImpl#requireModule`、`ListeningCatalogServiceImpl#parseLevel` | `HSK7-9` → 404/500 | 🟡 中 |
 | B-07 | 目录 ID 为 `Long` | 各 Paper 响应 | 19 位雪花丢精度（新增端点改 String，存量 P1） | 🟡 中 |
 | B-08 | `writing_evaluation_policy` 缺 3 个题型 | 表数据 | `TRANSLATION_WRITTEN` / `CHART_ANALYSIS` / `TOPIC_ESSAY` 交卷后报告永久「生成中」 | 🟡 中 |
 | ~~B-09~~ | ~~`answer_mode` 与题型语义错配~~ | — | **已消解**（2026-11-10）：不再有 `answer_mode` 这一层，答题形式直接读 `question.layout`，错配源头消失（§3.2.2b） | ✅ 关闭 |
