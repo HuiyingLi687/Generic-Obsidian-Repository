@@ -804,7 +804,7 @@ POST /translation/attempts/start {paperId, section}
 
 | 项 | 方案 |
 |---|---|
-| 模块元数据 | **取自 `sys_dict` / `sys_dict_item`**（`hsk_practice_module_v2` / `_v3`），随字典缓存刷新，不做进程内常量。卡片顺序、三语名、`badge`、`entryLevelCode` 全部可运营配置；`layout`（`GRID_2` / `LIST`）存在 `sys_dict.remark` |
+| 模块元数据 | **取自 `sys_dict` / `sys_dict_item`**（`hsk_practice_module_v2` / `_v3`），随字典缓存刷新，不做进程内常量。字典只承载「有哪些模块、什么顺序、四列 code/文案」（`item_text` 中文名、`item_value`=`section_mapping`、`description`=`moduleCode`、`item_properties`=`{moduleCode,nameEn,nameVi}`），`layout` 在 `sys_dict.remark`；**`icon` / `theme` / `badge` / `entryLevelCode` 不入库**，前端按 `moduleCode` 内置 |
 | 目录结果 | P0 不缓存（单等级 ≤ 21 卷）；P1 可加 Caffeine，`key = version + level + module`，TTL 60s |
 | 进度 | **禁止缓存**（用户态） |
 | `dataVersion` | P1 引入：相关表 `MAX(updated_time)` 作 ETag，供前端失效 |
@@ -1164,7 +1164,7 @@ POST /translation/attempts/start {paperId, section}
 | **E13** | `total_question_count` 与板块求和不一致 | 46/46 一致 | **5/6**（HSK2.0 L2 听力 `35` ≠ 板块求和 `40`） | 无（题量改为现算） | 生产该值不必修，接口已不读它 |
 | **E14** | 混 `layouts` 的板块数 | **2** 个 | **48** 个 | 无（前端逐题渲染） | 若产品要求「一板块一交互」，回内容侧改 `layout`，不改接口 |
 | **E15** | 3.0 口语内容 | `speaking_exam_paper` 5 卷 78 题 | **0 卷** | 无（代码按 TEST 走） | 随 E10 一起放量 |
-| **E16** | `sys_dict` 模块字典（`/hsk/modules` 数据源） | 已建：`hsk_practice_module_v2`（1007，4 项）/ `hsk_practice_module_v3`（1008，5 项） | **0 项**（字典表存在，无这两条） | **有**：生产不补则 `/hsk/modules` 返回空卡片列表（不报错，但首页空白） | 按 TEST 原样灌 9 项。🔴 `item_value` 必须是 **`section_mapping`**（`SEC_LISTEN` 等），不是 `moduleCode`；`layout`（`GRID_2` / `LIST`）在 `sys_dict.remark`，三语名与 icon/theme/badge 在 `item_properties` JSON |
+| **E16** | `sys_dict` 模块字典（`/hsk/modules` 数据源） | 已建：`hsk_practice_module_v2`（1007，4 项）/ `hsk_practice_module_v3`（1008，5 项） | **0 项**（字典表存在，无这两条） | **有**：生产不补则 `/hsk/modules` 返回空卡片列表（不报错，但首页空白） | 按 TEST 原样灌 9 项。🔴 `item_value` 必须是 **`section_mapping`**（`SEC_LISTEN` 等），`description` 才是 `moduleCode`；`item_properties` 仅 `{moduleCode,nameEn,nameVi}`；`layout`（`GRID_2` / `LIST`）在 `sys_dict.remark` |
 
 ### D.3 仅体量差异（不影响判定，仅供核对）
 

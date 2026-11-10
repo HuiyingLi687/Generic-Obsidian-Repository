@@ -35,7 +35,7 @@
 | 10 | 翻译作答复用写作链路 | 6 个写链路端点薄封装委托 `Writing*Service`，唯一侵入点是 `validatePart` 放宽 `contentType` 白名单 |
 | 11 | 环境基线 | **以 TEST 为准**。生产差异只在 §9.1 登记，不改字段契约、不写进接口行为 |
 | 12 | 等级入参命名 | 请求侧一律用 **`level`**（query / path / body），弃用 `levelCode`；**响应字段仍叫 `levelCode`**，不改前端已有解析 |
-| 13 | 模块卡数据源 | `/hsk/modules` 的模块卡**取自字典表**（`hsk_practice_module_v2` / `_v3`），不做进程内常量。`layout` 存 `sys_dict.remark`，其余元数据存 `item_properties` JSON；`item_value` 即 `sectionMapping` |
+| 13 | 模块卡数据源 | `/hsk/modules` 的模块卡**取自字典表**（`hsk_practice_module_v2` / `_v3`），不做进程内常量。字段一列一义：`item_text`=中文名、`item_value`=`sectionMapping`、`description`=`moduleCode`、`sort_order`=顺序、`item_properties` 只放 `moduleCode`/`nameEn`/`nameVi` 的 JSON；`layout` 存 `sys_dict.remark`。`icon`/`theme`/`badge`/`entryLevelCode` **不入库、不下发**，前端按 `moduleCode` 内置 |
 
 ---
 
@@ -1878,12 +1878,12 @@ Accept-Language: zh
 | `header` | String | 首页副标题，按 `Accept-Language` 本地化 |
 | `modules[].moduleCode` | String | `LISTENING` / `READING` / `WRITING` / `TRANSLATION` / `SPEAKING` |
 | `modules[].sectionMapping` | String | `SEC_LISTEN` / `SEC_READ` / `SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAK` |
-| `modules[].name` / `nameEn` / `nameVi` | String | 三语模块名 |
-| `modules[].icon` / `theme` | String | 图标名 / 主题色，前端内置映射 |
-| `modules[].badge` | String | `NEW` / `HOT` / `null`。P1 改后台可配 |
+| `modules[].name` / `nameEn` / `nameVi` | String | 三语模块名：`name` ← `item_text`，`nameEn`/`nameVi` ← `item_properties` |
+| `modules[].icon` / `theme` | String | 图标名 / 主题色。**前端按 `moduleCode` 内置，服务端不提供**（`null` 或不出现） |
+| `modules[].badge` | String | `NEW` / `HOT` / `null`。**前端按 `moduleCode` 内置，服务端不提供**；P1 若需运营可配再入字典 |
 | `modules[].available` | Boolean | `false` 时**置灰 + Toast，不隐藏**（保持卡片数稳定） |
 | `modules[].disabledReason` | String | `MODULE_NOT_IN_VERSION` / `NO_CONTENT` / `LOAD_FAILED` |
-| `modules[].entryLevelCode` | String | 非空 → 跳过等级选择页直达卷列表（翻译固定 `HSK7-9`） |
+| `modules[].entryLevelCode` | String | 非空 → 跳过等级选择页直达卷列表（翻译固定 `HSK7-9`）。**前端按 `moduleCode` 内置，服务端不提供** |
 | `modules[].sortOrder` | Integer | 卡片顺序 |
 | `modules[].progress.totalPapers` | Integer | 该模块在**当前版本全部等级**下可练卷数（`enabled_prac=1` 且题量 > 0） |
 | `modules[].progress.completedPapers` | Integer | 已完成卷数。**未登录恒为 0** |
@@ -1898,17 +1898,26 @@ Accept-Language: zh
 | HSK2.0 | `hsk_practice_module_v2` | 4 | `GRID_2` |
 | HSK3.0 | `hsk_practice_module_v3` | 5 | `LIST` |
 
-字段映射：`item_text` = 中文名、`item_value` = `sectionMapping`、`sort_order` = 卡片顺序、`item_properties` = 其余元数据的 JSON。
+字段映射（**一列一义，不再往 JSON 里塞展示资产**）：
+
+| `sys_dict_item` 列 | 对应响应字段 | 说明 |
+|---|---|---|
+| `item_text` | `name` | 中文名（听力 / 阅读 / 写作 / 口语 / 翻译） |
+| `item_value` | `sectionMapping` | `SEC_xxx`，接口拿它查 `practice_module_level_config` 与内容表 |
+| `description` | `moduleCode` | `LISTENING` / `READING` / `WRITING` / `SPEAKING` / `TRANSLATION` |
+| `sort_order` | `sortOrder` | 卡片顺序 |
+| `item_properties` | `nameEn` / `nameVi` | JSON，**只有 `moduleCode` / `nameEn` / `nameVi` 三个键** |
 
 ```json
-// item_properties（省略即 null，接口侧缺键按 null 处理）
-{"moduleCode":"TRANSLATION","nameEn":"Translation","nameVi":"Dịch",
- "icon":"translate","theme":"#8B5CF6","badge":"NEW","entryLevelCode":"HSK7-9"}
+// item_properties 的完整形态，没有别的键
+{"moduleCode":"TRANSLATION","nameEn":"Translation","nameVi":"Dịch"}
 ```
+
+> `icon` / `theme` / `badge` / `entryLevelCode` **不入字典**：前三个是前端资产，按 `moduleCode` 内置映射；`entryLevelCode`（翻译直达 `HSK7-9`）也由前端按 `moduleCode` 判定。将来要改成运营可配，再给字典加列/加键，不在本期。
 
 ```sql
 -- 一次取一个版本的卡片，按 sort_order 排序；status / deleted 都要判
-SELECT i.item_text, i.item_value, i.sort_order, i.item_properties
+SELECT i.item_text, i.item_value, i.description, i.sort_order, i.item_properties
 FROM sys_dict d JOIN sys_dict_item i ON i.dict_id = d.id
 WHERE d.dict_code = ? AND d.deleted = 0 AND d.status = 0
   AND i.deleted = 0 AND i.status = 0
@@ -2174,7 +2183,7 @@ POST /translation/attempts/{attemptId}/submissions
 | E10 | 3.0 卷上架 | 15/15 | **0/15** | 生产 3.0 目录为空（属运营放量，非缺陷） |
 | E11 | `exam_paper.level`（HSK7-9） | `"7"` | `"7-9"` | **代码已兼容**：统一走 `IN ('7','7-9')` 候选集 |
 | E13 | `total_question_count` vs 板块求和 | 46/46 一致 | 5/6（L2 听力 `35` ≠ `40`） | 无（`questionCount` 已改为现算） |
-| E16 | 模块字典 `hsk_practice_module_v2` / `_v3` | 已建 9 项（1007 / 1008） | **0 项** | **生产不补则 `/hsk/modules` 返回空卡片列表**（不报错、首页空白）。🔴 `item_value` 必须填 `sectionMapping` 而非 `moduleCode` |
+| E16 | 模块字典 `hsk_practice_module_v2` / `_v3` | 已建 9 项（1007 / 1008） | **0 项** | **生产不补则 `/hsk/modules` 返回空卡片列表**（不报错、首页空白）。🔴 `item_value` 必须填 `sectionMapping` 而非 `moduleCode`；`description` 才放 `moduleCode` |
 
 > 结论：**接口契约只按 TEST 写**，生产差异不产生第二个分支。唯一进过代码的兼容点是 E11 的等级候选集。
 
@@ -2249,7 +2258,7 @@ ALTER TABLE practice_module_part_config
 | `practice_module_part_config` | ✅ 已建 132 行 + `enabled` 列已加，三语 132/132 填充 |
 | `practice_module_level_config.parts_config` | ✅ 已 drop |
 | `question.layout` | ✅ 非空率 100%，7 个规范值 |
-| **模块字典**（`/hsk/modules` 数据源） | ✅ 已铺 9 项：`hsk_practice_module_v2`（id 1007，4 项）/ `hsk_practice_module_v3`（id 1008，5 项）；`item_value` 全部命中 `practice_module_level_config` |
+| **模块字典**（`/hsk/modules` 数据源） | ✅ 已铺 9 项：`hsk_practice_module_v2`（id 1007，4 项）/ `hsk_practice_module_v3`（id 1008，5 项）；`item_value` 全部命中 `practice_module_level_config`；`description` = `moduleCode`；`item_properties` = `{moduleCode,nameEn,nameVi}` |
 | 代码侧 `enabled_prac` 过滤 | ✅ 已改完并编译通过 |
 | 待补 | `uk_module_part` 唯一键；清 `SEC_SPEAKING` 残留 4 行（§9.1.1） |
 | 生产库 | 差异见 §9.1，**本期不处理** |
