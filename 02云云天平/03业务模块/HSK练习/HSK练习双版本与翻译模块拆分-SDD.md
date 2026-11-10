@@ -147,25 +147,25 @@ speaking_exam_paper（2.0 + 3.0 口语）
 
 #### 3.1.4 业务规则（落进代码的 15 条）
 
-| # | 规则 | 落点 |
-|---|---|---|
-| R1 | `version` 只有两个合法值，缺省 2.0，非法 → 400 | `PracticeVersion.of` |
-| R2 | `HSK7-9` 是一个等级，数值 `7`；禁止裸 `parseInt(levelCode)` | `PracticeLevelCode` |
-| R3 | `exam_paper.level` 两库取值不一致（TEST `"7"` / PROD `"7-9"`），查询必须 `IN (候选集)` | `PracticeLevelCode.dbLevels` |
-| R4 | 翻译仅 3.0；2.0 调 `/translation/**` 返回空数组 / 空对象，**不报 404**（前端据此置灰） | `TranslationCatalogServiceImpl` |
-| R5 | 口语内容统一读 `speaking_exam_paper`（**2.0 与 3.0 都在这里**）；`question` 里的 `SEC_SPEAKING` 5 条为造数残留，不读 | `SpeakingCatalogServiceImpl` |
-| R6 | 目录只下发题数 > 0 的等级 / 卷 / 板块 | 各 Catalog Service |
-| R7 | 板块配置只存一处：名称/题型/顺序/开关只写 `practice_module_part_config`，禁止回写 `structure` / `part_setting` | Code Review 卡点 |
-| R8 | 实际题量必须现算：`standard_question_count` 是标准值，下发前被 `question` 计数覆盖 | 各 Catalog Service |
-| R9 | **代码中不得再出现 `structureId`**：`practice_paper_structure` / `practice_part_setting` 本次直接 drop，无 ID 注册表 | Code Review 卡点 |
-| R10 | 全部作答表只认三元组 `(paper_id, section_mapping, section)`，`structure_id` 列在 P0 全部删除 | 各 Record / Attempt Service |
-| R11 | 卷级上下架只认 `exam_paper.enabled_prac`：`1` = 可练，`0` = 下架。**列表、详情、开始作答三条路径必须都判**，任一处漏判就是下架卷可直达 | 各 Catalog / Record Service |
-| R12 | 卷状态只写一处：`enabled_prac` 在 `exam_paper` 上是整卷级，跨 2~3 个模块同时生效，禁止再引入任何模块级卷状态 | Code Review 卡点 |
-| R12b | **练习侧只读 `enabled_prac`，一律不看 `enabled_exam`**：两张开关正交，运营为考试下架的题不得连带从练习消失（反之亦然）。`enabled_exam` 属考试侧，本模块不读写 | Code Review 卡点 |
-| R13 | 板块开关只影响「新练习下发哪些板块」：不得删题、不得改 `question.deleted`、不得过滤历史 `question_ids` 快照 | Catalog / Record Service |
-| R14 | **`enabled = 0` 不算缺行**：只有「这一行根本不存在」才兜底（`第{section}部分`、视为开放）；`enabled = 0` 是显式关闭，必须不下发。查询不能先过滤 `enabled = 1`，否则被关板块掉进"缺行"档被兜底放出来 | 各 Catalog Service |
-| R14b | 板块开关用 `enabled`（0 关 / 1 开），`deleted` 恢复纯逻辑删除语义。两者都不为 0 之外的值：`enabled` 只由运营改，`deleted` 只在建/删模板行时动 | Code Review 卡点 |
-| R15 | `speaking_attempt.paper_id` 指向 `speaking_exam_paper.id`（与 `exam_paper.id` 零交集），其三元组语义为「口语卷 × `SEC_SPEAK` × 部分号」 | `Speaking*Service` |
+| #    | 规则                                                                                                                              | 落点                              |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| R1   | `version` 只有两个合法值，缺省 2.0，非法 → 400                                                                                               | `PracticeVersion.of`            |
+| R2   | `HSK7-9` 是一个等级，数值 `7`；禁止裸 `parseInt(levelCode)`                                                                                 | `PracticeLevelCode`             |
+| R3   | `exam_paper.level` 两库取值不一致（TEST `"7"` / PROD `"7-9"`,上生产记得改为7），查询必须 `IN (候选集)`                                                  | `PracticeLevelCode.dbLevels`    |
+| R4   | 翻译仅 3.0；2.0 调 `/translation/**` 返回空数组 / 空对象，前端无这个模块展示                                                                           | `TranslationCatalogServiceImpl` |
+| R5   | 口语内容统一读 `speaking_exam_paper`（**2.0 与 3.0 都在这里**）；`question` 里的 `SEC_SPEAKING` 5 条为HSK7-9级试卷的口语题目，两边都要读                         | `SpeakingCatalogServiceImpl`    |
+| R6   | 目录根据卷、板块、题目开启开关下发                                                                                                               | 各 Catalog Service               |
+| R7   | 板块配置只存一处：名称/题型/顺序/开关只写 `practice_module_part_config`                                                                            | Code Review 卡点                  |
+| R8   | 实际题量必须现算：`standard_question_count` 是标准值，下发前被 `question` 计数覆盖                                                                    | 各 Catalog Service               |
+| R9   | **代码中不得再出现 `structureId`**：`practice_paper_structure` / `practice_part_setting` 本次直接 drop，无 ID 注册表                              | Code Review 卡点                  |
+| R10  | 全部作答表只认三元组 `(paper_id, section_mapping, section)`，`structure_id` 列在 P0 全部删除                                                     | 各 Record / Attempt Service      |
+| R11  | 卷级上下架只认 `exam_paper.enabled_prac`：`1` = 可练，`0` = 下架。**列表、详情、开始作答三条路径必须都判**，任一处漏判就是下架卷可直达                                        | 各 Catalog / Record Service      |
+| R12  | 卷状态只写一处：`enabled_prac` 在 `exam_paper` 上是整卷级，跨 2~3 个模块同时生效，禁止再引入任何模块级卷状态                                                         | Code Review 卡点                  |
+| R12b | **练习侧只读 `enabled_prac`，一律不看 `enabled_exam`**：两张开关正交，运营为考试下架的题不得连带从练习消失（反之亦然）。`enabled_exam` 属考试侧，本模块不读写                         | Code Review 卡点                  |
+| R13  | 板块开关只影响「新练习下发哪些板块」：不得删题、不得改 `question.deleted`、不得过滤历史 `question_ids` 快照                                                         | Catalog / Record Service        |
+| R14  | **`enabled = 0` 不算缺行**：只有「这一行根本不存在」才兜底（`第{section}部分`、视为开放）；`enabled = 0` 是显式关闭，必须不下发。查询不能先过滤 `enabled = 1`，否则被关板块掉进"缺行"档被兜底放出来 | 各 Catalog Service               |
+| R14b | 板块开关用 `enabled`（0 关 / 1 开），`deleted` 恢复纯逻辑删除语义。两者都不为 0 之外的值：`enabled` 只由运营改，`deleted` 只在建/删模板行时动                                | Code Review 卡点                  |
+| R15  | `speaking_attempt.paper_id` 指向 `speaking_exam_paper.id`（与 `exam_paper.id` 零交集），其三元组语义为「口语卷 × `SEC_SPEAK` × 部分号」                 | `Speaking*Service`              |
 
 ---
 
