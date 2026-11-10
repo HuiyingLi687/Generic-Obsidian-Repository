@@ -3,11 +3,12 @@
 > 定位：本文档回答【怎么做】——HSK 练习如何同时支撑 2.0 / 3.0 两套大纲，以及「翻译」如何从写作模块里拆成独立入口。
 > 服务：`practice-service`（网关前缀 `/api/practice`）
 > 依据：2026-11-10 双版本首页 UI 截图（2.0 四宫格 / 3.0 五行列表）+ 代码基线 + TEST / PROD 实测
-> 文档版本：v1.2｜更新日期：2026-11-10｜状态：**待评审**
+> 文档版本：v1.3｜更新日期：2026-11-10｜状态：**待评审**
 > 前置：[HSK练习模块首页-设计方案](HSK练习模块首页-设计方案.md)、[HSK翻译练习-独立模块接口方案](HSK翻译练习-独立模块接口方案.md)、[HSK练习-共用题库方案](HSK练习-共用题库方案.md)
 > 🔴 **本文纠正前置文档的三处过时结论**，见 §9 ADR-06
 > 🔴 **v1.2 口径（架构简化）**：**`practice_paper_structure` 与 `practice_part_setting` 退场**，板块配置只保留 `practice_module_level_config` 一张表（用其 `parts_config` JSON）。内容侧不新建任何表，翻译 4 题、口语 3.0 的 5 题都已在 `question` 里，只是 `section_mapping` 归属不同。
-> ⚠️ **唯一的例外**：`structure_id` 被 7 张作答表引用，历史 ID 无法可靠重算（实测穷举只命中 20.6%），所以 `practice_paper_structure` 保留为 **5 列 ID 注册表**（不承载展示信息），详见 §3.2.7。
+> ⚠️ **`structure_id` 分层退出**：`practice_record`（963/1364 行）与 `practice_report` 本次**直接删列**，改用 `(paper_id, section_mapping, section)` 三元组；`writing_attempt` / `speaking_attempt` / `option_pool` 因缺部分号，P2 再改。详见 §3.2.7 / §3.2.8。
+> 🔴 **v1.3 新增**：`practice_record` 删 `structure_id` + `practice_name`，**启用已存在但空着的 `question_ids` 作题目快照**；接口从 `structureId` 改为 `paperId + section`（ADR-11）。
 
 ---
 
@@ -95,7 +96,7 @@ practice-service
 
 **核心设计思路（四条）**
 
-1. **版本上下文只作用在目录层。** 作答链路拿的是 `paperId` / `structureId`，版本已被这两者唯一确定，因此 `attempt/answer/submit/report` **一律不加 `version` 参数**。改动面从 40+ 端点收敛到 16 个目录端点。
+1. **版本上下文只作用在目录层。** 作答链路拿的是 `(paperId, section)`（听力/阅读，v1.3 起）或 `paperId + structureId`（写作/口语，P2 统一），版本已被这两者唯一确定，因此 `attempt/answer/submit/report` **一律不加 `version` 参数**。改动面从 40+ 端点收敛到 16 个目录端点。
 2. **版本与等级编码收口成两个值对象。** 现状是 4 个模块各写一遍 `"HSK" + level` 和 `Integer.parseInt(code.replace("HSK",""))`，`HSK7-9` 必然踩坑（[附录 B](#附录-b存量缺陷清单)）。新增 `PracticeVersion`、`PracticeLevelCode`，全局只有它们能解析和格式化等级。
 3. **翻译走「目录独立 + 作答复用」。** 目录接口 `/translation/**` 独立；写链路薄封装后委托既有 `Writing*Service`，不复制表、不复制评分。
 4. **目录只下发「有题的节点」。** 沿用现有 `.filter(total > 0)` 语义并上提到 SQL：`question` 里没有对应 `section_mapping` 的等级/卷/板块不出现在响应中，空卷空板块在服务端消失。
@@ -190,15 +191,19 @@ practice-service
               GET /{module}/papers/{id}/parts（两处查询 + 内存拼装）
                                 │
                                 ▼
-              作答层：structureId = 计算值（§3.2.7）
+     作答层：practice_record 用 (paperId, section_mapping, section) 定位，无 structure_id
 ```
 
 > 🔴 **一句话记住**：`exam_paper.version` 管版本、`question.section_mapping` 管模块归属、`practice_module_level_config.parts_config` 管板块模板——**这三样就够了，中间那两张行式表是历史包袱**。
 > 翻译不需要新表（4 题已在 `question`）；口语 3.0 也不需要（5 题已在 `question`）。
 
-> ⚠️ **但"删表"不等于"删 ID"**：4 张作答表（`writing_attempt` / `speaking_attempt` / `practice_report` / `practice_question_option_pool`）只有 `paper_id + structure_id`，**没有 `section_mapping`**（实测 `practice_record` 是唯一有的）。所以 `structure_id` 必须继续存在且稳定，详见 §3.2.7。
+> ⚠️ **`structure_id` 分层退出，不必一刀切**：
+> - `practice_record`（963 / 1364 行）**自带完整三元组** `(paper_id, section_mapping, section)` → 本次**直接删 `structure_id`**（§3.2.8）；
+> - `practice_report` 有 `practice_record_id` 可回溯 → 同步删；
+> - `writing_attempt`（217）/ `speaking_attempt`（283）/ `option_pool`（2505）只存了 `paper_id + structure_id`，**没有部分号** → 需先加两列才能删，排在 P2；
+> - 只有这最后 3 张表还在用 `structure_id` 时，`practice_paper_structure` 才需要留作 ID 注册表。详见 §3.2.7。
 
-#### 3\.1\.3 业务规则（必须落进代码的 9 条）
+#### 3\.1\.3 业务规则（必须落进代码的 10 条）
 
 | # | 规则 | 落点 |
 |---|---|---|
@@ -211,10 +216,11 @@ practice-service
 | R7 | **板块配置只存一处**：板块名称/题型/顺序只允许写在 `practice_module_level_config.parts_config`，禁止再往 `structure` / `part_setting` 写展示字段 | Code Review 卡点 |
 | R8 | **实际题量必须现算**：`parts_config.questionCount` 是标准题量，接口下发前必须被 `question` 的实际计数覆盖 | 各 Catalog Service |
 | R9 | **禁止 join 那两张退场表取展示字段**：新代码只允许从 `parts_config` + `question` 装配；`practice_paper_structure` 仅可用于 `structureId` 映射 | Code Review 卡点 |
+| R10 | **`practice_record` 只认三元组**：`(paper_id, section_mapping, section)` 是定位键，`section` 存模块内部分号（`practice_part_setting.section_code`），**不得再写 `structure_id`** | 各 Record Service |
 
 ### 3\.2 数据库设计
 
-#### 3\.2\.1 表的取舍总表（两退场 / 一留作配置）
+#### 3\.2\.1 表的取舍总表（两退场 / 一留作配置 / 一瘦身）
 
 | 表 | TEST 行数 | 处理 | 理由 |
 |---|---|---|---|
@@ -227,6 +233,10 @@ practice-service
 | `hsk_level_config` | 13 | ✅ 保留 | 等级三语名称，与本议题无关 |
 | **`practice_paper_structure`** | **1201** | ⚠️ **退场 → 瘦身为 ID 注册表** | 展示字段 100% 冗余；但 `id` 被 7 张作答表引用，不能直接drop（§3.2.7） |
 | **`practice_part_setting`** | **1201** | ⚠️ **退场 → 停写** | 与 `structure` 是 **1:1**（1201:1201），且一 section 一题型，信息可并入 `parts_config` 元素 |
+| **`practice_record`** | **963** | ⚠️ **瘦身：删 2 列、启用 1 列** | 删 `structure_id`（三元组已完整）+ `practice_name`（脏快照）；启用 `question_ids` 存题目快照（§3.2.8） |
+| `practice_report` | 477 | ⚠️ 瘦身：删 `structure_id` | 有 `practice_record_id` 可回溯，冗余 |
+| `writing_attempt` / `speaking_attempt` | 217 / 283 | ⏳ P2 才动 | 只有 `paper_id + structure_id`，需先补 `section_mapping + section` |
+| `practice_question_option_pool` | 2505 | ⏳ P2 才动 | 只有 `structure_id + question_id`，是板块题目池 |
 
 **核心事实：`parts_config` 一个 JSON 数组元素，正好等于 `structure` 一行 + `part_setting` 一行。**
 
@@ -394,19 +404,22 @@ collation 问题（原 D10）只在新老代码仍 join `practice_paper_structur
 ]
 ```
 
-#### 3\.2\.7 `structure_id` 归属（这是唯一不能"顺手删"的东西）
+#### 3\.2\.7 `structure_id` 分层退出（不再"必须保留整表"）
 
-**7 张表引用 `structure_id`**，其中 **6 张没有 `section_mapping`**：
+**7 张表引用 `structure_id`，但退出难度完全不同**：
 
-| 表 | `paper_id` | `section_mapping` | `structure_id` | 能否脱离 ID 定位 |
-|---|---|---|---|---|
-| `practice_record` | 有 | **有** | 有 | ✅ 可用 `(paper_id, section_mapping, section)` |
-| `practice_report` | 有 | ✗ | 有 | ❌ |
-| `practice_question_option_pool` | ✗ | ✗ | 有 | ❌ |
-| `writing_attempt` / `writing_report` | 有 | ✗ | 有 | ❌ |
-| `speaking_attempt` / `speaking_report` | 有 | ✗ | 有 | ❌ |
+| 表 | 行数 | `paper_id` | `section_mapping` | `section` | 能否立即脱离 | 处置 |
+|---|---|---|---|---|---|---|
+| **`practice_record`** | 963 / 1364 | ✅ | ✅ | ✅ **1–4** | ✅ **能** | **P0 删 `structure_id`** |
+| `practice_report` | 477 | ✅ | ✗ | ✗ | ✅ 能（`practice_record_id` 回溯） | **P0 删** |
+| `writing_attempt` | 217 | ✅ | ✗ | ✗ | ❌ 缺部分号 | P2 加两列 |
+| `speaking_attempt` | 283 | ✅ | ✗ | ✗ | ❌ 缺部分号 | P2 加两列 |
+| `practice_question_option_pool` | 2505 | ✗ | ✗ | ✗ | ❌ 缺部分号 | P2 改为按题目关联 |
+| `writing_report` / `speaking_report` | 151 / 183 | ✅ | ✗ | ✗ | ✅ 能（`attempt_id` 回溯） | P2 |
 
-**历史 ID 无法可靠重算**（实测）：
+> 🔑 **`practice_record` 是唯一"已经什么都有"的表**：`paper_id` + `section_mapping` + `section` 三列齐备，`structure_id` 从第一天起就是冗余。它当初存在只是因为这个组合**没法做唯一键**（实测 TEST 有 131 组、PROD 有 106 组重复），于是拿来当查询键用——但重复组本身不影响「取最新一条」的语义。
+
+**历史 ID 无法可靠重算**（这一点没变，但它只影响剩下 3 张表）：
 
 | ID 号段 | 行数 | 性质 |
 |---|---|---|
@@ -414,22 +427,103 @@ collation 问题（原 D10）只在新老代码仍 join `practice_paper_structur
 | `70…`（7e18 稳定） | 608 | 由 `stableId('structure', ...)` 算出 |
 | `80…`（8e18） | 114 | 口语分支 |
 
-稳定公式确实存在：`7e18 + sha256("structure|<paperId>|<module>|<section>")[:12] % 1e18`
-但**全量穷举 5 种分段 × 6 种命名空间 × 8 种 section 表示，只命中 248 / 1201（20.6%）** —— 说明历史批次至少用过 3 套口径，且雪花 ID 与任何公式无关。
+稳定公式存在：`7e18 + sha256("structure|<paperId>|<module>|<section>")[:12] % 1e18`，
+但**全量穷举 240 种组合只命中 248 / 1201（20.6%）** → 不能靠重算替代表。
 
-| 方案 | 做法 | 代价 | 建议 |
-|---|---|---|---|
-| **A. 保留极薄 ID 注册表（采纳）** | `practice_paper_structure` 只留 5 列：`id, paper_id, content_type, sort_order, version`；1201 行原样不动；**停写展示字段** | 零数据迁移、历史 ID 全稳；表仍在（但没信息量） | ✅ **P0** |
-| B. 4 张作答表各加 `section_mapping + section` 并回填 | 真正 drop 两张表 | 7 张表 DDL + 回填 + 全部查询改写 + 回归 | P2 再议 |
-| C. 用公式重算、不保留表 | 零 DDL | 同一板块新老两个 ID，续答/报告/错题本全部断链 | ❌ 不可行 |
+**因此 `practice_paper_structure` 的寿命与最后 3 张表绑定，不再与全部 7 张绑定**：
 
-**A 方案下这张表的新定位**：它不再是"板块配置"，而是**「`(paper_id, content_type, section)` → `structure_id` 的稳定映射」**。名字建议后续改为 `practice_structure_id_registry`（P2），语义就清楚了。
+| 阶段 | 谁还在用 `structure_id` | `practice_paper_structure` 的命运 |
+|---|---|---|
+| **P0（本次）** | `writing_attempt` / `speaking_attempt` / `option_pool` | 保留为 **5 列 ID 注册表**（`id/paper_id/content_type/sort_order/version`），展示字段停写 |
+| P2 | 无 | **可彻底 drop**，ADR-10 降级为历史记录 |
 
 **P0 的写入约定**：
-1. 新卷入库时**仍写**这 5 列（用 `stableId('structure', paperId, content_type, section)`）；
-2. `section_name` / `question_count` / `duration_minutes` / `full_score` / `description` **一律不再写**，由 `parts_config` + `question` 现算；
+1. 新卷入库时**仍写**这 5 列（`stableId('structure', paperId, content_type, section)`）；
+2. `section_name` / `question_count` / `duration_minutes` / `full_score` / `description` **一律不写**，由 `parts_config` + `question` 现算；
 3. `practice_part_setting` **完全停写**；
-4. 任何新查询**不得**再 join 这两张表取展示字段（Code Review 卡点，规则 R9）。
+4. 新查询**不得** join 这两张表取展示字段（R9）；
+5. **`practice_record` 不得再写 `structure_id`**（R10）。
+
+#### 3\.2\.8 `practice_record` 改造（删 2 列 / 启用 1 列）
+
+##### ① 现状：28 列里有 2 列是废的，1 列是空的
+
+| 列 | 现状 | 判定 |
+|---|---|---|
+| `structure_id` bigint NOT NULL | 963 行全有值，但**实测存在脏值**：记录 `2082292518405345282` 的 `structure_id` 直接等于 `paper_id` | ❌ **删** |
+| `practice_name` varchar(255) NOT NULL | 取值是 `第1部分`(309) / `第2部分`(169) / `第一部分`(103) / `第二部分`(75)… **中文数字与阿拉伯数字混用**，同语义两种写法 | ❌ **删** |
+| `section` varchar(50) NULL | 全部非空，来自 `practice_part_setting.section_code`（代码 L90 `.section(partSetting(...).getSectionCode())`），取值 `1/2/3/4`，与 `question.section` **同口径** | ✅ **升为定位键** |
+| `section_mapping` varchar(50) NOT NULL | 全部非空，`SEC_LISTEN` / `SEC_READ` / `SEC_CSCA` | ✅ 保留 |
+| `question_ids` json NULL | 列**已存在**，CSCA 已用（56 / 21 条），**HSK 全为 NULL** | ✅ **启用** |
+
+**`practice_name` 为什么该删**：它就是 `practice_paper_structure.section_name` 的复制，而后者已被 `parts_config.partName` 取代（§3.2.6）。留着它等于保留一份**格式不统一的影子数据**——`第1部分` 和 `第一部分` 指的完全是同一个板块。
+
+**`question_ids` 为什么该启用**：现在 `total_questions = questions.size()`（创建时算的），题库一旦补题/软删题，历史记录就对不上。实测抽 6 条 HSK 记录 `total_questions` 与题库现算**恰好一致**（5 = 5），说明目前是"整板块固定题、不抽题"；但 HSK3.0 导入期题目必变，且 CSCA 已走抽题模式——存快照是唯一稳的做法。
+
+##### ② 目标结构（删 2 列，其余不动）
+
+```sql
+-- 删除（P0，需先备份）
+-- ALTER TABLE practice_record DROP COLUMN structure_id, DROP COLUMN practice_name;
+
+-- 索引必须同步换列（否则删除列后索引自动消失、查询全表扫）
+-- DROP INDEX idx_record_active ON practice_record;
+-- CREATE INDEX idx_record_active ON practice_record (user_id, paper_id, section_mapping, section, status);
+
+-- question_ids 从"仅 CSCA"扩展为"全模块必填"，语义明确
+-- ALTER TABLE practice_record MODIFY COLUMN question_ids json NULL
+--   COMMENT '本次练习题集快照（自然序 question.id 数组；创建时写入，此后不改）';
+```
+
+> ⚠️ **索引是这次改造最大的隐藏坑**：`idx_record_active (user_id, paper_id, structure_id, status)` 一旦 `DROP COLUMN structure_id`，MySQL 会**自动把该列从索引里去掉**，索引退化为 `(user_id, paper_id, status)`，而新查询按 `(user_id, paper_id, section_mapping, section, status)` 过滤 → **全表扫**。必须显式重建。
+
+##### ③ 查询改写（7 处 Mapper 全量）
+
+| Mapper 方法 | 旧条件 | 新条件 |
+|---|---|---|
+| `selectInProgress` | `paper_id + structure_id` | `paper_id + section_mapping + section` |
+| `selectInProgressForUpdate` | 同上 | 同上 |
+| `selectLatestSubmitted` | `structure_id` | `paper_id + section_mapping + section` |
+| `selectLatestReady` | `structure_id` | 同上 |
+| `selectByAllStatus` | `structure_id` | 同上 |
+| `selectInProgressByStructures` | `structure_id IN (...)` | `(paper_id, section_mapping, section) IN (...)` 或按 `IN` 拆两次 |
+| `selectLatestReadyByStructures` | 同上 | 同上 |
+
+> 批量方法（`ByStructures`）的两个调用方是目录页「每板块是否有草稿 / 是否有报告」角标。改成三元组后 SQL 变长，但可以**一次查全卷再内存分组**（`paper_id IN (...)` + `section_mapping IN (...)`），反而比 `IN (1201 个 structureId)` 更省。
+
+##### ④ 接口契约变更（这就是"不要接口 id"的落地）
+
+| 旧 | 新 | 说明 |
+|---|---|---|
+| `POST /listening/records/start` `{paperId, structureId, restart}` | `{paperId, section, restart}` | `section` 是部分号 `1–4`；`sectionMapping` 由路径中的模块隐含 |
+| `GET /listening/parts/{structureId}/reports/latest` | `GET /listening/papers/{paperId}/parts/{section}/reports/latest` | 必须带 `paperId`——不同卷的同 `section` 是不同板块 |
+| `POST /reading/records/start` `{paperId, structureId}` | `{paperId, section}` | 同听力 |
+| `GET /reading/parts/{structureId}/reports/latest` | `GET /reading/papers/{paperId}/parts/{section}/reports/latest` | 同上 |
+
+**前端感知**：原来拿目录接口返回的 `structureId` 直接回传，现在拿同一个响应里的 `partCode`（= `section`）+ 卷 `id` 回传。**目录接口的 `structureId` 字段可以同时保留一个版本做兼容**（标 `deprecated`），但服务端**不再落库**。
+
+##### ⑤ `question_ids` 快照的写入时机与用法
+
+| 时机 | 动作 |
+|---|---|
+| 创建记录（`start`） | 查出该板块全部题目 ID → 排序 → 写 `question_ids`，同时 `total_questions = JSON_LENGTH` |
+| 续答（`resume`） | **不重算**，直接用记录里的 `question_ids` 拉题（保证"上次练到哪"的题序不变） |
+| 提交（`submit`） | 只统计，不改 `question_ids` |
+| 报告生成 | 以 `question_ids` 为准，**不用现查题库** → 题库改版后报告仍可复现 |
+
+> 🎯 这一列的价值不在"省一次查询"，而在**快照隔离**：HSK3.0 导入期题目会增删改，没有它，一个月前练的记录点进去可能少题或多题。
+
+##### ⑥ `writing_attempt` / `speaking_attempt` 为什么这次不动
+
+它们只有 `paper_id + structure_id`，**没有 `section_mapping` 也没有 `section`**：
+
+```
+writing_attempt:  ... paper_id, structure_id, level_code, ...   ← level_code 是等级，不是部分号
+speaking_attempt: ... paper_id, structure_id, level_code, ...
+```
+
+要删 `structure_id`，必须先加 `section_mapping + section` 并**回填 217 + 283 条历史数据**（回填值可从 `practice_paper_structure` join 得到，但那张表本身也有 479 条雪花 ID 需核对）。这一步风险与收益不成正比，**放 P2 与 `option_pool` 一起做**。做完后 `practice_paper_structure` 才能真正 drop。
+
 ### 3\.3 接口设计
 
 > 路径均为 **service 内路径**，客户端实际调用需加网关前缀 `/api/practice`。
@@ -885,17 +979,42 @@ structureRegistry(structureId).content_type == "SEC_TRANSLATION"  否则 400 SEC
 
 原 D10 从「P0 阻塞」降为 P1：**因为那张表不再是查询主路径**。
 
-### ADR-10 `structure_id` 保留 5 列 ID 注册表，不追求彻底删表
+### ADR-10 `structure_id` 分层退出，`practice_paper_structure` 的寿命绑定剩余 3 表
 
 | 方案 | 数据迁移 | 历史记录 | 建议 |
 |---|---|---|---|
-| **A. 保留 5 列 ID 注册表（采纳）** | 0 | 全稳 | ✅ P0 |
-| B. 4 张作答表加 `section_mapping + section` 并回填 | 7 表 DDL + 回填 | 需重建关联 | P2 |
-| C. 不保留表，用公式重算 ID | 0 | **断链** | ❌ |
+| **A. 分层退出（采纳，v1.3 修订）** | `practice_record` / `practice_report` 删列（740 行） | 全稳 | ✅ **P0** |
+| B. 全部 7 表一次改完 | 7 表 DDL + 回填 217+283 条 | 需重建关联 | P2 |
+| C. 一张都不改，保留整表 | 0 | 全稳 | ❌ 表白留 1201 行 |
 
-**为什么不能像展示字段那样一删了之**：`structure_id` 是**作答记录的定位键**，7 张表引用它，其中 6 张没有 `section_mapping` 可退。而历史 ID 分布三个号段（479 雪花 / 608 七段哈希 / 114 口语），穷举 240 种组合只能复现 248/1201（20.6%）——**同一板块重算会得到第二个 ID**，续答、报告、错题本全部指向不存在的行。
+**v1.2 的论断"`structure_id` 必须保留"过于保守，v1.3 翻案为分层退出。** 理由：
 
-**这就是"信息可删、ID 不可删"的边界**：`practice_paper_structure` 从「板块配置表」降为「`(paper_id, content_type, section) → structure_id` 映射表」，5 列、1201 行、只增不改。P2 若愿意动 7 张作答表，再改名 `practice_structure_id_registry` 或彻底并入作答表。
+1. **`practice_record` 本来就三重冗余**：`paper_id` + `section_mapping` + `section` 三列全有值，`structure_id` 是第 4 份等价信息；
+2. **它自己的数据已经证明不可靠**：TEST 有一条记录（`2082292518405345282`）的 `structure_id` 直接写成了 `paper_id`——因为查询按三元组过滤，这个错值从未被发现，但也说明 `structure_id` 并没有真正承担"定位"职责；
+3. **"不能做唯一键"不是保留理由**：131 / 106 组重复确实存在，但业务语义始终是「取 `ORDER BY updated_time DESC LIMIT 1`」，从来不需要唯一约束。
+
+**剩下的硬骨头只有 3 张表**：`writing_attempt`(217) / `speaking_attempt`(283) / `option_pool`(2505) 只有 `paper_id + structure_id`，没有部分号。给它们补 `section_mapping + section` 并回填，就能真正 drop 表。这一步放 P2，因为：
+- 回填要从 `practice_paper_structure` join，而该表有 479 条雪花 ID（不可重算）需逐一核对；
+- 收益是"少一张已无信息量的表"，不是功能。
+
+**P0 之后这张表的新定位**：`(paper_id, content_type, section) → structure_id` 的**稳定映射**，5 列、1201 行、只增不改。
+
+### ADR-11 `practice_record` 定位键改用三元组，删除 `practice_name`
+
+| 方案 | 定位键 | 名称来源 | 评价 |
+|---|---|---|---|
+| **A. 三元组 + 现算名称（采纳）** | `(paper_id, section_mapping, section)` | `parts_config.partName` 现算 | 少 2 列、无影子数据、接口不再暴露内部 ID |
+| B. 保留 `structure_id` | `structure_id` | `practice_name` 快照 | 现状：多一份冗余 + 一份格式混乱的快照 |
+| C. 三元组 + 保留 `practice_name` | 三元组 | 快照 | 名称与配置可能长期不一致，反而更糟 |
+
+**`practice_name` 必须删的决定性证据**：它的取值是 `第1部分`(309) / `第2部分`(169) / `第一部分`(103) / `第二部分`(75) —— **同一板块存在中文数字与阿拉伯数字两种写法**，说明它是历史多个批次用不同代码路径写进去的。留着一个格式都不统一的快照，不如不要。
+
+**"接口不要 ID"的收益不只是好看**：
+- 前端不用先查目录拿 `structureId` 再回传，只要有 `paperId + partNo` 就能开练；
+- 服务端不再有"`structureId` 属于哪个模块"的校验需求（`sectionMapping` 由路径隐含），从根上消灭"拿写作的 `structureId` 打翻译接口"这类串号（原 §6 的 `SECTION_MAPPING_MISMATCH` 校验可简化）；
+- 目录接口的 `structureId` 变成纯展示字段（甚至可下线），前后端契约更稳定。
+
+**代价**：`practice_report` 也要删 `structure_id`；`writing_attempt` / `speaking_attempt` 暂不能改（见 ADR-10），所以**同一套接口风格会短期不一致**——听力/阅读用 `section`，写作/口语仍用 `structureId`。P2 统一。
 
 ---
 
@@ -907,6 +1026,7 @@ structureRegistry(structureId).content_type == "SEC_TRANSLATION"  否则 400 SEC
 | **v1.1** | **改为「基于既有 5 张题库表改造」口径**：① §3.1.2 重画为内容层/编排层/作答层三层模型；② §3.2.1 明确五表逐表改造判定（零 DDL）+ `deleted_prac` 与运营上下架的 AND 关系；③ 新增 §3.2.2 三处语义冲突裁定（口语双轨 / 部分号基址 / answer_mode 不可由 layout 推导）；④ §3.2.4 派生口径补上基址映射与一致性校验 SQL；⑤ 新增 §3.2.5 collation 陷阱（D10）、ADR-07/08/09；⑥ D1/D4/D7 由「手工补配置」降级为「跑脚本」；⑦ 新增 B-09/B-10、D9/D10/**D11（PROD 缺 `deleted_prac`）** | | 2026-11-10 |
 
 | **v1.2** | **架构简化：两张行式表退场**。① `practice_paper_structure` + `practice_part_setting`（1201+1201 行）退场，板块配置只保留 `practice_module_level_config.parts_config`（49 行，实测 100% 覆盖 §3.2.6）；② §3.1.2 改为「内容层 / 配置层」两层，编排层消失；③ **基址映射与 D1/D2/D7/D9 四条缺口一并消失**；④ 新增 §3.2.4 读时装配口径（不再派生写库）、§3.2.7 `structure_id` 归属；⑤ 新增 ADR-10（ID 注册表不可删）、重写 ADR-08/09；⑥ 新增缺口 N4/N5（`parts_config` 缺 `typeCode`/`answerMode`）、规则 R7/R8/R9；⑦ 附录 C 重排（先换源后补数据，P0-e 为最大回归点） | | 2026-11-10 |
+| **v1.3** | **`practice_record` 瘦身 + `structure_id` 分层退出**。① §3.2.8 新增：删 `structure_id` + `practice_name`，**启用已存在但空着的 `question_ids` 作题目快照**；② 接口从 `structureId` 改为 `(paperId, section)`，`structureId` 不再落库；③ §3.2.7 重写为分层退出（`practice_record` 963 / `practice_report` 477 先走，`writing_attempt` / `speaking_attempt` / `option_pool` 留 P2）；④ **ADR-10 翻案**（不再"整表必须留"），新增 ADR-11；⑤ 新增规则 R10、阶段 P0-h；⑥ 附录 A 补 `practice_record` 专项实测（含 `practice_name` 数字体系混用、`structure_id` 脏值、`question_ids` 填充率） | | 2026-11-10 |
 
 ---
 
@@ -940,7 +1060,17 @@ structureRegistry(structureId).content_type == "SEC_TRANSLATION"  否则 400 SEC
 | **`parts_config` 是否含 `typeCode` / `answerMode`** | **均不含** ← 🔴 N4 / N5 | 同 |
 | **`structure.id` 号段分布** | `20…` 479（雪花）/ `70…` 608 / `80…` 114 | — |
 | **历史 ID 公式可复现率** | **248 / 1201（20.6%）**，穷举 240 种组合 | — |
-| **引用 `structure_id` 的表** | **7 张**，其中仅 `practice_record` 自带 `section_mapping` | 同 |
+| **引用 `structure_id` 的表** | **7 张**，其中仅 `practice_record` 自带完整三元组 | 同 |
+| **`practice_record` 行数** | **963** | **1364** |
+| **`practice_record` 的 `section` / `section_mapping`** | **0 条为空**（全为模块内部分号 1–4） | **0 条为空** |
+| **`practice_record.question_ids`** | **56 条非空**（全是 CSCA）/ **907 条空** | **21 条非空** / **1343 条空** |
+| **`practice_record.practice_name` 格式** | `第1部分`309 + `第2部分`169 + `第一部分`103 + `第二部分`75… **两种数字体系混用** | 同 |
+| **`practice_record.structure_id` 脏值** | **至少 1 条**（`2082292518405345282` 的值 = `paper_id`） | — |
+| **同 `(user,paper,module,section)` 重复组** | **131 组**（不能做唯一键，但业务本就取最新） | **106 组** |
+| **`practice_record` 索引** | 仅 `idx_record_active (user_id,paper_id,structure_id,status)` | 同 |
+| **`practice_report`** | 477 行，有 `practice_record_id`，`structure_id` 冗余 | — |
+| **`writing_attempt` / `speaking_attempt`** | 217 / 283 行，**只有 `paper_id + structure_id`，无部分号** | — |
+| **`practice_question_option_pool`** | 2505 行，只有 `structure_id + question_id` | — |
 
 > 复跑脚本：`tmp/_probe_hsk_version.py`（只读，带 `DATABASE()` / `@@hostname` 闸门）。
 
@@ -979,8 +1109,9 @@ structureRegistry(structureId).content_type == "SEC_TRANSLATION"  否则 400 SEC
 | **P0-e** | **重写 `PracticeCatalogBatchLoader`**：从「查 structure + part_setting」改为「读 `parts_config` + 算题量」 | P0-c2 | 2.0 四个模块目录与现网**逐字段一致**；结构表停写 |
 | **P0-f** | 翻译目录 4 + 写链路 6 + `validatePart` 放宽 | P0-e（目录装配已换源） | 翻译笔译/口译都可练到交卷；写作 `structureId` 打翻译 → 400 |
 | **P0-g** | **数据补全：PROD 补 28 行 `parts_config`（D4）+ level 收敛（D3）+ `deleted_prac` DDL（D11）** | **D11 的 DDL 最先**；五闸门 + DRY-RUN + 备份 | PROD 切 3.0 五卡有数据 |
+| **P0-h** | **`practice_record` 瘦身**：删 `structure_id` + `practice_name`；重建 `idx_record_active` 为 `(user_id, paper_id, section_mapping, section, status)`；7 处 Mapper 改三元组；`question_ids` 全模块启用；接口 `structureId` → `(paperId, section)` | P0-e（目录已换源，前端已能拿 `partCode`） | 2.0 续答/报告/角标全部命中；`EXPLAIN` 走新索引；HSK 新记录 `question_ids` 非空 |
 | P1 | 偏好表加 `version`；ID 改 String；`dataVersion` ETag；角标后台可配；补 `TRANSLATION_WRITTEN` 策略；**D10 collation 对齐**；B-09 修正；`parts_config` 补 N6（板块级 enabled/时长/满分/提示语） | P0 上线观察 | — |
-| P2 | 彻底删两张表（ADR-10 方案 B：作答表加 `section_mapping + section` 并回填）；口译 ASR + 自动评分 | `ai-service` 接入 | — |
+| P2 | **彻底删 `practice_paper_structure`**：先给 `writing_attempt`(217) / `speaking_attempt`(283) / `option_pool`(2505) 加 `section_mapping + section` 并回填，再 drop；口译 ASR + 自动评分 | P0-h 稳定运行 + 回填核对完 479 条雪花 ID | — |
 
 > 🔴 **最大的风险点是 P0-e**：它是唯一会改变 2.0 现网行为的改造（目录数据源换源）。
 > 验收方法：同一批 16 个请求（4 模块 × versions × levels），新旧接口响应 **JSON 逐字段 diff 必须为空**。建议先把旧实现的结果快照存盘再对比。
