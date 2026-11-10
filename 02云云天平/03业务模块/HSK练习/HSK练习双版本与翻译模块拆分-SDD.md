@@ -411,7 +411,18 @@ ALTER TABLE practice_record MODIFY COLUMN question_ids json NULL
 
 于是这张表对真实卷只剩下一个信息：**这一行存不存在**。而"存在 = 上架"这个语义，正是 `exam_paper.deleted_prac` 的语义（列注释即「练习是否使用」）。
 
-**卷序也不是独有信息**：`sort_order` 在 TEST 7 个等级、PROD 6 个等级上都与 `id` 升序**完全一致**（逐等级比对，0 处不同），属纯冗余。
+**卷序也不是独有信息**：`sort_order` 在 TEST 13 个「版本×等级」组、PROD 6 个组上都与 `id` 升序**完全一致**（逐组比对，0 处不同），属纯冗余。
+
+**顺带纠正一处旧判断**：过去认为「PROD 每级 20 张卷只上架 10 张，是运营刻意控量」。实测不成立——那 10 张是 `exam_paper.deleted = 1`（软删），本来就被 `deleted=0` 挡在外面，与 `practice_paper_setting` 无关。真正"有卷但无 setting 行"的**活卷只有 16 张**：
+
+| 范围 | 活卷（`deleted=0`） | 有 setting 行 | 无 setting 行 |
+|---|---|---|---|
+| TEST 2.0 + 3.0 | 136 | 136 | **0** |
+| PROD 2.0 | 61 | 60 | **1**（L1） |
+| PROD 3.0 | 15 | 0 | **15**（整版未放开） |
+| PROD 另计 `deleted=1` 的卷 | 61 张（被 `deleted` 挡住，与本表无关） | 0 | — |
+
+也就是说这张表在现网实际只承载了「2.0 L1 的 1 张 + 3.0 的 15 张未上架」这一个信息。
 
 **收益**：库存表少一张；「缺行 = 下架」这个隐式、不可查询的语义消失，改为显式列值，运营能直接 `WHERE deleted_prac = 1` 查出现在下架了哪些卷，也能审计。
 
@@ -420,18 +431,19 @@ ALTER TABLE practice_record MODIFY COLUMN question_ids json NULL
 ##### 迁移口径（有一个必须避开的陷阱）
 
 ```sql
--- PROD 当前没有这一列（D11）；加列的默认值会把 77 张下架卷全部放出来
+-- PROD 当前没有这一列（D11）；加列的 DEFAULT 0 会把 16 张未上架卷全部放出来
 ALTER TABLE exam_paper ADD COLUMN deleted_prac int NOT NULL DEFAULT '0' COMMENT '练习是否使用：0使用，非0下架';
 
--- 必须在同一批次内，把「当前无 setting 行」的卷标为下架，否则目录从 60 卷暴涨到 137 卷
+-- 必须在同一批次内，把「当前无 setting 行」的卷标为下架，否则 PROD 目录从 60 卷涨到 76 卷
+-- 注意 deleted = 0：那 61 张软删卷已被 deleted 挡住，不要再标
 UPDATE exam_paper p
 SET p.deleted_prac = 1
 WHERE p.exam_type = 1 AND p.deleted = 0
   AND NOT EXISTS (SELECT 1 FROM practice_paper_setting s WHERE s.paper_id = p.id);
 ```
 
-- TEST 136 张卷全部有 setting 行 → 迁移后 `deleted_prac` 全为 0，**上架卷数不变**。
-- PROD 137 张 `exam_type=1` 卷里 60 张有行、77 张缺行 → 迁移后 60 张可练，与现网一致（2.0 每级 10 张、3.0 全 0）。
+- TEST 136 张活卷全部有 setting 行 → 迁移后 `deleted_prac` 全为 0，**上架卷数不变**。
+- PROD 76 张活卷里 60 张有行、16 张缺行 → 迁移后 60 张可练，与现网一致（2.0 每级 10 张、3.0 全 0）。3.0 正式放开时把那 15 张改回 `0`。
 - 孤儿行 69（TEST）/ 56（PROD）随表退场自然消失，无需单独清理（原 D12 关闭）。
 
 ##### 代码改动点（5 处）
@@ -789,7 +801,7 @@ PROD 直接 `UPDATE exam_paper.level` 会动题库表，`exam-service` 读同一
 
 两个候选位置，只有一个是对的：
 
-**❌ 不能并入 `practice_module_level_config`** —— 粒度 1:N 反向。PROD 的 HSK2.0 每级 20~21 张卷只上架 10 张（6 级整齐各 10，刻意控量），`enabled` 是 `tinyint`，没有取值能表示"一半开"；且一张卷横跨 2~3 个模块（TEST 43 张 2 模块、92 张 3 模块），写进模块级配置要写多份，必然分叉。TEST 每级全上架，只看 TEST 会误判。
+**❌ 不能并入 `practice_module_level_config`** —— 粒度 1:N 反向。一行配置 = 一个「版本 × 等级 × 模块」，它下面挂 1~21 张卷（TEST 2.0 每级 20~21 张、3.0 每级 1~3 张），`enabled` 是 `tinyint`，只能表达"整级整模块开关"，管不到其中某一张卷；且一张卷横跨 2~3 个模块（TEST 43 张 2 模块、92 张 3 模块、1 张 5 模块），下架是整卷行为，写进模块级配置要写 2~3 份，必然分叉。
 
 **✅ 并回 `exam_paper` 是对的** —— `paper_id` 与 `exam_paper.id` 严格 1:1，粒度天然匹配；`deleted_prac` 本来就是练习侧专用列（注释「练习是否使用」），不是为本次改造新塞的字段，不存在"污染考试侧"的问题（CSCA 的 `exam_type=2` 卷同样带这一列且全为 0）。
 
@@ -815,7 +827,7 @@ PROD 直接 `UPDATE exam_paper.level` 会动题库表，`exam-service` 读同一
 | **P0-d** | 聚合接口 `GET /hsk/modules` | P0-c | 2.0 四卡 / 3.0 五卡，布局角标正确 |
 | **P0-e** | **重写 `PracticeCatalogBatchLoader`**：从「查 structure + part_setting」改为「读板块配置 + 算题量」 | P0-c2 | 2.0 四模块目录与现网**逐字段一致**；结构表停写 |
 | **P0-f** | 翻译目录 4 + 写链路 6 + `validatePart` 放宽 | P0-e | 笔译/口译都能练到交卷；写作 `structureId` 打翻译 → 400 |
-| **P0-g** | **PROD 数据补全**：`deleted_prac` DDL **+ 把 77 张无 setting 行的卷标 1**（同一批次，见 §3.2.7 陷阱） → 28 行模块配置 → 15 行板块配置 → `layout` 回填 → level 收敛。3.0 正式放开时再把该版本 15 张卷改回 `deleted_prac = 0` | DDL 最先；五闸门 + DRY-RUN + 备份 | 目录卷数不变（2.0 每级 10 张、3.0 全 0）；3.0 放开后五卡有数据；`layout` 非空率 100%；板块配置 21/21 |
+| **P0-g** | **PROD 数据补全**：`deleted_prac` DDL **+ 把 16 张无 setting 行的活卷标 1**（同一批次，见 §3.2.7 陷阱） → 28 行模块配置 → 15 行板块配置 → `layout` 回填 → level 收敛。3.0 正式放开时再把该版本 15 张卷改回 `deleted_prac = 0` | DDL 最先；五闸门 + DRY-RUN + 备份 | 目录卷数不变（2.0 每级 10 张、3.0 全 0）；3.0 放开后五卡有数据；`layout` 非空率 100%；板块配置 21/21 |
 | **P0-h** | `practice_record` 瘦身：删两列、重建索引、7 处 Mapper 改三元组、接口改 `(paperId, section)` | P0-e | 抽 100 条历史记录新旧路径取题 ID 一致；`EXPLAIN` 走新索引；新记录 `question_ids` 非空且长度 = `total_questions` |
 | **P0-i** | **`practice_paper_setting` 退场**：删 `PracticeCatalogBatchLoader` 里的 setting 查询；`ReadingRecordServiceImpl` / `WritingAttemptServiceImpl` 的准入改判 `deleted_prac`；3 处 `getSortOrder()` 排序改 `id`；`SharedPaperEligibility` 补判 `deleted_prac`（B-17）；最后 `DROP TABLE practice_paper_setting` | P0-g 数据已铺好 | 4 模块目录与现网逐字段一致；下架卷在列表/详情/作答三处均不可达；表已 drop |
 | **P0-j** | 删列收尾：`DROP COLUMN parts_config` | P0-e/g 稳定运行 ≥ 1 版本，双写比对连续一致 | 无代码/脚本读取该列 |
@@ -862,7 +874,7 @@ PROD 直接 `UPDATE exam_paper.level` 会动题库表，`exam-service` 读同一
 |---|---|---|---|---|
 | **D3** | `exam_paper.level` 的 7-9 取值不一致 | `"7"` | `"7-9"` | 代码用候选集 `IN ('7','7-9')`（R3） |
 | **D4** | 3.0 的模块配置行 | 28 行 | **0 行** | 补 28 行 + 对应板块明细行 |
-| **D11** | `deleted_prac` 列不存在 | 5 表已有 | **5 表全缺** | 上线前 DDL，**最先做**；必须与「77 张无 setting 行卷标 1」同一批次（§3.2.7） |
+| **D11** | `deleted_prac` 列不存在 | 5 表已有 | **5 表全缺** | 上线前 DDL，**最先做**；必须与「16 张无 setting 行活卷标 1」同一批次（§3.2.7） |
 | **D13** | 3.0 卷全部未上架 | 15/15 | **0/15** | 迁移时随缺行规则标 `deleted_prac = 1`；3.0 正式放开的那一版改回 `0`（不是新增 setting 行） |
 | **D14** | `question.layout` 大面积缺失 | 100% 有值 | **47.7% NULL** | 按 TEST 同题回填 |
 | **D15** | 2.0 的板块配置只有听力有值 | 46/49 | **6/21**（阅读 6 / 写作 6 / 口语 3 行全 NULL） | 与 D4 同批，按题库 `question.section` 生成 |
@@ -880,10 +892,11 @@ PROD 直接 `UPDATE exam_paper.level` 会动题库表，`exam-service` 读同一
 
 | 项 | TEST | PROD |
 |---|---|---|
-| `exam_paper`（`exam_type=1`）2.0 / 3.0 | 121 / 15 卷 | 122 / 15 卷 |
-| 实际上架卷数 | 136（每级全上架） | **60**（2.0 每级 10 张、3.0 全 0） |
+| `exam_paper`（`exam_type=1`）2.0 / 3.0 | 121 / 15 卷，全部 `deleted=0` | 122 / 15 卷，其中 **61 张 `deleted=1`**（全是 2.0，每级 10 张） |
+| 活卷数（`deleted=0`） | 136 | **76** |
+| 实际上架卷数（有 setting 行） | 136 | **60**（2.0 的 60 张；3.0 全 0） |
 | `practice_paper_setting` 真实卷上的开关使用 | `enabled=0`/`visible=0`/`deleted=1` **均为 0**（非全开行全是孤儿行） | 同 |
-| `setting.sort_order` == `id` 升序 | 7/7 等级一致 | 6/6 等级一致 |
+| `setting.sort_order` == `id` 升序 | 13/13 组一致 | 6/6 组一致 |
 | `practice_paper_setting` 孤儿行 | 69 / 205（34%） | 56 / 116（48%） |
 | `practice_module_level_config` 2.0 / 3.0 | 21 / 28 行 | 21 / **0** 行 |
 | `parts_config` 非空行 / 元素总数 | 46/49、132 个 | 6/21、20 个 |
