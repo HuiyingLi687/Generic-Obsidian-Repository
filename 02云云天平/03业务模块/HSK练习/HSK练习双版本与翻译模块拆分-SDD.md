@@ -408,13 +408,13 @@ collation 问题（原 D10）只在新老代码仍 join `practice_paper_structur
 
 **7 张表引用 `structure_id`，但退出难度完全不同**：
 
-| 表 | 行数 | `paper_id` | `section_mapping` | `section` | 能否立即脱离 | 处置 |
+| 表 | TEST / PROD 行数 | `paper_id` | `section_mapping` | `section` | 能否立即脱离 | 处置 |
 |---|---|---|---|---|---|---|
 | **`practice_record`** | 963 / 1364 | ✅ | ✅ | ✅ **1–4** | ✅ **能** | **P0 删 `structure_id`** |
-| `practice_report` | 477 | ✅ | ✗ | ✗ | ✅ 能（`practice_record_id` 回溯） | **P0 删** |
-| `writing_attempt` | 217 | ✅ | ✗ | ✗ | ❌ 缺部分号 | P2 加两列 |
-| `speaking_attempt` | 283 | ✅ | ✗ | ✗ | ❌ 缺部分号 | P2 加两列 |
-| `practice_question_option_pool` | 2505 | ✗ | ✗ | ✗ | ❌ 缺部分号 | P2 改为按题目关联 |
+| `practice_report` | 477 / 1011 | ✅ | ✗ | ✗ | ✅ 能（`practice_record_id` 回溯） | **P0 删** |
+| `writing_attempt` | 217 / 284 | ✅ | ✗ | ✗ | ❌ 缺部分号 | P2 加两列 |
+| `speaking_attempt` | 283 / 473 | ✅ | ✗ | ✗ | ❌ 缺部分号 | P2 加两列 |
+| `practice_question_option_pool` | 2505 / 1150 | ✗ | ✗ | ✗ | ❌ 缺部分号 | P2 改为按题目关联 |
 | `writing_report` / `speaking_report` | 151 / 183 | ✅ | ✗ | ✗ | ✅ 能（`attempt_id` 回溯） | P2 |
 
 > 🔑 **`practice_record` 是唯一"已经什么都有"的表**：`paper_id` + `section_mapping` + `section` 三列齐备，`structure_id` 从第一天起就是冗余。它当初存在只是因为这个组合**没法做唯一键**（实测 TEST 有 131 组、PROD 有 106 组重复），于是拿来当查询键用——但重复组本身不影响「取最新一条」的语义。
@@ -446,17 +446,43 @@ collation 问题（原 D10）只在新老代码仍 join `practice_paper_structur
 
 #### 3\.2\.8 `practice_record` 改造（删 2 列 / 启用 1 列）
 
+> ✅ **先给结论：这个改造不是"设计上可行"，是"已经验证等价"**。以下三条实测把风险降到最低。
+
+| 验证项 | TEST | PROD |
+|---|---|---|
+| `practice_part_setting.section_code` = 同板块 `question.section` | **1087 / 1087 一致，0 差异** | 480 / 480 一致 |
+| `practice_record` 的三元组能查到题 | **906 / 907**（1 条脏记录） | **1343 / 1343 全中** |
+| 旧路径（`structure_id` → `part_setting`）与新路径（三元组）**取到的题数完全一致** | **905 / 907**（仅 1 条差异） | **1343 / 1343，零差异** |
+| `practice_name` = `structure.section_name` | **905 / 905** | **1343 / 1343** |
+
+**TEST 那条唯一差异已被定性为造数**：记录 `id=1111111`、`paper_id=2095483421053284353`、`section=SEC_CSCA/section=1`、`structure_id=111`、`practice_name=csca_arts_chinese` —— ID 是 `1111111`、`structure_id` 是 `111`，明显是手工插入的测试数据，不对应任何真实板块。**改造时可一并软删，PROD 无此记录。**
+
+> 🔑 **更关键的是：代码里等价方法已经写好了。**
+> `PracticeQuestionMapper.xml` 中 `selectByStructure` 的实现本身就是
+> ```sql
+> INNER JOIN practice_part_setting pps
+>   ON q.paper_id = pps.paper_id
+>  AND q.section_mapping = pps.section_mapping
+>  AND q.section = pps.section_code
+> WHERE pps.structure_id = #{structureId}
+> ```
+> 也就是说 `structureId` 只是「`(paper_id, section_mapping, section_code)` 三元组」的**代理键**，绕了一圈。
+> 而同文件里 **`selectByPart(paperId, sectionMapping, sectionCode)` 早已存在**、逻辑正是三元组直查。
+> 所以改造不是"重写取题链路"，而是**换个已存在的方法调用**。
+
 ##### ① 现状：28 列里有 2 列是废的，1 列是空的
 
 | 列 | 现状 | 判定 |
 |---|---|---|
 | `structure_id` bigint NOT NULL | 963 行全有值，但**实测存在脏值**：记录 `2082292518405345282` 的 `structure_id` 直接等于 `paper_id` | ❌ **删** |
-| `practice_name` varchar(255) NOT NULL | 取值是 `第1部分`(309) / `第2部分`(169) / `第一部分`(103) / `第二部分`(75)… **中文数字与阿拉伯数字混用**，同语义两种写法 | ❌ **删** |
+| `practice_name` varchar(255) NOT NULL | 与 `structure.section_name` **100% 一致**（TEST 905/905、PROD 1343/1343，零差异）——纯复制；但格式**跨模块不统一**：听力 `第1部分`(649 条)、阅读 `第一部分`(257 条) | ❌ **删** |
 | `section` varchar(50) NULL | 全部非空，来自 `practice_part_setting.section_code`（代码 L90 `.section(partSetting(...).getSectionCode())`），取值 `1/2/3/4`，与 `question.section` **同口径** | ✅ **升为定位键** |
 | `section_mapping` varchar(50) NOT NULL | 全部非空，`SEC_LISTEN` / `SEC_READ` / `SEC_CSCA` | ✅ 保留 |
 | `question_ids` json NULL | 列**已存在**，CSCA 已用（56 / 21 条），**HSK 全为 NULL** | ✅ **启用** |
 
-**`practice_name` 为什么该删**：它就是 `practice_paper_structure.section_name` 的复制，而后者已被 `parts_config.partName` 取代（§3.2.6）。留着它等于保留一份**格式不统一的影子数据**——`第1部分` 和 `第一部分` 指的完全是同一个板块。
+**`practice_name` 为什么该删**：实测它与 `structure.section_name` **100% 完全相同**（TEST 905/905、PROD 1343/1343），是纯复制，零独立信息。而 `section_name` 本身已被 `parts_config.partName` 取代（§3.2.6）。
+
+删除还有个附带收益：**顺手统一了名称格式**。现状是听力写 `第1部分`（649 条，阿拉伯数字）、阅读写 `第一部分`（257 条，中文数字）——不是同一板块两种写法，而是**两个模块的历史写法不同**。改由 `parts_config.partName` 统一供给后，这类不一致自然消失。
 
 **`question_ids` 为什么该启用**：现在 `total_questions = questions.size()`（创建时算的），题库一旦补题/软删题，历史记录就对不上。实测抽 6 条 HSK 记录 `total_questions` 与题库现算**恰好一致**（5 = 5），说明目前是"整板块固定题、不抽题"；但 HSK3.0 导入期题目必变，且 CSCA 已走抽题模式——存快照是唯一稳的做法。
 
@@ -1007,7 +1033,11 @@ structureRegistry(structureId).content_type == "SEC_TRANSLATION"  否则 400 SEC
 | B. 保留 `structure_id` | `structure_id` | `practice_name` 快照 | 现状：多一份冗余 + 一份格式混乱的快照 |
 | C. 三元组 + 保留 `practice_name` | 三元组 | 快照 | 名称与配置可能长期不一致，反而更糟 |
 
-**`practice_name` 必须删的决定性证据**：它的取值是 `第1部分`(309) / `第2部分`(169) / `第一部分`(103) / `第二部分`(75) —— **同一板块存在中文数字与阿拉伯数字两种写法**，说明它是历史多个批次用不同代码路径写进去的。留着一个格式都不统一的快照，不如不要。
+**`practice_name` 该删的决定性证据**：实测它与 `structure.section_name` **100% 完全相同**（TEST 905/905、PROD 1343/1343）——纯粹是复制，没有一比特独立信息。而 `section_name` 已被 `parts_config.partName` 取代。
+
+**顺带修正 v1.2 的一个误判**：`第1部分`(649) 与 `第一部分`(257) 的差异，不是"同一板块两种写法"，而是**听力模块用阿拉伯数字、阅读模块用中文数字**。这是模块间格式不统一，改由 `parts_config` 统一供给后自动消失。
+
+**为什么不是"设计可行"而是"已验证等价"**：`selectByStructure` 的内部实现就是 `JOIN part_setting ON q.section = pps.section_code`——`structureId` 只是三元组的代理键。新旧路径实测取题数：TEST 905/907（差 1 条脏记录）、**PROD 1343/1343 零差异**。且 `selectByPart` 方法早已存在。
 
 **"接口不要 ID"的收益不只是好看**：
 - 前端不用先查目录拿 `structureId` 再回传，只要有 `paperId + partNo` 就能开练；
@@ -1064,13 +1094,16 @@ structureRegistry(structureId).content_type == "SEC_TRANSLATION"  否则 400 SEC
 | **`practice_record` 行数** | **963** | **1364** |
 | **`practice_record` 的 `section` / `section_mapping`** | **0 条为空**（全为模块内部分号 1–4） | **0 条为空** |
 | **`practice_record.question_ids`** | **56 条非空**（全是 CSCA）/ **907 条空** | **21 条非空** / **1343 条空** |
-| **`practice_record.practice_name` 格式** | `第1部分`309 + `第2部分`169 + `第一部分`103 + `第二部分`75… **两种数字体系混用** | 同 |
+| **`practice_record.practice_name`** | 与 `section_name` **905/905 完全一致**（纯复制）；听力 `第1部分`(649) vs 阅读 `第一部分`(257)，**模块间格式不同** | 与 `section_name` **1343/1343 一致** |
 | **`practice_record.structure_id` 脏值** | **至少 1 条**（`2082292518405345282` 的值 = `paper_id`） | — |
 | **同 `(user,paper,module,section)` 重复组** | **131 组**（不能做唯一键，但业务本就取最新） | **106 组** |
 | **`practice_record` 索引** | 仅 `idx_record_active (user_id,paper_id,structure_id,status)` | 同 |
 | **`practice_report`** | 477 行，有 `practice_record_id`，`structure_id` 冗余 | — |
 | **`writing_attempt` / `speaking_attempt`** | 217 / 283 行，**只有 `paper_id + structure_id`，无部分号** | — |
 | **`practice_question_option_pool`** | 2505 行，只有 `structure_id + question_id` | — |
+| **`part_setting.section_code` = `question.section`** | **1087/1087 一致，0 差异** | 480/480 一致 |
+| **新旧取题路径等价性**（`structure_id` vs 三元组） | **905/907**（1 条 `SEC_CSCA section=1` 脏记录） | **1343/1343 零差异** |
+| **三元组查不到题的 record** | 1 条（`SEC_CSCA / section=1 / structure_id=111`） | **0 条** |
 
 > 复跑脚本：`tmp/_probe_hsk_version.py`（只读，带 `DATABASE()` / `@@hostname` 闸门）。
 
@@ -1109,7 +1142,7 @@ structureRegistry(structureId).content_type == "SEC_TRANSLATION"  否则 400 SEC
 | **P0-e** | **重写 `PracticeCatalogBatchLoader`**：从「查 structure + part_setting」改为「读 `parts_config` + 算题量」 | P0-c2 | 2.0 四个模块目录与现网**逐字段一致**；结构表停写 |
 | **P0-f** | 翻译目录 4 + 写链路 6 + `validatePart` 放宽 | P0-e（目录装配已换源） | 翻译笔译/口译都可练到交卷；写作 `structureId` 打翻译 → 400 |
 | **P0-g** | **数据补全：PROD 补 28 行 `parts_config`（D4）+ level 收敛（D3）+ `deleted_prac` DDL（D11）** | **D11 的 DDL 最先**；五闸门 + DRY-RUN + 备份 | PROD 切 3.0 五卡有数据 |
-| **P0-h** | **`practice_record` 瘦身**：删 `structure_id` + `practice_name`；重建 `idx_record_active` 为 `(user_id, paper_id, section_mapping, section, status)`；7 处 Mapper 改三元组；`question_ids` 全模块启用；接口 `structureId` → `(paperId, section)` | P0-e（目录已换源，前端已能拿 `partCode`） | 2.0 续答/报告/角标全部命中；`EXPLAIN` 走新索引；HSK 新记录 `question_ids` 非空 |
+| **P0-h** | **`practice_record` 瘦身**：删 `structure_id` + `practice_name`；重建 `idx_record_active` 为 `(user_id, paper_id, section_mapping, section, status)`；7 处 Mapper 改三元组（`selectByStructure` → 已存在的 `selectByPart`）；`question_ids` 全模块启用；接口 `structureId` → `(paperId, section)` | P0-e（目录已换源，前端已能拿 `partCode`） | ① 抽 100 条历史记录，新旧路径取题 **ID 列表完全一致**（PROD 已实测 1343/1343）；② `EXPLAIN` 走新索引；③ HSK 新记录 `question_ids` 非空且 `JSON_LENGTH = total_questions` |
 | P1 | 偏好表加 `version`；ID 改 String；`dataVersion` ETag；角标后台可配；补 `TRANSLATION_WRITTEN` 策略；**D10 collation 对齐**；B-09 修正；`parts_config` 补 N6（板块级 enabled/时长/满分/提示语） | P0 上线观察 | — |
 | P2 | **彻底删 `practice_paper_structure`**：先给 `writing_attempt`(217) / `speaking_attempt`(283) / `option_pool`(2505) 加 `section_mapping + section` 并回填，再 drop；口译 ASR + 自动评分 | P0-h 稳定运行 + 回填核对完 479 条雪花 ID | — |
 
