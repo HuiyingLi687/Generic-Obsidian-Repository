@@ -1,8 +1,10 @@
 # HSK 练习双版本（2.0 / 3.0）与翻译模块拆分 · 软件设计文档
 
-> 服务：`practice-service`（网关前缀 `/api/practice`）｜版本 v2.2｜2026-11-10｜状态：待评审
+> 服务：`practice-service`（网关前缀 `/api/practice`）｜版本 v2.3｜2026-11-10｜状态：待评审
 > 依据：2026-11-10 双版本首页 UI 截图 + 代码基线 + TEST / PROD 实测
 > 前置：[首页设计方案](HSK练习模块首页-设计方案.md)、[翻译独立模块接口方案](HSK翻译练习-独立模块接口方案.md)、[共用题库方案](HSK练习-共用题库方案.md)（本文修正其中三处过时结论，见 §9.1）
+>
+> **v2.3 变更**：上下架改为**正向布尔 + 双场景**——`deleted_prac` 已在库中改为 `enabled_prac tinyint NOT NULL DEFAULT 1`（`1` 启用 / `0` 下架），并新增对称的 `enabled_exam`，两列铺到 5 张内容表（卷 / 题组 / 题 / 口语卷 / 口语题）；`practice_module_part_config` 同步新增 `enabled tinyint NOT NULL DEFAULT 1` 作板块开关，`deleted` 回到纯逻辑删除。全文字段名、0/1 语义、SQL、迁移陷阱、四级开关（现为五级）已同步。
 
 ---
 
@@ -20,10 +22,10 @@
 | 2 | 新增首页聚合接口 `GET /hsk/modules`，下发卡片顺序、布局、角标、可用性 |
 | 3 | 翻译（`SEC_TRANSLATION`）剥离为独立入口 `/translation/**` |
 | 4 | `HSK7-9` ↔ 数字 `7` 双向映射收口，消灭 4 处硬编码版本常量与 3 处 `level` 解析缺陷 |
-| 5 | 板块配置改用新表 `practice_module_part_config`，支持**板块级开关**；三张旧表（`practice_paper_structure` / `practice_part_setting` / `practice_paper_setting`）**全部 drop** |
+| 5 | 上下架统一为**正向布尔 + 双场景**：`enabled_prac` / `enabled_exam` 两列铺到 5 张内容表（卷 / 题组 / 题 / 口语卷 / 口语题），练习侧只读 `_prac`；板块开关改用新表 `practice_module_part_config.enabled`；三张旧表（`practice_paper_structure` / `practice_part_setting` / `practice_paper_setting`）**全部 drop** |
 | 6 | 全部作答表删 `structure_id`，统一用 `(paper_id, section_mapping, section)` 定位；`practice_record` 另删 `practice_name`、启用 `question_ids` 快照 |
 
-**不覆盖**：口语评测链路（仅补版本过滤）、翻译自动评分（P2）、`exam-service` / `manage`（一行不动）、首页视觉还原（见首页设计方案）。
+**不覆盖**：口语评测链路（仅补版本过滤）、翻译自动评分（P2）、`exam-service` / `manage` 的业务逻辑（实体已随 5 表加 `enabledPrac` / `enabledExam` 字段，仅字段映射，无逻辑改动）、首页视觉还原（见首页设计方案）。
 
 ### 1.3 术语
 
@@ -33,6 +35,7 @@
 | 等级编码 | `HSK1`…`HSK6`、`HSK7-9`（**不是 `HSK7`**） |
 | 模块映射 | `SEC_LISTEN` / `SEC_READ` / `SEC_WRITE` / `SEC_SPEAK` / `SEC_TRANSLATION` / `SEC_CSCA`（`SEC_SPEAKING` 是未被代码引用的历史编码，本次清掉） |
 | 板块 | 一张卷里的一段（如「听力第 2 部分」），配置落 `practice_module_part_config`，题量由 `question` 现算 |
+| 上下架 | 内容是否对用户可见。**正向布尔**：`enabled_prac`（练习侧）/ `enabled_exam`（考试侧），`1` 启用、`0` 下架；两列铺在 `exam_paper` / `question` / `question_group` / `speaking_exam_paper` / `_question` 上 |
 | 三元组 | `(paper_id, section_mapping, section)`，全部作答表的唯一身份，取代原 `structure_id` |
 
 ---
@@ -49,7 +52,7 @@ gateway  /api/practice/**（未在白名单，全部要求登录）
    ▼
 practice-service
    ├─► MySQL xuexitest
-   │     ├─ 题库（只读）：exam_paper（含 deleted_prac 卷级上下架）/ question / question_group
+   │     ├─ 题库（只读）：exam_paper（enabled_prac 卷级上下架）/ question（题级）/ question_group
    │     ├─ 口语内容：speaking_exam_paper / _question（2.0 与 3.0 共用）
    │     ├─ 模块配置：practice_module_level_config（模块开关 / 能力描述 / 时长）
    │     ├─ 板块配置：practice_module_part_config（板块名三语 / 题型 / 板块开关）
@@ -118,35 +121,42 @@ practice-service
 #### 3.1.3 数据模型：两层
 
 ```
-内容层（真相源，含卷级状态位）            配置层（模板 + 开关）
-exam_paper                                practice_module_level_config
-  version / level                        (version, level, section_mapping)
-  deleted_prac ← 卷级上下架（运营开关）     enabled / total_question_count
-  └─< question                            suggested_duration_minutes
-       section_mapping ← 模块归属          ability_description × 3 语
-       section         ← 部分号 1..N     practice_module_part_config ★
-       type_id_mapping ← 题型编码         (version, level, section_mapping,
-       layout          ← 渲染布局              section) ← 唯一键含板块号
-  └─< question_group（材料/大题容器）      part_name × 3 / type_code
-speaking_exam_paper（2.0 + 3.0 口语）      standard_question_count
-                                          deleted ← 板块开关（0开放/1关闭）
+内容层（真相源，含四级状态位）              配置层（模板 + 开关）
+exam_paper                                  practice_module_level_config
+  version / level                          (version, level, section_mapping)
+  deleted        ← 逻辑删除                 enabled / total_question_count
+  enabled_prac   ← 练习侧上下架 ★           suggested_duration_minutes
+  enabled_exam   ← 考试侧上下架（不看）      ability_description × 3 语
+  └─< question_group                       practice_module_part_config ★
+       enabled_prac / enabled_exam         (version, level, section_mapping,
+       └─< question                          section) ← 唯一键含板块号
+            section_mapping ← 模块归属       part_name × 3 / type_code
+            section         ← 部分号 1..N   standard_question_count
+            type_id_mapping ← 题型编码       enabled ← 板块开关 ★
+            layout          ← 渲染布局       deleted ← 逻辑删除
+speaking_exam_paper（2.0 + 3.0 口语）
+  enabled_prac / enabled_exam
+  └─< speaking_exam_paper_question
+       enabled_prac / enabled_exam
         │
         └──► 装配：part_config 当骨架 + question 补实际题量（缺行兜底）
                     ▼
              作答层：practice_record 用 (paper_id, section_mapping, section) 定位
 ```
 
+> **两套开关是正交的**：`enabled_prac` / `enabled_exam` 是**场景维度**（这份内容给练习用、给考试用），配置层的 `enabled` 是**运营维度**（这个板块这一刻开不开）。练习侧只看前者里的 `_prac` 一个，考试侧只看 `_exam`。
+
 | 层   | 表                                                    | 承载                                                   | 真相源   |
 | --- | ---------------------------------------------------- | ---------------------------------------------------- | ----- |
-| 内容  | `exam_paper` / `question`                            | 版本、等级、**卷级上下架**、模块归属、部分号、题型、题干、**实际题量**              | ✅     |
-| 内容  | `question_group`                                     | 板块内的材料 / 大题容器（1 板块 : N group），**不参与结构装配**            | ✅     |
+| 内容  | `exam_paper` / `question`                            | 版本、等级、**卷级 / 题级上下架（`enabled_prac`）**、模块归属、部分号、题型、题干、**实际题量** | ✅     |
+| 内容  | `question_group`                                     | 板块内的材料 / 大题容器（1 板块 : N group），**不参与结构装配**；带 `enabled_prac` 但练习侧不单独判（材料随题走） | ✅     |
 | 内容  | `speaking_exam_paper` / `_question`                  | 口语内容（**2.0 与 3.0 共用**，`level` 2.0 为 `Beginner/Intermediate/Advanced`、3.0 为 `3..7-9`） | ✅     |
 | 配置  | `practice_module_level_config`                       | 版本 × 等级 × 模块：模块开关、标准总题量、时长、能力描述三语                    | ✅     |
-| 配置  | **`practice_module_part_config`**                    | 版本 × 等级 × 模块 × **板块**：名三语、题型编码、标准题量、**板块开关**（`answerMode` 由 `type_code` 映射，不入库） | ✅     |
+| 配置  | **`practice_module_part_config`**                    | 版本 × 等级 × 模块 × **板块**：名三语、题型编码、标准题量、**板块开关 `enabled`**、`deleted` 逻辑删除（`answerMode` 由 `type_code` 映射，不入库） | ✅     |
 | 作答  | `practice_record` / `practice_report` / `writing_*` / `speaking_*` | 练习记录，统一用 `(paper_id, section_mapping, section)` 定位 | 只引用上层 |
 | 退场  | `practice_paper_structure` / `practice_part_setting` / `practice_paper_setting` | 三张表 **P0 直接 drop**，不保留 ID 注册表（§3.2.6 / §3.2.7） | —     |
 
-> **一句话**：`question` 去重出「有哪些板块」，`part_config` 给「板块叫什么、能不能练」，`exam_paper.deleted_prac` 给「哪些卷能练」，`level_config` 给「哪些模块开放」。中间那三张表都没有独有信息。
+> **一句话**：`question` 去重出「有哪些板块」，`part_config` 给「板块叫什么、能不能练」，`exam_paper.enabled_prac` 给「哪些卷能练」，`level_config` 给「哪些模块开放」。中间那三张表都没有独有信息。
 
 #### 3.1.4 业务规则（落进代码的 15 条）
 
@@ -162,10 +172,12 @@ speaking_exam_paper（2.0 + 3.0 口语）      standard_question_count
 | R8 | 实际题量必须现算：`standard_question_count` 是标准值，下发前被 `question` 计数覆盖 | 各 Catalog Service |
 | R9 | **代码中不得再出现 `structureId`**：`practice_paper_structure` / `practice_part_setting` 本次直接 drop，无 ID 注册表 | Code Review 卡点 |
 | R10 | 全部作答表只认三元组 `(paper_id, section_mapping, section)`，`structure_id` 列在 P0 全部删除 | 各 Record / Attempt Service |
-| R11 | 卷级上下架只认 `exam_paper.deleted_prac`：`0` = 可练，`非 0` = 下架。**列表、详情、开始作答三条路径必须都判**，任一处漏判就是下架卷可直达 | 各 Catalog / Record Service |
-| R12 | 卷状态只写一处：`deleted_prac` 在 `exam_paper` 上是整卷级，跨 2~3 个模块同时生效，禁止再引入任何模块级卷状态 | Code Review 卡点 |
+| R11 | 卷级上下架只认 `exam_paper.enabled_prac`：`1` = 可练，`0` = 下架。**列表、详情、开始作答三条路径必须都判**，任一处漏判就是下架卷可直达 | 各 Catalog / Record Service |
+| R12 | 卷状态只写一处：`enabled_prac` 在 `exam_paper` 上是整卷级，跨 2~3 个模块同时生效，禁止再引入任何模块级卷状态 | Code Review 卡点 |
+| R12b | **练习侧只读 `enabled_prac`，一律不看 `enabled_exam`**：两张开关正交，运营为考试下架的题不得连带从练习消失（反之亦然）。`enabled_exam` 属考试侧，本模块不读写 | Code Review 卡点 |
 | R13 | 板块开关只影响「新练习下发哪些板块」：不得删题、不得改 `question.deleted`、不得过滤历史 `question_ids` 快照 | Catalog / Record Service |
-| R14 | **`deleted = 1` 不算缺行**：只有「这一行根本不存在」才兜底（`第{section}部分`、视为开放）；`deleted = 1` 是显式关闭，必须不下发。查询因此不能先过滤 `deleted = 0` | 各 Catalog Service |
+| R14 | **`enabled = 0` 不算缺行**：只有「这一行根本不存在」才兜底（`第{section}部分`、视为开放）；`enabled = 0` 是显式关闭，必须不下发。查询不能先过滤 `enabled = 1`，否则被关板块掉进"缺行"档被兜底放出来 | 各 Catalog Service |
+| R14b | 板块开关用 `enabled`（0 关 / 1 开），`deleted` 恢复纯逻辑删除语义。两者都不为 0 之外的值：`enabled` 只由运营改，`deleted` 只在建/删模板行时动 | Code Review 卡点 |
 | R15 | `speaking_attempt.paper_id` 指向 `speaking_exam_paper.id`（与 `exam_paper.id` 零交集），其三元组语义为「口语卷 × `SEC_SPEAK` × 部分号」 | `Speaking*Service` |
 
 ---
@@ -176,14 +188,14 @@ speaking_exam_paper（2.0 + 3.0 口语）      standard_question_count
 
 | 表 | TEST 行数 | 处理 | 说明 |
 |---|---|---|---|
-| `exam_paper` | 136 卷 | ✅ 零改（PROD 需补 `deleted_prac` 列） | `version` 管版本、`level` 管等级、**`deleted_prac` 管卷级上下架** |
-| `question` | 万余 | ✅ 零改 | `section_mapping` 定模块、`section` 定部分号、`type_id_mapping` 定题型 |
-| `question_group` | — | ✅ 零改 | 翻译两个大题组已在；不参与结构装配 |
-| `speaking_exam_paper` / `_question` | 33 + 5 卷 | ✅ 零改 | **2.0 与 3.0 口语内容都在这两张表**（R5） |
+| `exam_paper` | 167（活 136） | ✅ TEST 已改；**PROD 待补 2 列** | `version` 管版本、`level` 管等级、**`enabled_prac` 管练习侧上下架**、`enabled_exam` 管考试侧（练习不读） |
+| `question` | 13624 | ✅ TEST 已改；**PROD 待补 2 列** | `section_mapping` 定模块、`section` 定部分号、`type_id_mapping` 定题型；`enabled_prac` 为**题级上下架** |
+| `question_group` | 1038 | ✅ TEST 已改；**PROD 待补 2 列** | 翻译两个大题组已在；不参与结构装配。带 `enabled_prac` 但练习侧不单独判（材料随题走） |
+| `speaking_exam_paper` / `_question` | 38 / 837 | ✅ TEST 已改；**PROD 待补 2 列** | **2.0 与 3.0 口语内容都在这两张表**（R5）；两表各有 `enabled_prac` |
 | `practice_module_level_config` | 49 | ✅ 保留，删 `parts_config` 列（TEST 已删） | 模块级配置 |
-| **`practice_module_part_config`** | **132** | ✅ TEST 已建，仅需补唯一键 | 板块级配置；**开关用 `deleted`，不加 `enabled` 列**（§3.2.2） |
+| **`practice_module_part_config`** | **132** | ✅ TEST 已建 + **已补 `enabled` 列**；仍缺唯一键 | 板块级配置；**开关用 `enabled`（0关/1开），`deleted` 回到纯逻辑删除**（§3.2.2） |
 | `hsk_level_config` | 13 | ✅ 零改 | 等级三语名称 |
-| `practice_paper_setting` | 206 / 116 | ❌ **P0 drop** | 卷级上下架由 `exam_paper.deleted_prac` 完整替代（§3.2.7） |
+| `practice_paper_setting` | 206 / 116 | ❌ **P0 drop** | 卷级上下架由 `exam_paper.enabled_prac` 完整替代（§3.2.7） |
 | `practice_paper_structure` | 1290 | ❌ **P0 drop** | 无独有信息：板块来自 `question` 去重 + `part_config` 取名（§3.2.6） |
 | `practice_part_setting` | 1294 | ❌ **P0 drop** | 与 structure 1:1，题型编码已进 `part_config`；作答模式改由字典映射 |
 | `practice_record` | 889 | ⚠️ 瘦身：删 `structure_id` + `practice_name`，启用 `question_ids` | §3.2.5 |
@@ -213,6 +225,7 @@ CREATE TABLE `practice_module_part_config` (
   `type_name_vi`            varchar(255)          DEFAULT NULL COMMENT '题型名越南语',
   `standard_question_count` int          NOT NULL DEFAULT '0' COMMENT '标准题量',
   `sort_order`              int          NOT NULL DEFAULT '0' COMMENT '展示顺序',
+  `enabled`                 tinyint      NOT NULL DEFAULT '1' COMMENT '是否启用：0否，1是',
   `deleted`                 int          NOT NULL DEFAULT '0' COMMENT '逻辑删除标记：0正常，1删除',
   `created_by`              bigint                DEFAULT NULL COMMENT '创建人ID',
   `update_by`               bigint                DEFAULT NULL COMMENT '更新人ID',
@@ -223,16 +236,17 @@ CREATE TABLE `practice_module_part_config` (
   COMMENT='练习板块级配置表（等级级模板 + 板块开关）';
 ```
 
-**板块开关就是 `deleted`**：`0` = 开放，`1` = 关闭。不新增 `enabled` 列，表结构与现有一致。
+**板块开关 = `enabled`**（`0` 关闭 / `1` 开放），位置在 `sort_order` 之后、`deleted` 之前。`deleted` 回到**纯逻辑删除**语义，只有建/删模板行时才动——两列分工明确，不再让一列兼任两种含义。
 
 | 项                  | 现状                               | 处置                                                             |
 | ------------------ | -------------------------------- | -------------------------------------------------------------- |
-| **板块开关**           | 用 `deleted` 一列承担，`0` 开放 / `1` 关闭 | ✅ **不加列**（表注释里的"板块开关"指的就是它）                                    |
+| **板块开关**           | `enabled tinyint NOT NULL DEFAULT 1` | ✅ **已加**（TEST 132 行全为 1）                                  |
+| 逻辑删除 `deleted`     | `int NOT NULL DEFAULT 0`         | ✅ 保留，**不再当开关用**                                              |
 | 作答模式 `answer_mode` | 无此列                              | **不加列**：由 `type_code` 经 `PracticeTypeRegistry` 映射              |
-| 唯一键                | 只有 `PRIMARY (id)`                | 建议补 `uk_module_part`：既防重，又能保证「关了一个板块后仍只有一行，改 `deleted` 即可重新开放」 |
+| 唯一键                | 只有 `PRIMARY (id)`                | 建议补 `uk_module_part`：既防重，又能保证「关了一个板块后仍只有一行，改 `enabled` 即可重新开放」 |
 
 ```sql
--- 先查重，必须返回 0 行
+-- 先查重，必须返回 0 行（实测 TEST 无重复，132 行）
 SELECT version, level, section_mapping, section, COUNT(*) c
 FROM practice_module_part_config
 GROUP BY version, level, section_mapping, section HAVING c > 1;
@@ -242,36 +256,38 @@ ALTER TABLE practice_module_part_config
   ADD UNIQUE KEY `uk_module_part` (`version`,`level`,`section_mapping`,`section`) USING BTREE;
 ```
 
-> 唯一键**不含 `deleted`**，正是想要的：关板块 = 把该行 `deleted` 置 1，开回来 = 置 0，全程只有一行，不会因为"关了再建"而堆出重复行。
+> 唯一键**不含 `enabled` / `deleted`**，正是想要的：关板块 = 把该行 `enabled` 置 0，开回来 = 置 1，全程只有一行，不会因为"关了再建"而堆出重复行。
 
-**🔴 用 `deleted` 当开关有一个必须避开的陷阱：查询不能先过滤 `deleted=0`**
+**🔴 改用 `enabled` 之后陷阱仍在：查询不能先过滤 `enabled=1`**
 
-因为「`deleted = 1`」和「这一行根本不存在」是两种不同状态：
+因为「`enabled = 0`」和「这一行根本不存在」仍是两种不同状态（换列不换问题）：
 
 | 状态 | 含义 | 目录表现 |
 |---|---|---|
-| 有行，`deleted = 0` | 已配置，开放 | 下发，名称/题型取该行 |
-| 有行，`deleted = 1` | **运营明确关闭** | **不下发** |
+| 有行，`enabled = 1`（`deleted=0`） | 已配置，开放 | 下发，名称/题型取该行 |
+| 有行，`enabled = 0`（`deleted=0`） | **运营明确关闭** | **不下发** |
+| 有行，`deleted = 1` | 模板行已删除 | 视同没有行（不参与兜底排重） |
 | 没有行 | 未配置过 | 按 R14 兜底开放，名称为 `第N部分` |
 
-如果先 `WHERE deleted = 0` 过滤，被关闭的板块就会掉进"没有行"那一档，被 R14 的兜底逻辑重新放出来——**开关直接失效**。正确做法是查出该等级该模块的全部行（不带 `deleted` 条件），在内存里分两拨：
+如果先 `WHERE enabled = 1` 过滤，被关闭的板块就会掉进"没有行"那一档，被 R14 的兜底逻辑重新放出来——**开关直接失效**。正确做法是查出该等级该模块的全部行（不带 `enabled` / `deleted` 条件），在内存里分两拨：
 
 ```sql
 SELECT section, part_name, part_name_en, part_name_vi,
-       type_code, type_name, standard_question_count, sort_order, deleted
+       type_code, type_name, standard_question_count, sort_order, enabled, deleted
 FROM practice_module_part_config
 WHERE version = ? AND section_mapping = ? [AND level = ?]
 ORDER BY level, sort_order;
--- 注意：没有 AND deleted = 0
+-- 注意：没有 AND enabled = 1，也没有 AND deleted = 0
 ```
 
-- `deleted = 0` 的行 → 板块骨架
-- `deleted = 1` 的行 → 加入 `closedSections` 集合，**该 section 一律不下发，且不参与兜底**
+- `enabled = 1 AND deleted = 0` 的行 → 板块骨架
+- `enabled = 0 AND deleted = 0` 的行 → 加入 `closedSections` 集合，**该 section 一律不下发，且不参与兜底**
+- `deleted = 1` 的行 → 丢掉，两个集合都不进
 - `question` 里出现、但两个集合都没有的 section → 才按 R14 兜底
 
 > `level` 用 `int` 与主表 `practice_module_level_config` 一致；写入时把 `exam_paper.level` 的 `'7-9'` 归一到 `7`，读侧仍用候选集 `IN ('7','7-9')`（R3）。
 >
-> 与模块级开关的差异要知道：`practice_module_level_config` 用 `enabled` + `deleted` 两列（`deleted` 是真删除），板块级合并成一个 `deleted`。少一列，语义仍是「0 开放 / 非 0 关闭」。
+> 两张配置表现在**列结构一致**：都是 `enabled`（开关）+ `deleted`（逻辑删除）两列分工。`level_config` 的 `enabled` 管整卡，`part_config` 的 `enabled` 管单个板块。
 
 **`answer_mode` 的取值（字典，不入库）**：`type_code` → 作答交互。
 
@@ -313,10 +329,10 @@ ORDER BY level, sort_order;
 INSERT INTO practice_module_part_config
   (id, version, level, section_mapping, section, part_name, part_name_en, part_name_vi,
    type_code, type_name, type_name_en, type_name_vi,
-   standard_question_count, sort_order, deleted)
+   standard_question_count, sort_order, enabled, deleted)
 VALUES ( <雪花id>, 'HSK3.0', 7, 'SEC_TRANSLATION', 1, '第一部分', 'Part 1', 'Phần 1',
          'translation_written', '笔译', 'Written Translation', 'Biên dịch viết',
-         2, 1, 0);   -- deleted = 0 → 开放
+         2, 1, 1, 0);   -- enabled = 1 开放；deleted = 0 未删除
 ```
 
 #### 3.2.4 目录装配（读时装配，不写中间表）
@@ -327,44 +343,44 @@ SELECT level, section_mapping, enabled, total_question_count, suggested_duration
 FROM practice_module_level_config
 WHERE deleted = 0 AND version = ? AND section_mapping = ? [AND level = ?];
 
--- ② 板块骨架 + 板块开关（故意不带 deleted = 0，理由见 §3.2.2）
+-- ② 板块骨架 + 板块开关（故意不带 enabled / deleted 条件，理由见 §3.2.2）
 SELECT level, section, part_name, part_name_en, part_name_vi,
-       type_code, type_name, standard_question_count, sort_order, deleted
+       type_code, type_name, standard_question_count, sort_order, enabled, deleted
 FROM practice_module_part_config
 WHERE version = ? AND section_mapping = ? [AND level = ?]
 ORDER BY level, sort_order;
 
--- ③ 卷列表（deleted_prac 即卷级上下架）
+-- ③ 卷列表（enabled_prac 即卷级上下架；1 = 可练）
 SELECT id, level, source, description, created_time
 FROM exam_paper
-WHERE deleted = 0 AND exam_type = 1 AND deleted_prac = 0
+WHERE deleted = 0 AND exam_type = 1 AND enabled_prac = 1
   AND version = ? AND level IN (?, ...)      -- 7-9 候选集（R3）
 ORDER BY level, id;                          -- 原 setting.sort_order 与 id 升序 100% 等价
 
--- ④ 每卷每板块实际题量（按卷批量，勿逐卷查）
+-- ④ 每卷每板块实际题量（按卷批量，勿逐卷查；题级上下架在这里生效）
 SELECT paper_id, section_mapping, CAST(section AS SIGNED) AS section_no, COUNT(*) AS actual_count
 FROM question
-WHERE deleted = 0 AND deleted_prac = 0 AND paper_id IN (...)
+WHERE deleted = 0 AND enabled_prac = 1 AND paper_id IN (...)
   AND (type_id_mapping IS NULL OR type_id_mapping <> 'example_question')
   AND section IS NOT NULL AND section <> ''
 GROUP BY paper_id, section_mapping, section;
 ```
 
 装配顺序（服务端内存）：
-1. 把 ② 的结果分两拨：`deleted = 0` → 骨架（按 `sort_order` 排序）；`deleted = 1` → `closedSections` 集合；
+1. 把 ② 的结果分两拨：`enabled = 1 AND deleted = 0` → 骨架（按 `sort_order` 排序）；`enabled = 0 AND deleted = 0` → `closedSections` 集合；`deleted = 1` 的行直接丢；
 2. 只有「既不在骨架、也不在 `closedSections`」的 `section` 才按 R14 兜底（`第{section}部分`，视为开放）；
-3. 用 ④ 的 `actual_count` **覆盖** `standard_question_count`；
-4. `actual_count = 0` 的板块不下发（R6）；
+3. 用 ④ 的 `actual_count` **覆盖** `standard_question_count`（④ 已排除 `enabled_prac = 0` 的单题，所以单题下架会自动缩小题量）；
+4. `actual_count = 0` 的板块不下发（R6）——**这一条同时兜住了「板块开着但题全被单题下架」**；
 5. 模块 `enabled = 0` → 整模块不下发，**不再求值板块**；
 6. 板块在 `closedSections` 里 → 该板块不下发，历史记录不受影响（R13）；
 7. `answerMode` 由 `type_code` 经 `PracticeTypeRegistry` 映射后下发（不入库，§3.2.2）。
 
-**口语是唯一走另一张内容表的模块**：②③④ 换成 `speaking_exam_paper`（`deleted_prac = 0`）+ `speaking_exam_paper_question` 的计数，板块骨架仍来自 `practice_module_part_config`（`section_mapping = 'SEC_SPEAK'`，`section` 为 1/2/3）。
+**口语是唯一走另一张内容表的模块**：②③④ 换成 `speaking_exam_paper`（`enabled_prac = 1`）+ `speaking_exam_paper_question`（`enabled_prac = 1`）的计数，板块骨架仍来自 `practice_module_part_config`（`section_mapping = 'SEC_SPEAK'`，`section` 为 1/2/3）。
 
 🔴 **取题必须由配置驱动，不能再靠硬编码题型白名单**：现在 `SpeakingSourceQuestionMapper.xml` 用 `PartCodeCase` 把 8 个题型硬编码映射到 `PART_1/2/3`，而新配置里已有 6 个 `type_code` 不在其中（3.0 L4/L5/L6 的 `listen_retell`、L7 的 `applied_read_speak` / `listen_material_answer` / `viewpoint_express`），`selectByPart` 的 `question_type_mapping IN (...)` 白名单同样漏掉它们 → **这些板块目前取不到任何题**（缺陷 B-19）。改造后取题条件改为：
 
 ```sql
-WHERE paper_id = ? AND deleted = 0 AND deleted_prac = 0 AND number > 0
+WHERE paper_id = ? AND deleted = 0 AND enabled_prac = 1 AND number > 0
   AND question_type_mapping = (SELECT type_code FROM practice_module_part_config
                                WHERE version=? AND level=? AND section_mapping='SEC_SPEAK' AND section=?)
 ```
@@ -535,7 +551,7 @@ CREATE INDEX idx_speaking_attempt_part ON speaking_attempt
 | 位置 | 动作 |
 |---|---|
 | `PracticeRecordMapper`（7 个方法） | `structure_id` → `paper_id + section_mapping + section` |
-| `PracticeQuestionMapper#selectByStructure` | 直接改用已有的 `selectByPart(paperId, sectionMapping, sectionCode)` |
+| `PracticeQuestionMapper#selectByStructure` | 直接改用已有的 `selectByPart(paperId, sectionMapping, sectionCode)`；**该 Mapper 3 处出题 SQL 均已带 `AND enabled_prac = 1`**（题级下架在出题侧已生效） |
 | `PracticeCatalogBatchLoader` | 删掉 structure / part_setting 两次查询，改读 `practice_module_part_config` |
 | `PracticePaperStructureMapper` / `PracticePartSettingMapper` | 整文件删除 |
 | `PracticePartSetting` / `PracticePaperStructure` 实体 | 整文件删除 |
@@ -546,7 +562,7 @@ CREATE INDEX idx_speaking_attempt_part ON speaking_attempt
 
 **`practice_question_option_pool`（P2）**：加两列回填后按题目关联，退场前置三件事——① 补 `reading_cloze` 缺失记录（TEST 90 / PROD 90 全无）；② `pool_code` 去掉 `structureId`，改 `{section_mapping}_{paperId}_{section}_{sha256(option_content)}`；③ 答题快照 `optionPoolCode` 改现算（现在由 `ReadingSnapshotSupport` 读表写入）。它不阻塞结构表 drop，因为结构表先走完 P0。
 
-#### 3.2.7 卷级上下架改由 `exam_paper.deleted_prac` 承担
+#### 3.2.7 卷级上下架改由 `exam_paper.enabled_prac` 承担
 
 `practice_paper_setting` 一行 = 一张卷，`exam_paper` 也是一行 = 一张卷，两者 `paper_id` 严格 1:1。它的三个开关在真实卷上**从未被使用**：
 
@@ -556,7 +572,7 @@ CREATE INDEX idx_speaking_attempt_part ON speaking_attempt
 | `visible = 0` | 0 行 | 0 行 | 从未使用 |
 | `deleted = 1` | 31 行 | 0 行 | **全部是孤儿行** |
 
-于是这张表对真实卷只剩下一个信息：**这一行存不存在**。而"存在 = 上架"这个语义，正是 `exam_paper.deleted_prac` 的语义（列注释即「练习是否使用」）。
+于是这张表对真实卷只剩下一个信息：**这一行存不存在**。而"存在 = 上架"这个语义，正是 `exam_paper.enabled_prac` 的语义（列注释即「练习是否启用：0否，1是」）。
 
 **卷序也不是独有信息**：`sort_order` 在 TEST 13 个「版本×等级」组、PROD 6 个组上都与 `id` 升序**完全一致**（逐组比对，0 处不同），属纯冗余。
 
@@ -571,40 +587,68 @@ CREATE INDEX idx_speaking_attempt_part ON speaking_attempt
 
 也就是说这张表在现网实际只承载了「2.0 L1 的 1 张 + 3.0 的 15 张未上架」这一个信息。
 
-**收益**：库存表少一张；「缺行 = 下架」这个隐式、不可查询的语义消失，改为显式列值，运营能直接 `WHERE deleted_prac = 1` 查出现在下架了哪些卷，也能审计。
+**收益**：库存表少一张；「缺行 = 下架」这个隐式、不可查询的语义消失，改为显式列值，运营能直接 `WHERE enabled_prac = 0` 查出现在下架了哪些卷，也能审计。
 
 **代价**：放弃"可分享链接直达但不上列表"这一档（`enabled` 与 `visible` 的两级语义）。实测该能力从未被真实卷使用，且 C 端目前也没有对应的分享入口。
 
-##### 迁移口径（有一个必须避开的陷阱）
+##### 迁移口径（陷阱在 DEFAULT 的方向）
+
+`enabled_prac` 是**正向布尔**（`1` = 启用），所以加列时 `DEFAULT '1'` 会把本该下架的卷一次性全部放出来——和早期用 `deleted_prac`（`DEFAULT '0'`）时是同一个陷阱，只是方向相反。
 
 ```sql
--- PROD 当前没有这一列（D11）；加列的 DEFAULT 0 会把 16 张未上架卷全部放出来
-ALTER TABLE exam_paper ADD COLUMN deleted_prac int NOT NULL DEFAULT '0' COMMENT '练习是否使用：0使用，非0下架';
+-- ① 5 张内容表统一加两列（TEST 已完成，PROD 全缺 = D11）
+ALTER TABLE exam_paper
+  ADD COLUMN enabled_prac tinyint NOT NULL DEFAULT '1' COMMENT '练习是否启用：0否，1是',
+  ADD COLUMN enabled_exam tinyint NOT NULL DEFAULT '1' COMMENT '考试是否启用：0否，1是';
+-- question / question_group / speaking_exam_paper / speaking_exam_paper_question 同一条，列定义逐字一致
 
--- 必须在同一批次内，把「当前无 setting 行」的卷标为下架，否则 PROD 目录从 60 卷涨到 76 卷
--- 注意 deleted = 0：那 61 张软删卷已被 deleted 挡住，不要再标
+-- ② 必须同一批次：把「当前无 setting 行」的活卷置 0，否则 PROD 目录从 60 卷涨到 76 卷
+-- 注意 deleted = 0：那 61 张软删卷已被 deleted 挡住，不参与
 UPDATE exam_paper p
-SET p.deleted_prac = 1
+SET p.enabled_prac = 0
 WHERE p.exam_type = 1 AND p.deleted = 0
   AND NOT EXISTS (SELECT 1 FROM practice_paper_setting s WHERE s.paper_id = p.id);
 ```
 
-- TEST 136 张活卷全部有 setting 行 → 迁移后 `deleted_prac` 全为 0，**上架卷数不变**。
-- PROD 76 张活卷里 60 张有行、16 张缺行 → 迁移后 60 张可练，与现网一致（2.0 每级 10 张、3.0 全 0）。3.0 正式放开时把那 15 张改回 `0`。
+- **TEST 实测已就绪**：5 张表都有这两列，取值 `167 / 13624 / 1038 / 38 / 837` 行**全为 1**（全部上架），无历史数据要修。
+- **PROD**：76 张活卷里 60 张有 setting 行、16 张缺行 → ② 之后 60 张为 1、16 张为 0，与现网一致（2.0 每级 10 张、3.0 全 0）。3.0 正式放开时把那 15 张改回 `1`。
 - 孤儿行 69（TEST）/ 56（PROD）随表退场自然消失，无需单独清理（原 D12 关闭）。
 
-##### 代码改动点（5 处）
+##### 🔴 `enabled_exam` 的边界：练习侧一行都不许读
+
+`enabled_prac` / `enabled_exam` 是**两个独立的上下架通道**，同一行的两个值可以任意组合：
+
+| `enabled_prac` | `enabled_exam` | 含义 | 练习侧 |
+|---|---|---|---|
+| 1 | 1 | 练习、考试都在用 | ✅ 可见 |
+| 1 | 0 | **只在练习出现**（考试下架，比如该题只适合练） | ✅ 可见 |
+| 0 | 1 | 只在考试出现（练习下架，比如已练烂/有争议） | ❌ 不可见 |
+| 0 | 0 | 全面下线 | ❌ 不可见 |
+
+所以 `practice-service` 的全部查询条件只能是 `enabled_prac = 1`，**不能写成 `enabled_prac = 1 AND enabled_exam = 1`，也不能用 `OR`** —— 一旦混进来，`enabled_exam=0` 的题会被连带从练习踢出去，而运营的本意恰恰是"只关考试"。
+
+##### 代码现状（已改 / 待改）
+
+已随本次字段改造改完（编译通过的前提）：
+
+| 位置 | 现状 |
+|---|---|
+| `ListeningCatalogServiceImpl:65` / `ReadingCatalogServiceImpl:120` / `WritingCatalogServiceImpl:156` | ✅ 已 `.eq(PracticePaper::getEnabledPrac, 1)` |
+| `PracticeQuestionMapper.xml`（3 处） | ✅ 已 `AND enabled_prac = 1` —— **题级上下架已生效** |
+| `CscaQuestionMapper.xml`（5 处） | ✅ 已 `p.enabled_prac = 1` / `q.enabled_prac = 1` / `g.enabled_prac = 1` |
+| `SpeakingSourcePaperMapper.xml` / `SpeakingSourceQuestionMapper.xml` | ✅ 已 `enabled_prac = 1`，`resultMap` 已映射两列 |
+| 5 张表对应实体（exam-service + manage 各一套） | ✅ 已加 `enabledPrac` / `enabledExam` 字段 |
+
+还欠（属 P0-i，`practice_paper_setting` 退场时一并做）：
 
 | 位置 | 现状 | 改成 |
 |---|---|---|
-| `ListeningCatalogServiceImpl:65` | 已 `.eq(getDeletedPrac, 0)` | 不变 ✔ |
-| `ReadingCatalogServiceImpl:120` | 已 `.eq(getDeletedPrac, 0)` | 不变 ✔ |
-| `WritingCatalogServiceImpl:156` | 已 `.eq(getDeletedPrac, 0)` | 不变 ✔ |
-| `PracticeCatalogBatchLoader:77` | 查 setting 三条件过滤 | 删除该查询，`visiblePaperIds` 直接用入参 |
-| `ReadingRecordServiceImpl:179` / `WritingAttemptServiceImpl:225` | 用 `setting` 判准入 | 改判 `paper.getDeletedPrac() == 0` |
+| `SharedPaperEligibility.isEligible` | ❌ 仍只判 `deleted == 0 && examType == 1`，**没判 `enabledPrac`** | 补 `&& Integer.valueOf(1).equals(paper.getEnabledPrac())`（B-17） |
+| `PracticeCatalogBatchLoader:77` | 仍查 setting 三条件 | 删该查询，`visiblePaperIds` 直接用入参 |
+| `ReadingRecordServiceImpl:179` / `WritingAttemptServiceImpl:225` | 用 `setting` 判准入 | 改判 `paper.getEnabledPrac() == 1` |
 | `ReadingCatalogServiceImpl:131` / `SpeakingCatalogServiceImpl:167` / `WritingCatalogServiceImpl:167` | 按 `getSortOrder()` 排序 | 改 `id` 升序 |
 
-> ⚠️ `SharedPaperEligibility.isEligible` 只判 `deleted = 0 && examType = 1`，**没有判 `deleted_prac`**。删表后若不补这一条，已下架卷仍可通过详情/开始作答接口进入（新缺陷 B-17）。
+> ⚠️ `SharedPaperEligibility` 这一条最危险：目录侧已经用 `enabled_prac = 1` 过滤了，**但准入侧没同步**——下架卷在列表里看不见，却仍能通过详情 / 开始作答接口直接进入。三条路径必须同口径（R11）。
 
 ---
 
@@ -705,8 +749,10 @@ GET /hsk/modules?version=HSK3.0
 
 ```sql
 SELECT DISTINCT section_mapping FROM question
-WHERE paper_id = ? AND deleted = 0 AND CAST(section AS SIGNED) = ?;
+WHERE paper_id = ? AND deleted = 0 AND enabled_prac = 1 AND CAST(section AS SIGNED) = ?;
 ```
+
+> 带 `enabled_prac = 1` 是有意的：若该板块的题被逐题下架，这里会返回空集 → **按 404 处理**（板块不可练），而不是放行后让用户进到一个 0 题的作答页。空集与"归属不符"要分别给出 404 / 400。
 
 > 原来这层校验靠 `structureRegistry(structureId).content_type`，结构表 drop 后改由**内容自己**回答「这个板块属于哪个模块」——比注册表更可信（结构表本身可能写错）。不要改成信任前端传的 `sectionMapping`，那等于取消防串号。
 
@@ -736,29 +782,32 @@ WHERE paper_id = ? AND deleted = 0 AND CAST(section AS SIGNED) = ?;
 
 | 侧 | 行为 | 端点 |
 |---|---|---|
-| C 端 | 只读，按 `deleted` 过滤，**不暴露开关字段** | 既有 16 端点，零新增 |
-| 运营端（板块） | 改该行的 `deleted`（0 开放 / 1 关闭）即开关板块；**不要删行**，删行等于回到"未配置"，会被 R14 兜底放出来 | `GET /hsk/module-config/parts?version=&level=&sectionMapping=`、`PATCH /hsk/module-config/parts/{id}` |
-| 运营端（卷） | 改 `exam_paper.deleted_prac`（0 上架 / 非 0 下架），整卷生效 | 沿用题库管理侧现有卷编辑能力，**本次不新增接口** |
+| C 端 | 只读，按 `enabled` + `enabled_prac` 过滤，**不暴露开关字段** | 既有 16 端点，零新增 |
+| 运营端（板块） | 改该行的 `enabled`（`0` 关闭 / `1` 开放）即开关板块；**不要删行**，删行等于回到"未配置"，会被 R14 兜底放出来；`deleted` 只在真的不要这个板块时才置 1 | `GET /hsk/module-config/parts?version=&level=&sectionMapping=`、`PATCH /hsk/module-config/parts/{id}` |
+| 运营端（卷 / 题） | 改 `exam_paper.enabled_prac`、`question.enabled_prac`（`1` 上架 / `0` 下架），整卷 / 单题生效；考试侧改对应的 `enabled_exam` | 沿用题库管理侧现有卷 / 题编辑能力，**本次不新增接口** |
 | 本次不做 | 批量上下架、板块级灰度、按用户差异化 | — |
 
 > C 端响应结构不变（`parts[]` 仍只有 `partCode / partName×3 / typeCode / answerMode / questionCount`），保证 2.0 现网响应可逐字段 diff。
 
 ---
 
-### 3.4 四级开关与求值顺序
+### 3.4 五级开关与求值顺序
 
 | 级 | 开关 | 粒度 | 关掉之后 |
 |---|---|---|---|
 | L1 版本 | 前端选择 / `exam_paper.version` | 版本 | 整版不出现 |
 | L2 模块 | `practice_module_level_config.enabled` | 版本×等级×模块 | 整卡消失，**不再求值下级** |
-| L3 卷 | `exam_paper.deleted_prac`（0 可练 / 非 0 下架） | 卷 | 不在列表、详情与作答均拒绝 |
-| L4 板块 | `practice_module_part_config.deleted`（0 开放 / 1 关闭） | 版本×等级×模块×板块 | 该板块不下发，新练习不含其题目 |
+| L3 卷 | `exam_paper.enabled_prac`（`1` 可练 / `0` 下架） | 卷 | 不在列表、详情与作答均拒绝 |
+| L4 板块 | `practice_module_part_config.enabled`（`1` 开放 / `0` 关闭） | 版本×等级×模块×板块 | 该板块不下发，新练习不含其题目 |
+| L5 题 | `question.enabled_prac`（`1` 上架 / `0` 下架） | 单题 | 题量现算时不计入；算完为 0 则该板块按 R6 不下发 |
 
-必须**自上而下短路**：L2 关 → 返回 `[]`，不查板块。
+必须**自上而下短路**：L2 关 → 返回 `[]`，不查板块；L4 关 → 不求值 L5。
 
-四者正交，实测佐证：「`level_config` 说开但 0 张卷在架」的组合 PROD 5 组、TEST 11 组（口语卷在 `speaking_exam_paper`、写作 L1–L2 被关）。
+**L4 与 L5 是两道不同的闸**：L4 是「这整段你练不到」（板块骨架都不下发），L5 是「这段还在，但里面某几题不能出」。运营场景不同——整段题型有问题关 L4，单题有问题关 L5。代码上 L5 天然落在 `WHERE enabled_prac = 1` 里，不需要额外分支；L4 关掉的板块不应再去数题。
 
-**关闭板块后历史记录**：已有 `question_ids` 快照不受影响，仍可回看、出报告（板块标注「已关闭」）；新开练习不再下发该板块题目。不要把「关闭」实现成删题或过滤快照，否则历史报告凭空少题。
+五者正交，实测佐证：「`level_config` 说开但 0 张卷在架」的组合 PROD 5 组、TEST 11 组（口语卷在 `speaking_exam_paper`、写作 L1–L2 被关）。
+
+**关闭板块 / 下架单题后历史记录**：已有 `question_ids` 快照不受影响，仍可回看、出报告（板块标注「已关闭」）；新开练习不再下发该板块题目。不要把「关闭」实现成删题或过滤快照，否则历史报告凭空少题。
 
 ---
 
@@ -777,7 +826,7 @@ POST /translation/attempts/start {paperId, section}
  → requireAuthenticatedAppUserId（仅委托）
  → 前置校验：question 里 (paperId, section) 的 section_mapping == SEC_TRANSLATION
  → WritingAttemptServiceImpl#start
-     ├─ requirePaper：卷有效 + exam_type=1 + deleted_prac=0 + level ≥ 3
+     ├─ requirePaper：卷有效 + exam_type=1 + enabled_prac=1 + level ≥ 3
      ├─ validatePart：contentType ∈ {SEC_WRITE, SEC_TRANSLATION} 且 == sectionMapping
      ├─ 已有 IN_PROGRESS → 直接返回（幂等）
      └─ 新建 attempt，快照 section_mapping / section / paperVersion / questionSetVersion
@@ -889,17 +938,24 @@ POST /translation/attempts/start {paperId, section}
 17. 未登录 → 401。
 18. 某模块数据缺失 → 该卡 `available=false`，不全页 500。
 19. 不存在的 `paperId` → 404 不 500。
-20. `deleted_prac = 1` 的卷 → **列表不出现、详情报 404、开始作答报 404**（三处都测，B-17）。
+20. `enabled_prac = 0` 的卷 → **列表不出现、详情报 404、开始作答报 404**（三处都测，B-17）。
 21. 卷级上下架与模块/板块开关互不干扰：卷下架但模块开 → 该等级仍有其他卷；模块关但卷上架 → 整卡消失。
 
+**上下架（`enabled_prac` / `enabled_exam`）**
+22. `question.enabled_prac = 0` 的单题 → 目录题量 `-1`，答题时不出现在该板块题目列表；其它板块不受影响。
+23. 某板块全部题都被单题下架 → 该板块因 `actual_count = 0` 不下发（R6），**不报错**。
+24. 🔴 `enabled_prac = 1` 但 `enabled_exam = 0` → **练习侧必须仍可见**（只关了考试）；反向 `enabled_prac = 0, enabled_exam = 1` → 练习侧不可见。这两条是 B-20 的回归判据。
+25. 全表 `grep enabledExam` / `grep enabled_exam` 在 `practice-service` 内 **零命中**（练习侧不得出现这一列）。
+
 **板块开关**
-22. 关 `HSK2.0/L1/SEC_LISTEN/section=2` → 目录只剩另外三个板块，其题量名称题型不受影响。
-23. 新开练习不含 section=2 的题；历史记录仍可打开、报告题数不变（R13）。
-24. 关整模块 → 整卡消失，不再受板块开关影响（短路顺序）。
-25. **区分「关闭」与「未配置」**：把某行 `deleted` 置 1 → 该板块**消失**；把该行物理删掉 → 该板块**仍出现**且名称为 `第N部分`（R14）。这两条必须分别测，否则开关会被兜底逻辑吃掉。
-26. 结构表 drop 后口语 6 个新题型板块（3.0 L4/L5/L6 的 `listen_retell`、L7 的三个）**都能取到题**——这是 B-19 的回归判据。
-27. 并发改同模块不同板块 → 两条都生效，无覆盖丢失。
-28. 源码 `grep -r structure_id` 零命中；`practice_part_setting` / `practice_paper_structure` 已 drop；带 `structureId` 的旧请求 → 400 而非 500。
+26. 关 `HSK2.0/L1/SEC_LISTEN/section=2` → 目录只剩另外三个板块，其题量名称题型不受影响。
+27. 新开练习不含 section=2 的题；历史记录仍可打开、报告题数不变（R13）。
+28. 关整模块 → 整卡消失，不再受板块开关影响（短路顺序）。
+29. **区分「关闭」与「未配置」**：把某行 `enabled` 置 0 → 该板块**消失**；把该行物理删掉 → 该板块**仍出现**且名称为 `第N部分`（R14）。这两条必须分别测，否则开关会被兜底逻辑吃掉。
+30. `deleted = 1` 的行视同不存在：既不下发，也不参与兜底排重。
+31. 结构表 drop 后口语 6 个新题型板块（3.0 L4/L5/L6 的 `listen_retell`、L7 的三个）**都能取到题**——这是 B-19 的回归判据。
+32. 并发改同模块不同板块 → 两条都生效，无覆盖丢失。
+33. 源码 `grep -r structure_id` 零命中；`practice_part_setting` / `practice_paper_structure` 已 drop；带 `structureId` 的旧请求 → 400 而非 500。
 
 ---
 
@@ -938,7 +994,7 @@ PROD 直接 `UPDATE exam_paper.level` 会动题库表，`exam-service` 读同一
 | 方案 | 结论 |
 |---|---|
 | 元素补 `section` + 开关键 | 可行但不彻底：JSON 里没有唯一约束、开关写成 `"0"` 也存得进、审计只到整行、SQL 只能 `JSON_EXTRACT`，且"关一个板块"要么删元素（后续错位）要么留占位（`sortOrder` 退化成编号） |
-| **拉平成 `practice_module_part_config`** | ✅ 唯一键防重、开关是 `deleted` 列、`UPDATE ... SET deleted=1 WHERE section=2` 只锁一行 |
+| **拉平成 `practice_module_part_config`** | ✅ 唯一键防重、开关是独立的 `enabled` 列（`deleted` 只管逻辑删除）、`UPDATE ... SET enabled=0 WHERE section=2` 只锁一行 |
 | 单表 `section=0` 表示模块行 | ❌ 一半字段永远 NULL，接口处处判 `section=0` |
 | 不拆，靠前端隐藏 | ❌ 题目仍下发，用户仍能练到 |
 
@@ -952,17 +1008,27 @@ PROD 直接 `UPDATE exam_paper.level` 会动题库表，`exam-service` 读同一
 
 **同一个口径贯彻到全部作答表**：`writing_attempt`(217/284) 与 `speaking_attempt`(283/473) 原本只有 `paper_id + structure_id`，实测都能 100% 回填出三元组（§3.2.6），所以不留「结构表当 ID 注册表」这个尾巴，P0 一次删干净。接口风格也不再分叉——所有模块都用 `paperId + section`。
 
-### 9.7 卷级上下架用 `exam_paper.deleted_prac`，`practice_paper_setting` drop
+### 9.7 卷级上下架用 `exam_paper.enabled_prac`，`practice_paper_setting` drop
 
 两个候选位置，只有一个是对的：
 
 **❌ 不能并入 `practice_module_level_config`** —— 粒度 1:N 反向。一行配置 = 一个「版本 × 等级 × 模块」，它下面挂 1~21 张卷（TEST 2.0 每级 20~21 张、3.0 每级 1~3 张），`enabled` 是 `tinyint`，只能表达"整级整模块开关"，管不到其中某一张卷；且一张卷横跨 2~3 个模块（TEST 43 张 2 模块、92 张 3 模块、1 张 5 模块），下架是整卷行为，写进模块级配置要写 2~3 份，必然分叉。
 
-**✅ 并回 `exam_paper` 是对的** —— `paper_id` 与 `exam_paper.id` 严格 1:1，粒度天然匹配；`deleted_prac` 本来就是练习侧专用列（注释「练习是否使用」），不是为本次改造新塞的字段，不存在"污染考试侧"的问题（CSCA 的 `exam_type=2` 卷同样带这一列且全为 0）。
+**✅ 并回 `exam_paper` 是对的** —— `paper_id` 与 `exam_paper.id` 严格 1:1，粒度天然匹配；`enabled_prac` 是练习侧专用列（`enabled_exam` 才是考试侧），同表并列、互不干扰（CSCA 的 `exam_type=2` 卷同样带这两列）。同一套列模式一路铺到 `question` / `question_group` / `speaking_exam_paper` / `_question` 四张表，**卷、题组、题三个层级都能单独上下架，不需要另建任何表**。
 
-**为什么这张表现在是空的**：三个开关在真实卷上 100% 全开（`enabled=0` 的 2/5 行、`deleted=1` 的 31 行**全部是孤儿行**），`sort_order` 也与 `id` 升序完全一致。它对真实卷只剩「行存不存在」一个信息，而这个信息 `deleted_prac` 一个列就能表达，还能查、能审计（§3.2.7）。
+**为什么这张表现在是空的**：三个开关在真实卷上 100% 全开（`enabled=0` 的 2/5 行、`deleted=1` 的 31 行**全部是孤儿行**），`sort_order` 也与 `id` 升序完全一致。它对真实卷只剩「行存不存在」一个信息，而这个信息 `enabled_prac` 一个列就能表达，还能查、能审计（§3.2.7）。
 
 **代价**：放弃"可直达但不上列表"的两级语义，实测从未使用。
+
+### 9.7b 上下架用正向布尔 + 双场景列，不用 `deleted_*`
+
+最终落库的形态是 `enabled_prac` / `enabled_exam` 两列 `tinyint NOT NULL DEFAULT 1`，而不是一个 `deleted_prac`。
+
+**为什么不用 `deleted_*`**：负数语义（"删了 = 下架"）要读的人在心里做一次反转，且同样的信息运营得用 `WHERE deleted_prac <> 0` 反查"下架了哪些"。正列直接 `WHERE enabled_prac = 0`，SQL 和字段名说的是同一件事；`tinyint` 也把值域压到 0/1，不会再出现历史上那种 `deleted = 2` 的意外值。
+
+**为什么要两列而不是一列**：练习和考试对同一份内容的需求不同步——某题有争议，可能只关考试、仍允许练习；某题已被练烂，可能只关练习、留给考试。一列 `enabled` 表达不了这种组合，硬塞一个 `enabled_prac` 又会让考试侧去读一个名字里带 prac 的字段，语义混乱。两列各自归属一侧，边界清楚（R12b）。
+
+**代价是纪律**：两列并存意味着任何一侧都可能误读另一侧。练习侧全量 grep `enabled_exam` 必须零命中（B-20），这个靠 Code Review 卡点，不靠类型系统。
 
 ### 9.8 口语内容统一读 `speaking_exam_paper`（2.0 / 3.0 都是）
 
@@ -987,14 +1053,14 @@ PROD 直接 `UPDATE exam_paper.level` 会动题库表，`exam-service` 读同一
 | **P0-a** | 修三条存量缺陷（附录 A：B-01/B-02/B-03） | — | TEST 听力 intro 不 500；PROD 听力列表不混版；HSK7-9 写作可开练 |
 | **P0-b** | 四个支撑类：`PracticeVersion` / `PracticeLevelCode` / `PracticeModuleCatalog` / `PracticeTypeRegistry`（题型字典 `typeCode → answerMode`） | — | 单测覆盖 `HSK7-9`、`'7-9'`、非法版本、5 种 `answerMode` |
 | **P0-c** | 16 个目录端点加 `version` | P0-b | 2.0 全链路零回归 |
-| **P0-c2** | **`practice_module_part_config` 收尾**：TEST 已建表迁数据（132 行）→ 补唯一键（`answer_mode` 不入库走字典、开关用 `deleted`）→ 清 `SEC_SPEAKING` 残留配置 | P0-b | 表含 `uk_module_part`；132 行不变；`type_code` 全部能映射到 `answerMode`；`deleted` 0/1 语义确认 |
+| **P0-c2** | **`practice_module_part_config` 收尾**：TEST 已建表迁数据（132 行）+ 已补 `enabled` 列 → 补唯一键（`answer_mode` 不入库走字典、开关读 `enabled` 而非 `deleted`）→ 清 `SEC_SPEAKING` 残留配置 | P0-b | 表含 `uk_module_part`；132 行 `enabled` 全 1；`type_code` 全部能映射到 `answerMode`；关板块后目录不出现 |
 | **P0-c3** | 板块开关接口 `PATCH /hsk/module-config/parts/{id}` | P0-c2 | 关板块后目录不出现，新练习不下发其题目，历史记录不受影响 |
 | **P0-d** | 聚合接口 `GET /hsk/modules` | P0-c | 2.0 四卡 / 3.0 五卡，布局角标正确 |
 | **P0-e** | **重写 `PracticeCatalogBatchLoader`**：从「查 structure + part_setting」改为「读板块配置 + 算题量」 | P0-c2 | 2.0 四模块目录与现网**逐字段一致** |
 | **P0-f** | 翻译目录 4 + 写链路 6 + `validatePart` 放宽 | P0-e | 笔译/口译都能练到交卷；写作卷的 section 打翻译 → 400 |
-| **P0-g** | **PROD 数据补全**：`deleted_prac` DDL **+ 把 16 张无 setting 行的活卷标 1**（同一批次，见 §3.2.7 陷阱） → 28 行模块配置 → 15 行板块配置 → `layout` 回填 → level 收敛。3.0 正式放开时再把该版本 15 张卷改回 `deleted_prac = 0` | DDL 最先；五闸门 + DRY-RUN + 备份 | 目录卷数不变（2.0 每级 10 张、3.0 全 0）；3.0 放开后五卡有数据；`layout` 非空率 100%；板块配置 21/21 |
+| **P0-g** | **PROD 数据补全**：**5 张内容表加 `enabled_prac` + `enabled_exam`**（`DEFAULT 1`）**+ 同批把 16 张无 setting 行的活卷置 0**（§3.2.7 陷阱） → 28 行模块配置 → 15 行板块配置 → `layout` 回填 → level 收敛。3.0 正式放开时再把该版本 15 张卷改回 `enabled_prac = 1` | DDL 最先；五闸门 + DRY-RUN + 备份 | 目录卷数不变（2.0 每级 10 张、3.0 全 0）；5 表两组新列非空率 100%；3.0 放开后五卡有数据；`layout` 非空率 100%；板块配置 21/21 |
 | **P0-h** | **作答表统一三元组**：`practice_record` 删 2 列 + 重建索引；`writing_attempt` / `speaking_attempt` 加两列 → 回填 → 校验 0 残留；7 处 Mapper 改三元组；接口改 `(paperId, section)`；CSCA 3 处改 `SEC_CSCA + 科目码` | P0-e | 抽 100 条历史记录新旧路径取题 ID 一致；`EXPLAIN` 走新索引；新记录 `question_ids` 非空且长度 = `total_questions`；回填校验 0 残留 |
-| **P0-i** | **`practice_paper_setting` 退场**：删 `PracticeCatalogBatchLoader` 里的 setting 查询；`ReadingRecordServiceImpl` / `WritingAttemptServiceImpl` 的准入改判 `deleted_prac`；3 处 `getSortOrder()` 排序改 `id`；`SharedPaperEligibility` 补判 `deleted_prac`（B-17）；最后 `DROP TABLE practice_paper_setting` | P0-g 数据已铺好 | 4 模块目录与现网逐字段一致；下架卷在列表/详情/作答三处均不可达；表已 drop |
+| **P0-i** | **`practice_paper_setting` 退场**：删 `PracticeCatalogBatchLoader` 里的 setting 查询；`ReadingRecordServiceImpl` / `WritingAttemptServiceImpl` 的准入改判 `enabled_prac`；3 处 `getSortOrder()` 排序改 `id`；`SharedPaperEligibility` 补判 `enabled_prac`（B-17）；最后 `DROP TABLE practice_paper_setting` | P0-g 数据已铺好 | 4 模块目录与现网逐字段一致；下架卷在列表/详情/作答三处均不可达；表已 drop |
 | **P0-j** | **结构表 drop**：确认代码中 `structureId` 出现次数 = 0 → `DROP TABLE practice_part_setting` → `DROP TABLE practice_paper_structure` | P0-h 回填校验通过 + P0-e 已换源 | 两表不存在；`grep -r structure_id` 源码零命中；全链路回归通过 |
 | P1 | 偏好表加 `version`；ID 改 String；`dataVersion` ETag；角标后台可配；补 `TRANSLATION_WRITTEN` 策略；collation 对齐（D10 随表退场自动消失）；B-09 修正；板块级时长/满分/提示语加列 | P0 上线观察 | — |
 | P2 | `option_pool` 三步退场（补 90 条 → `pool_code` 去 structureId → 快照现算）；口译 ASR + 自动评分 | P0-j 稳定 | — |
@@ -1022,13 +1088,14 @@ PROD 直接 `UPDATE exam_paper.level` 会动题库表，`exam-service` 读同一
 | B-09 | `answer_mode` 与题型语义错配：写作类 `layout=input` 却标 `SINGLE`，而翻译标 `TEXT` | `practice_part_setting` 数据 | 3.0 作文按单选渲染 | 🟡 中（3.0 未上线） |
 | B-10 | 3.0 口语在 `question`（5 条）与 `speaking_exam_paper`（5 张卷 78 题）双录，且 `question` 那条是造数残留 | 题库数据 | 若按 `question` 配料会读到 1 张假卷 → 口语目录近乎空 | 🟡 中（P0-c2 软删 5 条） |
 | B-11 | `practice_paper_setting` 孤儿行：TEST 69（38 活跃 + 31 软删）/ PROD 56（全活跃），占全表 34% / 48% | 运营表数据 | 现网被 `IN` 天然过滤；**退场后自然消失，无需清理** | 🟢 低（已被 P0-i 覆盖） |
-| B-12 | `practice_paper_setting` 三个开关在真实卷上零使用：`enabled=0` 的 2/5 行、`deleted=1` 的 31 行**全是孤儿行**，`visible` 全表为 1 | 运营表数据 | 这张表对真实卷只剩「行是否存在」；`sort_order` 也与 `id` 升序完全一致 → 由 `deleted_prac` 替代（§3.2.7） | 🟢 低（P0-i 退场） |
+| B-12 | `practice_paper_setting` 三个开关在真实卷上零使用：`enabled=0` 的 2/5 行、`deleted=1` 的 31 行**全是孤儿行**，`visible` 全表为 1 | 运营表数据 | 这张表对真实卷只剩「行是否存在」；`sort_order` 也与 `id` 升序完全一致 → 由 `enabled_prac` 替代（§3.2.7） | 🟢 低（P0-i 退场） |
 | B-13 | 共享选项池缺记录：`reading_cloze` TEST 90/690 无池记录、PROD 90/90 全无；`pool_code` 内嵌 `structureId` | `practice_question_option_pool` | 选词填空退化成每题重复渲染 6 个选项 | 🟡 中（P2 前置） |
 | B-14 | `question.layout` PROD 缺失 47.7%（6469/13574），TEST 100% | `question` 数据 | 4 处代码依赖它渲染 → 近一半题交互错乱 | 🔴 高（P0-g 回填） |
 | B-15 | 口语编码分裂：`SEC_SPEAK` 与 `SEC_SPEAKING` 并存（TEST 配置 `SEC_SPEAKING` 1 行模块 + 3 行板块，与 `SEC_SPEAK` L7 重复），代码 4 处只用 `SEC_SPEAK` | 配置数据 | 保留 `SEC_SPEAKING` 就是永久孤儿配置 | 🟡 中（P0-c2 删 4 行） |
 | B-16 | PROD `HSK2.0 L2 SEC_LISTEN` 的 `total_question_count=35`，但四板块求和 40 | 配置数据 | 进度条分母口径不一 | 🟢 低（拆表时以实际计数为准） |
-| B-17 | `SharedPaperEligibility.isEligible` 只判 `deleted` + `examType`，**不判 `deleted_prac`** | 4 处调用（阅读/写作 Catalog、Record） | 卷在列表被过滤、但详情/开始作答可进入 → 下架卷可直达。删 `setting` 后必须先补这一条 | 🔴 高（P0-i 必改） |
-| B-18 | `practice_module_part_config` 只有 `PRIMARY (id)`，无唯一键；且 `deleted` 需同时承担「逻辑删除」与「板块开关」两种语义 | TEST 实际表 | 同一 `(version, level, section_mapping, section)` 可重复插入 → 开关判定出现两行矛盾；若查询写成 `WHERE deleted=0` 再兜底，被关闭的板块会被 R14 重新放出来 | 🟡 中（P0-c2 补唯一键 + 按 §3.2.2 的两拨分流实现） |
+| B-17 | `SharedPaperEligibility.isEligible` 只判 `deleted` + `examType`，**不判 `enabledPrac`**；而 4 个 Catalog 已改为 `enabled_prac = 1` | 4 处调用（阅读/写作 Catalog、Record） | **口径已经分叉**：目录看不到下架卷，详情 / 开始作答却能进入 → 下架卷可直达。补一行 `&& enabledPrac == 1` 即修 | 🔴 高（P0-i 必改，建议提前到 P0-c 后立刻做） |
+| B-18 | `practice_module_part_config` 只有 `PRIMARY (id)`，无唯一键 | TEST 实际表 | 同一 `(version, level, section_mapping, section)` 可重复插入 → 开关判定出现两行矛盾（一行 `enabled=1` 一行 `enabled=0`，取哪行决定板块开不开）。实测 132 行当前无重复，补键只防未来 | 🟡 中（P0-c2 补 `uk_module_part`） |
+| B-20 | `enabled_prac` / `enabled_exam` 双开关在同一行并存，练习侧若误用 `AND enabled_exam = 1` 或 `OR` | 各 Mapper / Service | 运营为「只关考试」而下架的内容会连带从练习消失；反向漏判则已下架内容仍在练习出现 | 🟡 中（R12b 卡点 + Code Review grep `enabled_exam` 仅允许出现在考试服务） |
 | B-19 | 口语取题靠 `PartCodeCase` 硬编码 8 个题型 → `PART_1/2/3`，`selectByPart` 的题型白名单同样只列这 8 个 | `SpeakingSourceQuestionMapper.xml` | 新配置里 6 个 `type_code` 不在白名单：3.0 L4/L5/L6 的 `listen_retell`、L7 的 `applied_read_speak` / `listen_material_answer` / `viewpoint_express` → **这些板块取题返回空**，用户看到"有题但点进去没题" | 🔴 高（P0-e 必改） |
 
 > B-01 / B-02 / B-03 **不等本次改造上线就该修**：前两条现网已发生，第三条是 3.0 放开的必炸点。
@@ -1041,8 +1108,8 @@ PROD 直接 `UPDATE exam_paper.level` 会动题库表，`exam-service` 读同一
 |---|---|---|---|---|
 | **D3** | `exam_paper.level` 的 7-9 取值不一致 | `"7"` | `"7-9"` | 代码用候选集 `IN ('7','7-9')`（R3） |
 | **D4** | 3.0 的模块配置行 | 28 行 | **0 行** | 补 28 行 + 对应板块明细行 |
-| **D11** | `deleted_prac` 列不存在 | 5 表已有 | **5 表全缺** | 上线前 DDL，**最先做**；必须与「16 张无 setting 行活卷标 1」同一批次（§3.2.7） |
-| **D13** | 3.0 卷全部未上架 | 15/15 | **0/15** | 迁移时随缺行规则标 `deleted_prac = 1`；3.0 正式放开的那一版改回 `0`（不是新增 setting 行） |
+| **D11** | `enabled_prac` / `enabled_exam` 两列不存在 | **5 表已有**（`exam_paper`/`question`/`question_group`/`speaking_exam_paper`/`_question`） | **5 表全缺** | 上线前 DDL，**最先做**；`DEFAULT 1` 必须与「16 张无 setting 行活卷置 0」同一批次（§3.2.7） |
+| **D13** | 3.0 卷全部未上架 | 15/15 | **0/15** | 迁移时随缺行规则置 `enabled_prac = 0`；3.0 正式放开的那一版改回 `1`（不是新增 setting 行） |
 | **D14** | `question.layout` 大面积缺失 | 100% 有值 | **47.7% NULL** | 按 TEST 同题回填 |
 | **D15** | 2.0 的板块配置只有听力有值 | 46/49 | **6/21**（阅读 6 / 写作 6 / 口语 3 行全 NULL） | 与 D4 同批，按题库 `question.section` 生成 |
 | D5 | `writing_evaluation_policy` 无 `TRANSLATION_WRITTEN` | 缺 | 缺 | P0 不入队，直接 `UNAVAILABLE`；P1 补 |
@@ -1067,7 +1134,8 @@ PROD 直接 `UPDATE exam_paper.level` 会动题库表，`exam-service` 读同一
 | `setting.sort_order` == `id` 升序 | 13/13 组一致 | 6/6 组一致 |
 | `practice_paper_setting` 孤儿行 | 69 / 205（34%） | 56 / 116（48%） |
 | `practice_module_level_config` 2.0 / 3.0 | 21 / 28 行（**`parts_config` 列已删**） | 21 / **0** 行（`parts_config` 列仍在） |
-| `practice_module_part_config` | **已建，132 行**；无唯一键，`deleted` 兼作板块开关（B-18） | **表不存在**（D16） |
+| `practice_module_part_config` | **已建，132 行**；`enabled` 列已加（全 1）；无唯一键（B-18） | **表不存在**（D16） |
+| `enabled_prac` / `enabled_exam`（5 张内容表） | **全有**，取值全 1（167 / 13624 / 1038 / 38 / 837 行） | **全缺**（D11），`deleted_prac` 也从未存在 |
 | `parts_config` 非空行 / 元素总数 | 46/49、132 个（列已删，仅存档表可查） | 6/21、20 个 |
 | `parts[].sortOrder` == `question.section` | 38/46 行（8 行是 2.0 口语） | 6/6（只有听力有值） |
 | 三元组 ↔ `structure_id` 是否一对一 | 1201 / 1201，0 歧义 | 648 / 648，0 歧义 |
@@ -1076,7 +1144,7 @@ PROD 直接 `UPDATE exam_paper.level` 会动题库表，`exam-service` 读同一
 | 3.0 口语内容源 | `speaking_exam_paper` 5 卷 78 题 | 0 卷（未放开） |
 | `total_question_count` == `SUM(parts)` | 46/46 | 5/6（L2 听力 35≠40） |
 | `parts_config` 是否含 `section` / `typeCode` / `answerMode` | **均不含** | 同 |
-| `deleted_prac` 列 | 5 表已有 | **5 表全缺** |
+| `enabled_prac` 列 | 5 表已有 | **5 表全缺** |
 | `practice_paper_structure` 2.0 / 3.0 | 1066 / 135 行 | — / **0** 行 |
 | 三表行数（structure / part_setting / level_config） | 1201 / 1201 / 49 | 1066 / — / 21 |
 | `practice_record` / `practice_report` | 963 / 477 | 1364 / 1011 |
