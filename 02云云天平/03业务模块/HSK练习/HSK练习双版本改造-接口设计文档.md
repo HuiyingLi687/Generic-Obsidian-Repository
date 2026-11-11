@@ -1,6 +1,6 @@
 # HSK 练习双版本（2.0 / 3.0）与翻译模块拆分 · 接口设计文档
 
-> 版本：v1.1｜更新日期：2026-11-10
+> 版本：v1.2｜更新日期：2026-11-11
 > 影响服务：practice-service（改造 + 新增）；exam-service / manage 仅实体加字段
 > 关联文档：[HSK练习双版本与翻译模块拆分-SDD](HSK练习双版本与翻译模块拆分-SDD.md)
 > 开发：待填｜测试：待填｜前端：待填
@@ -122,8 +122,8 @@
 | A5  | GET    | `/reading/levels/{level}/intro`                          | 阅读等级备考说明     | 改造   | `version` + `PracticeLevelCode` 解析；`sections` → `parts`、三语、`durationMinutes` |
 | ~~A6~~ | ~~GET~~ | ~~`/reading/papers`~~                                     | ~~阅读卷列表~~    | **删除** | **并入 A4 的 `papers[]`** |
 | A7  | GET    | `/reading/papers/{paperId}/parts`                            | 阅读卷板块列表      | 改造   | 卷 `version` 与入参不符 → 404；`structureId` → `section`；**外层加对象包裹** |
-| A8  | GET    | `/reading/preferences`                                       | 阅读偏好         | 无变更  | P0 不动（表无 `version` 列）                                           |
-| A9  | PUT    | `/reading/preferences/level`                                 | 更新阅读偏好       | 无变更  | P0 仅 2.0 可写                                                     |
+| ~~A8~~ | ~~GET~~ | ~~`/reading/preferences`~~                                 | ~~阅读偏好~~     | **删除** | **端点整体移除**（2026-11-11 拍板）：后端无内部依赖，三模块偏好接口一并下线；「上次练到哪」由前端本地保存，或后续由 `practice_record` 推导 |
+| ~~A9~~ | ~~PUT~~ | ~~`/reading/preferences/level`~~                           | ~~更新阅读偏好~~   | **删除** | 同 A8 |
 | A10 | GET    | `/writing/levels`                                            | 写作等级概览 + 卷列表 | 改造   | 同 A4；补 `HSK7-9` 分支                                              |
 | A11 | GET    | `/writing/levels/{level}/intro`                          | 写作等级备考说明     | 改造   | `parseLevel` 正则扩到 `HSK7-9`；`sections` → `parts`、三语                   |
 | ~~A12~~ | ~~GET~~ | ~~`/writing/papers`~~                                    | ~~写作卷列表~~    | **删除** | **并入 A10 的 `papers[]`** |
@@ -150,14 +150,13 @@
 | D2  | PATCH  | `/hsk/module-config/parts/{id}`                              | 运营：开关板块      | 新增   | 只改 `enabled`（可选 `sort_order`），不建行不删行                            |
 | E1  | GET    | `/hsk/modules`                                               | 首页模块卡聚合      | 新增   | 一次返回布局 + 卡片 + 可用性 + 进度                                          |
 
-**统计（共 30 个）**
+**统计（共 28 个）**
 
 | 类型 | 数量 | 明细 |
 |---|---|---|
 | 改造 | 17 | A 组 13（A1–A5、A7、A10、A11、A13、A14、A14b、A16）+ C 组 4 |
 | 新增 | 11 | B 组 9（B1、B2、B4–B10）+ D 组 2 + E 组 1 |
-| **删除** | **4** | A6 `/reading/papers`、A12 `/writing/papers`、A15 `/speaking/papers`、B3 `/translation/papers`（全部并入各自模块的 `/levels`） |
-| 无变更（仅登记） | 2 | A8 `GET /reading/preferences`、A9 `PUT /reading/preferences/level` |
+| **删除** | **6** | A6 `/reading/papers`、A8 `/reading/preferences`、A9 `/reading/preferences/level`、A12 `/writing/papers`、A15 `/speaking/papers`、B3 `/translation/papers`。前 4 组并入各自模块的 `/levels`；A8/A9 是偏好接口，连同写作/口语同款（原本就未登记编号）一并下线 |
 
 > **目录接口从「四跳」变「三跳」**：模块卡 → `/{mod}/levels?version=&level=`（等级概览 + 卷列表）→ `/{mod}/papers/{paperId}/parts` → 答题。听力本来就是这套，本次其余四个模块向它对齐（§4.0.6）。
 
@@ -878,29 +877,22 @@ Authorization: Bearer xxx
 
 ---
 
-#### A8 `GET /reading/preferences` 【无变更】
+#### ~~A8 `GET /reading/preferences`~~ 【删除】
 
-**用途**：查询阅读偏好
-**鉴权**：需要登录
+**2026-11-11 拍板：端点整体移除**（连同写作 `/writing/preferences`、口语 `/speaking/preferences` 同款，共 6 个端点）。
 
-P0 **不改代码**。原因：`practice_reading_preference` 表没有 `version` 列，2.0 / 3.0 共用一个偏好。P1 加列后再拆分。
+**删除理由**：
+- 功能仅是「记住用户上次选的等级/卷」（表 `practice_user_preference`，按 `user_id + section_mapping` 存行），后端**无任何内部依赖**——没有作答/提交链路自动读写它，只有前端主动调用
+- 表无 `version` 列，双版本下 2.0/3.0 偏好必然混用（原 A8/A9 标「P0 不动」正是因为改不动）
+- 替代方案：前端 `localStorage` 记「上次练到哪」，或后续由 `practice_record` 推导（真实作答比手动偏好更准）
 
-**返回**：`{ userId, lastLevel, lastLevelCode, lastPaperId }`（全部【无变更】）
-
-> ⚠️ 已知瑕疵：`lastLevelCode` 由 `"HSK" + lastLevel` 拼接，`7` 会输出 `HSK7`（B-05）。P0 不动，前端对 3.0 的偏好回填需容错。
+**数据不迁移**：`practice_user_preference` 表保留在库（TEST 17 行），不 drop、不回填；实体 `PracticeUserPreference` + `PracticeUserPreferenceMapper` 已从代码删除。
 
 ---
 
-#### A9 `PUT /reading/preferences/level` 【无变更】
+#### ~~A9 `PUT /reading/preferences/level`~~ 【删除】
 
-**用途**：更新最近选择的阅读等级
-**鉴权**：需要登录
-
-| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
-|---|---|---|---|---|
-| `level` | body | String | 是 | 【修改】参数名 `levelCode` → `level`，值域不变 |
-
-P0 **只保证 2.0 可写**；3.0 传 `HSK7-9` 会 404（表无 `version` 列时的既有行为）。P1 加列后统一。
+同 A8，随偏好机制整体下线。
 
 ---
 
@@ -2256,8 +2248,9 @@ available = 存在 enabled=1 的 level_config 行
 | **8** | **卷状态枚举统一小写** | 阅读 / 写作 / 口语 / 翻译 | `NOT_STARTED` → `not_started` 等。全局替换后再全局搜一遍大写残留 |
 | **9** | **`/parts` 外层加对象包裹，进度字段收敛** | 全部 5 个模块 | `data: [part…]` → `data: { paperId, paperCode, parts: [...] }`；`draftRecordId`/`draftAttemptId` → `draft.id`；`hasReport`/`latestRecordId`/`latestReportId`/`feedbackStatus`/`reportStatus` → `report.*`；口语 4 个计数 → `stats.*` |
 | **10** | **数值等级字段删除** | 阅读 / 写作 / 口语 / 翻译 | `level`（数值）/ `levelCode` / `databaseLevel` / `levelId` 全部不再下发，只用 `level`（**数字串**）+ `levelName`（显示名） |
+| **11** | **偏好接口下线** | 阅读 / 写作 / 口语 | `GET /{mod}/preferences`、`PUT /{mod}/preferences/level` 共 6 个端点 **404**。如需「上次练到哪」，前端 `localStorage` 自存，或等后续由 `practice_record` 推导 |
 
-> 第 5–10 条是**本轮新增的破坏性变更**（三跳对齐），与 1–4 一起构成「前端必须同批上线」的完整清单。**没有灰度通道**：任一条漏改都会导致白屏或空列表。
+> 第 5–11 条是**本轮新增的破坏性变更**，与 1–4 一起构成「前端必须同批上线」的完整清单。**没有灰度通道**：任一条漏改都会导致白屏或空列表。
 
 ### 6.2 兼容性说明
 
@@ -2540,6 +2533,8 @@ ALTER TABLE practice_module_part_config
 | `speaking/controller/SpeakingReportController.java` | 同上 |
 | `core/entity/PracticeModuleLevelConfig.java` | 补 `@TableField("level_name") private String levelName`（新列，位于 `level` 之后）；**同时删 `partsConfig` 字段**（TEST 已 drop 该列，留着必 `Unknown column`） |
 | `reading` / `writing` 的 `levelResponse` | `levelName` 改取 `config.getLevelName()`；**删 `"HSK" + level` 拼接**与 `levelMapper.selectOne`（读 `hsk_level_config` 那次）一并去掉。听力 / 口语本就未读该表 |
+| `core/entity/PracticeUserPreference.java` / `core/mapper/PracticeUserPreferenceMapper.java` | **整文件删除（2026-11-11 已删）** —— 偏好机制下线（A8/A9 删除，§4 A8）。库表 `practice_user_preference` 保留不 drop（TEST 17 行历史数据） |
+| `reading` / `writing` / `speaking` 的 `*Preference*` DTO、controller 端点、service 方法 | **整批删除（2026-11-11 已删）** —— 6 个 `/preferences` 端点 + 6 个 DTO + 3 对 service 方法；`*CatalogServiceImplTest` 构造参数同步（口语测试） |
 | `core/entity/PracticeLevelConfig.java` / `core/mapper/PracticeLevelConfigMapper.java` | **整文件删除** —— 练习侧不再映射 `hsk_level_config`（该表归 HSK 考试侧 exam-service） |
 | `core/entity/PracticePaperStructure.java` / `PracticePartSetting.java` / `PracticePaperSetting.java` | **整文件删除** |
 | `core/mapper/PracticePaperStructureMapper.java` / `PracticePartSettingMapper.java` / `PracticePaperSettingMapper.java` | **整文件删除** |

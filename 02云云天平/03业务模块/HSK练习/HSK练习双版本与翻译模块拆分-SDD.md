@@ -661,7 +661,7 @@ ALTER TABLE exam_paper
 
 > `"7"` 落到 DB 时是 `exam_paper.level IN ('7','7-9')` 候选集（R3）——TEST 存 `'7'`、PROD 存 `'7-9'`，接口层只认 `"7"`，换算收口在 `PracticeLevelCode`。
 
-#### 3.3.2 存量 16 端点改造（13 改造 + 3 删除）
+#### 3.3.2 存量端点改造（13 改造 + 4 删除 + 偏好下线）
 
 | # | 方法 | 路径 | 现状 | 改造 |
 |---|---|---|---|---|
@@ -672,8 +672,8 @@ ALTER TABLE exam_paper
 | 5 | GET | `/reading/levels/{code}/intro` | 常量 + 裸 `parseInt` → `HSK7-9` 必 404 | 改 `PracticeLevelCode`；`sections` → `parts`、三语、`durationMinutes` |
 | ~~6~~ | ~~GET~~ | ~~`/reading/papers`~~ | 常量 + `eq(level, "7")` 匹配不到 PROD 的 `"7-9"` | **删除**，并入 4 的 `papers[]`（`level IN (dbLevels)` 的口径随迁） |
 | 7 | GET | `/reading/papers/{paperId}/parts` | 无版本校验 | 卷 `version` 与入参不符 → 404；外层改对象包裹 |
-| 8 | GET | `/reading/preferences` | 表无 version 列 | **P0 不改**（见 §3.3.6） |
-| 9 | PUT | `/reading/preferences/level` | 同上，`HSK7-9` 会 404 | P0 仅 2.0 可写；P1 加 version 列 |
+| ~~8~~ | ~~GET~~ | ~~`/reading/preferences`~~ | 后端零内部依赖，仅前端手动读写 | **删除（2026-11-11 拍板）**：连同写作 / 口语同款共 6 个偏好端点一并下线；实体 `PracticeUserPreference` + mapper 已删，库表保留不 drop。「上次练到哪」由前端本地保存或由 `practice_record` 推导 |
+| ~~9~~ | ~~PUT~~ | ~~`/reading/preferences/level`~~ | 同上 | **删除（2026-11-11 拍板）**，同 8 |
 | 10 | GET | `/writing/levels` | 常量；`introSections` 的 switch 只到 6 | 常量改参数；**改单等级概览 + 内嵌 `papers[]`**；补 `7` 分支 |
 | 11 | GET | `/writing/levels/{code}/intro` | 常量；`parseLevel` 正则只到 `HSK[1-6]` | 数字串校验；`sections` → `parts`、三语 |
 | ~~12~~ | ~~GET~~ | ~~`/writing/papers`~~ | 常量 | **删除**，并入 10 的 `papers[]` |
@@ -1052,7 +1052,7 @@ POST /translation/attempts/start {paperId, section}
 | **P0-h** | **作答表统一三元组**：`practice_record` 删 2 列 + 重建索引；`writing_attempt` / `speaking_attempt` 加两列 → 回填 → 校验 0 残留；7 处 Mapper 改三元组；接口改 `(paperId, section)`；CSCA 3 处改 `SEC_CSCA + 科目码` | P0-e | 抽 100 条历史记录新旧路径取题 ID 一致；`EXPLAIN` 走新索引；新记录 `question_ids` 非空且长度 = `total_questions`；回填校验 0 残留 |
 | **P0-i** | **`practice_paper_setting` 退场**：删 `PracticeCatalogBatchLoader` 里的 setting 查询；`ReadingRecordServiceImpl` / `WritingAttemptServiceImpl` 的准入改判 `enabled_prac`；3 处 `getSortOrder()` 排序改 `id`；`SharedPaperEligibility` 补判 `enabled_prac`（B-17）；最后 `DROP TABLE practice_paper_setting` | TEST 数据已就绪（生产差异见附录 D） | 4 模块目录与现网逐字段一致；下架卷在列表/详情/作答三处均不可达；表已 drop |
 | **P0-j** | **结构表 drop**：确认代码中 `structureId` 出现次数 = 0 → `DROP TABLE practice_part_setting` → `DROP TABLE practice_paper_structure` | P0-h 回填校验通过 + P0-e 已换源 | 两表不存在；`grep -r structure_id` 源码零命中；全链路回归通过 |
-| P1 | 偏好表加 `version`；ID 改 String；`dataVersion` ETag；角标后台可配；补 `TRANSLATION_WRITTEN` 策略；collation 对齐（D10 随表退场自动消失）；板块级时长/满分/提示语加列；口语表补 `layout` 列 | P0 上线观察 | — |
+| P1 | ID 改 String；`dataVersion` ETag；角标后台可配；补 `TRANSLATION_WRITTEN` 策略；collation 对齐（D10 随表退场自动消失）；板块级时长/满分/提示语加列；口语表补 `layout` 列。~~偏好表加 `version`~~（偏好接口已整体下线，2026-11-11） | P0 上线观察 | — |
 | P2 | `option_pool` 三步退场（补 90 条 → `pool_code` 去 structureId → 快照现算）；口译 ASR + 自动评分 | P0-j 稳定 | — |
 
 > 🔴 **最大风险点是 P0-e**：唯一会改变 2.0 现网行为的改造（目录换源）。验收法：同一批请求（4 模块 × 版本 × 等级），新旧响应 **JSON 逐字段 diff 必须为空**，建议先存旧实现快照。
