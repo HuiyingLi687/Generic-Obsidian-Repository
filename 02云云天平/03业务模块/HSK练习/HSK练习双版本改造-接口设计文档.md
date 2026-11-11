@@ -144,6 +144,7 @@
 | E1  | GET    | `/hsk/modules`                                               | 首页模块卡聚合      | 新增   | 一次返回布局 + 卡片 + 可用性 + 进度                                          |
 
 > U1–U3 与 CR 的响应统一带 `module` 字段，前端不需要自己记「这份响应属于哪个模块」。
+> 🔴 本表**只列本期改造/新增的端点**；听/读/写/说的作答端点（start / questions / answers / pause / submit / 报告详情）沿用既有路径、本期零改动，全链路流转统一登记在 **§4.6**（决策 21）。
 
 ### 3.2 被合并 / 移除的原端点（21 + 2 个，全部 404，无兼容层）
 
@@ -164,7 +165,7 @@
 | 合并新增 | 4   | U1 / U2 / U3 / CR（新路径，旧路径全部 404） |
 | 新增   | 7   | B5–B10（翻译作答链路）+ E1（首页聚合）         |
 
-> **目录接口从「四跳」变「三跳」，且五个模块共用同一组路径**：模块卡（E1）→ `U1 /hsk/levels?module=&version=&level=`（等级概览 + 卷列表）→ `U2 /hsk/levels/{level}/intro?module=&version=` → `U3 /hsk/papers/{paperId}/parts?module=` → 答题。**三跳都要带 `module`**（U3 必填，决策 16b）。响应结构五模块同构（§4.0.6），差异只在 `module` 值与口语 `stats` / 翻译双板块这些**响应内**差异。
+> **目录接口从「四跳」变「三跳」，且五个模块共用同一组路径**：模块卡（E1）→ `U1 /hsk/levels?module=&version=&level=`（等级概览 + 卷列表）→ `U2 /hsk/levels/{level}/intro?module=&version=` → `U3 /hsk/papers/{paperId}/parts?module=` → 答题。**三跳都要带 `module`**（U3 必填，决策 16b）。响应结构五模块同构（§4.0.6），差异只在 `module` 值与口语 `stats` / 翻译双板块这些**响应内**差异。**从开卷到报告的五模块全链路接口流转见 §4.6（决策 21）**。
 
 ---
 
@@ -2333,6 +2334,127 @@ Accept-Language: zh
 
 
 > 🔴 **生产未灌字典（E16）时的行为**：`modules=[]`、`layout` 按版本缺省、`data` 正常返回 **200**，不打 500。前端表现为首页无卡片——排查方向是 `sys_dict` 而不是接口。
+
+---
+
+## 4.6 答题流程接口流转（五模块全链路，2026-11-11 登记，决策 21）
+
+> 本节只**登记调用时序**，不改任何端点。听/读/写/说的作答端点沿用既有路径（因此不在 §3.1 的「保留端点」清单里——那份清单只列**本期改造/新增**的端点）；翻译作答链路 B5–B10 已在 §3.1。
+> 路径为 service 内路径，客户端实际调用加网关前缀 `/api/practice`；全部端点必须登录；`version` 参数口径见 §4.0.2。
+
+### 4.6.1 通用时序（五模块骨架一致）
+
+```
+E1 首页模块卡
+ └→ U1  GET /hsk/levels?module=&version=&level=      等级概览 + 卷列表
+     └→ U2  GET /hsk/levels/{level}/intro?module=    等级备考说明（可选）
+         └→ U3  GET /hsk/papers/{paperId}/parts?module=&version=   卷板块列表（拿 section）
+             └→ ① start     开卷（幂等，拿 recordId / attemptId）
+                 └→ ② questions  拉题（逐题下发 layout，按 question_ids 快照）
+                     └→ ③ answers    答题（单题/批量/录音，随模块而异）
+                         └→ ④ submit    交卷（Idempotency-Key 必填）
+                             └→ ⑤ report   CR 拉最近报告 → 详情端点逐题看解析
+```
+
+**公共约定**：
+
+| # | 约定 |
+|---|---|
+| 1 | **start 幂等**：该 `(userId, paperId, section)` 已有进行中单据时直接返回该单据（不新开卷）；**续练 = 再调一次 start**，然后按返回的题目顺序续答 |
+| 2 | **start 请求体统一 `{paperId, section}`**——`structureId` 随结构表删除（§3.2.5），旧 `{paperId, structureId}` 请求体一律作废 |
+| 3 | **拉题按快照**：start 时服务端把板块题目 ID 固化进 `question_ids`（听/读在 `practice_record`），questions 接口按快照顺序拉题——题库改版不影响进行中/已交卷的题序 |
+| 4 | **提交类端点必带 `Idempotency-Key`** header（§4.0.1）：submit（五模块）；答题保存类不强制 |
+| 5 | **报告统一入口 CR**：`GET /papers/{paperId}/reports/latest?module=&section=&version=`（§4.3，通用报告块）。详情页逐题解析再走各模块详情端点（见各模块表 ⑤） |
+| 6 | **异步报告轮询**：写/说/译的 AI 报告是异步生成——submit 成功后 CR 的 `reportStatus` 为未就绪，前端轮询 CR（或模块 `/status` 端点）直至 `READY`；听/读交卷即出报告，无轮询 |
+| 7 | 作答链路端点**不带 `version`**：版本由 `paperId` 唯一确定（§1 约束 1），仅目录端点（U1/U2/U3）与 CR 需要 `version` |
+
+### 4.6.2 五模块差异矩阵
+
+| | 听 listening | 读 reading | 写 writing | 说 speaking | 译 translation |
+|---|---|---|---|---|---|
+| 作答主键 | `recordId`（`practice_record`） | `recordId` | `attemptId` | `attemptId` | `attemptId`（复用 `writing_attempt`） |
+| start 路径 | `POST /listening/records/start` | `POST /reading/records/start` | `POST /writing/attempts/start` | `POST /speaking/attempts/start` | `B5 POST /translation/attempts/start` |
+| 答题形态 | `PUT .../answers/{questionId}`（单题）+ `PUT .../answers`（批量） | 同听 | `PUT .../answers`（批量） | 录音两步（prepare → answers） | `PUT .../answers`（笔译 `TEXT` / 口译 `AUDIO`） |
+| 暂停 | `POST .../pause` | `POST .../pause` | `POST .../pause` | `POST .../pause` | 无（P1） |
+| 时长心跳 | 无 session 端点（时长按记录时间戳 + pause 累计） | `POST .../sessions` + `/{sessionId}/heartbeat` + `/end` | 同读（挂在 `/writing/attempts/{attemptId}/sessions`） | 同读（挂在 `/speaking/attempts/{attemptId}/sessions`） | 无独立会话端点（时长沿用写作 attempt 累计字段，§4.3 填充规则） |
+| 交卷 | `POST .../records/{recordId}/submit` | 同听 | `POST /writing/attempts/{attemptId}/submit` | `POST /speaking/attempts/{attemptId}/submit` | `B9 POST /translation/attempts/{attemptId}/submissions`（**注意与写作 `/submit` 不同名**） |
+| 报告生成 | 同步 | 同步 | **异步 AI** | **异步 AI** | 异步（P0 无评分策略，恒 UNAVAILABLE） |
+| 报告详情 | `GET .../records/{recordId}/report`、`.../report/questions/{questionId}`、失败 `POST .../report/retry` | 同听 | `GET /writing/reports/{reportId}`、`/status`（ETag）、`/questions/{questionId}` | `GET /speaking/reports/{reportId}`、`/status`、`/questions/{questionId}`、`POST /reports/{reportId}/retry` | `B10 GET /translation/reports/{reportId}` |
+
+### 4.6.3 听力 / 阅读（record 主键，两者仅前缀不同）
+
+以听力为例（阅读把 `listening` 换成 `reading` 即可，端点形态逐条对应）：
+
+| 步 | 端点 | 说明 |
+|---|---|---|
+| ① | `POST /listening/records/start` `{paperId, section}` | 返回 `recordId` + `status`；已有进行中记录直接返回 |
+| ①b | `GET /listening/records/{recordId}` | （续练可选）查记录详情/状态 |
+| ② | `GET /listening/records/{recordId}/questions` | 逐题下发 `layout`；按 `question_ids` 快照顺序 |
+| ③ | `PUT /listening/records/{recordId}/answers/{questionId}` | 单题保存 |
+| ③b | `PUT /listening/records/{recordId}/answers` | 批量保存 |
+| ③c | `POST /listening/records/{recordId}/pause` | 暂停计时 |
+| ④ | `POST /listening/records/{recordId}/submit` | 交卷，**`Idempotency-Key` 必填**；同步出报告 |
+| ⑤ | `GET /papers/{paperId}/reports/latest?module=listening&section=` | **CR**，通用报告块（`answerCard` 按 `recordId` → `question_ids` 构造） |
+| ⑤b | `GET /listening/records/{recordId}/report` | 报告详情 |
+| ⑤c | `GET /listening/records/{recordId}/report/questions/{questionId}` | 逐题解析 |
+| ⑤d | `POST /listening/records/{recordId}/report/retry` | 报告异常重试 |
+
+### 4.6.4 写作（attempt 主键）
+
+| 步 | 端点 | 说明 |
+|---|---|---|
+| ① | `POST /writing/attempts/start` `{paperId, section}` | 返回 `attemptId` + `status`（大写 `IN_PROGRESS`，作答链路状态本期不统一，§10 #17） |
+| ①b | `GET /writing/attempts/{attemptId}` | （续练可选）查 attempt 详情 |
+| ② | `GET /writing/attempts/{attemptId}/questions` | **修 B-04 后逐题下发 `layout`**（改读 `layout` 原样透传，弃 `type_id_mapping` switch） |
+| ③ | `PUT /writing/attempts/{attemptId}/answers` | 批量保存答案 |
+| ③b | `POST /writing/attempts/{attemptId}/sessions` → `POST .../{sessionId}/heartbeat` → `POST .../{sessionId}/end` | 计时会话（`durationSeconds` 来源） |
+| ③c | `POST /writing/attempts/{attemptId}/pause` | 暂停 |
+| ④ | `POST /writing/attempts/{attemptId}/submit` | 交卷，`Idempotency-Key` 必填。🔴 **路径是 `/submit`**，与翻译 B9 的 `/submissions` 不同名（历史原因，勿混） |
+| ⑤ | `GET /papers/{paperId}/reports/latest?module=writing&section=` | **CR** 轮询：`reportStatus` 未就绪时等待，就绪后 `writing` 扩展块含评估反馈全字段（`feedbackStatus` / `progressPercent` / `etag`…） |
+| ⑤b | `GET /writing/reports/{reportId}` / `GET /writing/reports/{reportId}/status` | 报告详情 / 状态轮询（`/status` 支持 ETag） |
+| ⑤c | `GET /writing/reports/{reportId}/questions/{questionId}` | 逐题反馈 |
+
+### 4.6.5 口语（attempt 主键，录音题）
+
+| 步 | 端点 | 说明 |
+|---|---|---|
+| ① | `POST /speaking/attempts/start` `{paperId, section}` | 返回 `attemptId`；2.0 `level` 为 `"1"`–`"3"` |
+| ①b | `GET /speaking/attempts/{attemptId}` | （续练可选）查详情 |
+| ①c | `GET /speaking/attempts/{attemptId}/answer-card` | 答题卡（已答/未答） |
+| ② | `GET /speaking/attempts/{attemptId}/questions` | **P0 恒 `layout=record`**（`speaking_exam_paper_question` 无 `layout` 列，决策见 §4.0.5） |
+| ③ | `POST /speaking/attempts/{attemptId}/questions/{questionId}/recordings/prepare` | **录音两步·第 1 步**：拿预签名直传凭证 |
+| ③b | `POST /speaking/attempts/{attemptId}/questions/{questionId}/answers` | **录音两步·第 2 步**：上传完成后保存答案（音频 key + 时长） |
+| ③c | `POST /speaking/attempts/{attemptId}/sessions` → heartbeat → end | 计时会话 |
+| ③d | `POST /speaking/attempts/{attemptId}/pause` | 暂停 |
+| ④ | `POST /speaking/attempts/{attemptId}/submit` | 交卷，`Idempotency-Key` 必填；**异步 AI 判分** |
+| ⑤ | `GET /papers/{paperId}/reports/latest?module=speaking&section=` | **CR** 轮询：`speaking` 扩展块（`scoredCount` / `readyAt` / `failureCode`） |
+| ⑤b | `GET /speaking/reports/{reportId}` / `GET /speaking/reports/{reportId}/status` | 报告详情 / 状态 |
+| ⑤c | `GET /speaking/reports/{reportId}/questions/{questionId}` | 逐题评分 |
+| ⑤d | `POST /speaking/reports/{reportId}/retry` | 判分失败重试 |
+
+### 4.6.6 翻译（attempt 主键，复用写作链路，B5–B10）
+
+| 步 | 端点 | 说明 |
+|---|---|---|
+| ① | `B5 POST /translation/attempts/start` `{paperId, section}` | 委托 `WritingAttemptService#start`（`section=1` 笔译 / `2` 口译） |
+| ①b | `B6 GET /translation/attempts/{attemptId}` | 练习详情 |
+| ② | `B7 GET /translation/attempts/{attemptId}/questions` | 逐题下发 `layout`（笔译 `input` / 口译 `record`） |
+| ③ | `B8 PUT /translation/attempts/{attemptId}/answers` | 批量保存（复用写作答案 DTO） |
+| ④ | `B9 POST /translation/attempts/{attemptId}/submissions` | 交卷，`Idempotency-Key` 必填 |
+| ⑤ | `GET /papers/{paperId}/reports/latest?module=translation&section=` | **CR**（决策 20/21）：`translation` 扩展块同写作形状，P0 恒 `UNAVAILABLE`；2.0 的卷 → 404（翻译仅 3.0 有数据） |
+| ⑤b | `B10 GET /translation/reports/{reportId}` | 按 reportId 查详情（reportId 从 CR / U3 `parts[]` 取） |
+
+> 翻译本期**没有** pause / sessions 端点（复用写作 attempt，无独立计时接口）；`durationSeconds` 取写作 attempt 的累计活跃时长（§4.3 填充规则）。若需心跳，P1 评估复用 `/writing/attempts/{attemptId}/sessions`。
+
+### 4.6.7 前端对接清单（一页速查）
+
+1. 目录三跳全部带 `module`（U3 必填）+ `version`；作答端点不带 `version`。
+2. start 请求体一律 `{paperId, section}`，`section` 取 U3 `parts[].section`。
+3. 续练 = 再调 start（幂等），**不要**本地缓存 recordId/attemptId 过期判断。
+4. 拉题后按逐题 `layout` 渲染作答组件（§4.0.5），**不要**按 `typeCode` 猜形态。
+5. submit 前确保 Idempotency-Key 生成且单次会话复用同一 key。
+6. 交卷后报告入口只有 CR 一个；写/说/译需轮询 `reportStatus`（建议 2–3s 间隔、上限 60s，超时降级为「生成中」占位）。
+7. 「只看错题」/答题卡渲染只依赖 CR 通用块的 `answerCard[]`（§4.3），`correct=null` 的题置灰不进错题过滤。
 
 ---
 

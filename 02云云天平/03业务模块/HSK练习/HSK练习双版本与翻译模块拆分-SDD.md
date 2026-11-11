@@ -458,6 +458,8 @@ ALTER TABLE practice_record MODIFY COLUMN question_ids json NULL
 
 前端改拿目录响应里的 `partCode`（= `section`）+ 卷 `id`。**目录响应不再下发 `structureId`**——它随结构表一起消失，不留 deprecated 字段，避免前端继续依赖。
 
+> 🔴 **五模块答题流程全链路流转**（2026-11-11，接口设计文档 **§4.6** + 决策 21，只登记不改端点）：E1 → U1 → U2 → U3 → start（幂等，请求体统一 `{paperId, section}`）→ questions（逐题 `layout`，按 `question_ids` 快照）→ answers → pause/会话心跳（随模块）→ submit（`Idempotency-Key` 必填）→ 报告（统一入口 CR；写/说/译异步轮询）。作答主键：听/读 `recordId`、写/说 `attemptId`、译 `attemptId`（复用 `writing_attempt`）；**翻译交卷是 `/submissions`，写作是 `/submit`，不同名**。听/读/写/说作答端点沿用既有路径（不在 §3.1 保留端点清单内）。
+
 **`question_ids` 用法**
 
 | 时机 | 动作 |
