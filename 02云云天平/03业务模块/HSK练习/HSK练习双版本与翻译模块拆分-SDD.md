@@ -80,7 +80,7 @@ practice-service
 
 ### 2.3 四条设计原则
 
-1. **版本上下文只作用在目录层。** 作答链路拿 `(paperId, section_mapping, section)`，版本已被三者唯一确定 → `attempt/answer/submit/report` 不加 `version`。2026-11-11 目录端点进一步**合并为统一端点**（接口设计文档 v1.3+，决策 16–19）：目录 15 → 3（**U1–U3**，`module` 全部改 query 且必填——综合卷同一 `paperId` 下多模块板块并存，`paperId` 反查模块不成立，`paperId` 只判卷域）、板块最近报告 4 → 1（**CR**，`module` + `section` 均 query）、删 4 个 `/papers` 与 6 个偏好端点、运营配置端点（D 组）移出本期。**CR 的 `data` 统一「通用报告块 + 模块扩展块」**（决策 20）：四模块共用同一个报告页（正确率 / 答题时间 / 答对情况 / 答题卡「只看错题」），模块专属字段收进 `writing` / `speaking` / `reading` 扩展对象。
+1. **版本上下文只作用在目录层。** 作答链路拿 `(paperId, section_mapping, section)`，版本已被三者唯一确定 → `attempt/answer/submit/report` 不加 `version`。2026-11-11 目录端点进一步**合并为统一端点**（接口设计文档 v1.3+，决策 16–19）：目录 15 → 3（**U1–U3**，`module` 全部改 query 且必填——综合卷同一 `paperId` 下多模块板块并存，`paperId` 反查模块不成立，`paperId` 只判卷域）、板块最近报告 4 → 1（**CR**，`module` + `section` 均 query）、删 4 个 `/papers` 与 6 个偏好端点、运营配置端点（D 组）移出本期。**CR 的 `data` 统一「通用报告块 + 模块扩展块」**（决策 20）：**五个模块**（含翻译）共用同一个报告页（正确率 / 答题时间 / 答对情况 / 答题卡「只看错题」），模块专属字段收进 `writing` / `speaking` / `reading` / `translation` 扩展对象。
 2. **版本与等级编码收口成两个值对象。** 现状是 4 个模块各写一遍 `"HSK" + level` 与裸 `parseInt`，`HSK7-9` 必踩坑。全局只允许 `PracticeVersion` / `PracticeLevelCode` 解析等级。
 3. **翻译走「目录独立 + 作答复用」。** 目录 `/translation/**` 独立，写链路薄封装后委托既有 `Writing*Service`，不复制表、不复制评分。
 4. **目录只下发「有题的节点」。** 题数为 0 的等级 / 卷 / 板块在服务端消失，前端拿到的必是可用数据。
@@ -695,12 +695,13 @@ ALTER TABLE exam_paper
 
 报告侧同批合并：原 C1–C4 四条 `/{mod}/papers/{paperId}/parts/{section}/reports/latest` → **CR `GET /papers/{paperId}/reports/latest?module=&section=`**（不带模块前缀，模块与板块号都走 query（`module`=`listening`/`reading`/`writing`/`speaking`），响应回显 `module` 判别字段；`section` 各模块统一数字）。
 
-🔴 **CR 的 `data` 统一「通用报告块 + 模块扩展块」（决策 20，2026-11-11）**：通用学习报告页四模块**共用一页**（正确率 / 答题时间 `HH:MM:SS` / 答对情况 `3/5` / 答题卡逐题对错 + 「只看错题」），因此不再保留四套 `data` 形状：
+🔴 **CR 的 `data` 统一「通用报告块 + 模块扩展块」（决策 20，2026-11-11）**：通用学习报告页**五个模块**（听/读/写/说/译）**共用一页**（正确率 / 答题时间 `HH:MM:SS` / 答对情况 `3/5` / 答题卡逐题对错 + 「只看错题」），因此不再保留四套 `data` 形状：
 
-- **通用块（字段名四模块一致）**：`module` / `reportId` / `paperId` / `section` / `reportStatus` / `submittedTime` / `generatedTime` / `durationSeconds` / `totalQuestions` / `answeredCount` / `correctCount` / `wrongCount` / `accuracyRate` / `answerCard[]`（逐题 `{order, correct}`，`correct` 三态：`true` 绿 / `false` 红 / `null` 置灰；「只看错题」前端按 `correct === false` 自滤）
-- **模块扩展块**：`reading`（`recordId` / `items[]`）/ `writing`（评估反馈全字段）/ `speaking`（评分状态全字段）——只挂 `module` 对应那一个，其余恒 `null`
+- **通用块（字段名五模块一致）**：`module` / `reportId` / `paperId` / `section` / `reportStatus` / `submittedTime` / `generatedTime` / `durationSeconds` / `totalQuestions` / `answeredCount` / `correctCount` / `wrongCount` / `accuracyRate` / `answerCard[]`（逐题 `{order, correct}`，`correct` 三态：`true` 绿 / `false` 红 / `null` 置灰；「只看错题」前端按 `correct === false` 自滤）
+- **模块扩展块**：`reading`（`recordId` / `items[]`）/ `writing`（评估反馈全字段）/ `speaking`（评分状态全字段）/ `translation`（**形状同 `writing`**，翻译复用写作链路）——只挂 `module` 对应那一个，其余恒 `null`
+- **翻译并入 CR**（2026-11-11）：原「先拿 reportId 再查 B10」两跳作废，B10 `GET /translation/reports/{reportId}` 保留按 ID 查详情；`module=translation&section=1|2`，2.0 的卷查不到 `SEC_TRANSLATION` 板块 → **404**（不是 `data=null`，决策 9 翻译仅 3.0 有数据）
 - **字段名归一是破坏性的**：阅读 `totalQuestionCount` → `totalQuestions`；口语 `status` → `reportStatus`；写/说原平铺字段收进扩展块（接口文档 §6.1 #14）
-- **填充规则**：听/读全量填充（`is_correct` 以交卷前端传值为准）；写/说无客观判分 → 对错字段全 `null`，前端隐藏/置灰对应卡片，只留答题时间 + 扩展块
+- **填充规则**：听/读全量填充（`is_correct` 以交卷前端传值为准）；写/译/说无客观判分 → 对错字段全 `null`，前端隐藏/置灰对应卡片，只留答题时间 + 扩展块
 
 **统一后的目录模型：三跳（U1–U3）**
 
@@ -929,8 +930,9 @@ POST /translation/attempts/start {paperId, section}
 4. U1 `module=reading&version=HSK3.0&level=7` → **单对象**：`level="7"`、`levelName="HSK7-9"`、`paperCount>0`；2.0 下传 `level=7` → `paperCount=0` + `papers=[]`（不 404）。
 4b. U1 一律返单对象（含 `papers[]`），**不再是数组**；旧 5 条 `/{mod}/levels` 与 4 条 `/{mod}/papers` 调用 **404**。
 4c. 任一 U3 `/hsk/papers/{id}/parts` → `data` 为 `{module, paperId, paperCode, parts[]}`，且每个 part 都有 `draft`/`report`/`stats` 三个键（无值为 `null`），**无 `layouts` 键**。
-4d. CR `GET /papers/{paperId}/reports/latest?module=&section=` → **通用报告块**：四模块顶层字段名一致（`durationSeconds` / `totalQuestions` / `correctCount` / `accuracyRate` / `answerCard[]`…），仅 `module` 对应的扩展块（`reading` / `writing` / `speaking`）非 `null`；缺 `module` 或缺 `section` → **400**；旧 `/{mod}/papers/.../reports/latest`（带模块前缀）与更旧的 `/parts/{structureId}/reports/latest` 均 **404**。
-4e. CR `answerCard[]`：听力/阅读 `length = totalQuestions` 且逐题有 `correct`；写作纯主观 / 口语未判分 → 对错字段全 `null`（前端隐藏卡片，不 500）。
+4d. CR `GET /papers/{paperId}/reports/latest?module=&section=` → **通用报告块**：五模块（含翻译）顶层字段名一致（`durationSeconds` / `totalQuestions` / `correctCount` / `accuracyRate` / `answerCard[]`…），仅 `module` 对应的扩展块（`reading` / `writing` / `speaking` / `translation`）非 `null`；缺 `module` 或缺 `section` → **400**；旧 `/{mod}/papers/.../reports/latest`（带模块前缀）与更旧的 `/parts/{structureId}/reports/latest` 均 **404**。
+4e. CR `answerCard[]`：听力/阅读 `length = totalQuestions` 且逐题有 `correct`；写作纯主观 / 口语未判分 / 翻译 P0 → 对错字段全 `null`（前端隐藏卡片，不 500）。
+4f. CR `module=translation`：3.0 翻译卷 `section=1` → 200（`translation` 扩展块同 `writing` 形状，`feedbackStatus=UNAVAILABLE`）；2.0 的卷 → **404**（`SEC_TRANSLATION` 板块不存在）。
 5. U1 `module=reading&level=7&version=HSK3.0` 的 `papers[]` 在 **PROD** 能查到卷（验证 R3 候选集）。🔴 最易漏。
 
 **翻译独立**
@@ -1077,7 +1079,7 @@ POST /translation/attempts/start {paperId, section}
 |---|---|---|---|
 | **P0-a** | 修三条存量缺陷（附录 A：B-01/B-02/B-03） | — | TEST 听力 intro 不 500；PROD 听力列表不混版；HSK7-9 写作可开练 |
 | **P0-b** | 四个支撑类：`PracticeVersion` / `PracticeLevelCode` / `PracticeModuleCatalog`（**模块元数据从 `sys_dict` 读，不再写死常量**）/ `PracticeLayout`（`layout` 值域 + 主客观判定，**不做值换算**） | — | 单测覆盖 `HSK7-9`、`'7-9'`、非法版本、7 个 `layout` 值 |
-| **P0-c** | 存量目录端点**合并为 U1–U3 统一端点**（新增 `PracticeCatalogController`）：`module` 改 query 且必填、加 `version`、`/levels` 单对象内嵌 `papers[]`、删 4 个 `/papers`；报告端点合并为 **CR**（新增 `PracticeReportController`，`module`/`section` 走 query），响应按决策 20 重映射为「通用报告块 + 模块扩展块」。旧 15 条 `/{mod}` 目录路径 + 4 条带模块前缀的报告路径全部 404 | P0-b | 2.0 全链路零回归；旧 `/{mod}/levels`、`/{mod}/papers`、带模块前缀的报告路径调用 404 |
+| **P0-c** | 存量目录端点**合并为 U1–U3 统一端点**（新增 `PracticeCatalogController`）：`module` 改 query 且必填、加 `version`、`/levels` 单对象内嵌 `papers[]`、删 4 个 `/papers`；报告端点合并为 **CR**（新增 `PracticeReportController`，`module`/`section` 走 query，白名单 5 值**含 `translation`**——委托写作链路按 `SEC_TRANSLATION` 过滤），响应按决策 20 重映射为「通用报告块 + 模块扩展块」。旧 15 条 `/{mod}` 目录路径 + 4 条带模块前缀的报告路径全部 404 | P0-b | 2.0 全链路零回归；旧 `/{mod}/levels`、`/{mod}/papers`、带模块前缀的报告路径调用 404 |
 | **P0-c2** | **`practice_module_part_config` 收尾**：TEST 已建表迁数据（132 行）+ 已补 `enabled` 列 → 补唯一键（`answer_mode` 不入库、答题形式读 `question.layout`；开关读 `enabled` 而非 `deleted`）→ 清 `SEC_SPEAKING` 残留配置 | P0-b | 表含 `uk_module_part`；132 行 `enabled` 全 1；`layouts` 取值全部落在 7 个规范值内；关板块后目录不出现 |
 | **P0-c3** | 板块开关接口 `PATCH /hsk/module-config/parts/{id}` | P0-c2 | 关板块后目录不出现，新练习不下发其题目，历史记录不受影响 |
 | **P0-d** | 聚合接口 `GET /hsk/modules`，模块卡改由字典驱动 | P0-c；**TEST 字典数据已就绪**（`hsk_practice_module_v2` 4 项 / `_v3` 5 项） | 2.0 四卡 / 3.0 五卡，卡片顺序与三语名取自字典；改字典 `sort_order` 后顺序即时生效 |
