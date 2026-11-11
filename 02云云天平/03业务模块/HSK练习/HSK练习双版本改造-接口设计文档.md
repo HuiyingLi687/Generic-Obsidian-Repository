@@ -36,9 +36,10 @@
 | 11 | 环境基线 | **以 TEST 为准**。生产差异只在 §9.1 登记，不改字段契约、不写进接口行为 |
 | 12 | 等级入参命名 | 请求与响应一律用 **`level`**（query / path / body），**取数字串**（`"1"`–`"6"`、`"7"`=HSK7-9 整级）；显示名另给 `levelName`。`levelCode` / `databaseLevel` 全部废弃 |
 | 13 | 模块卡数据源 | `/hsk/modules` 的模块卡**取自字典表**（`hsk_practice_module_v2` / `_v3`），不做进程内常量。字段一列一义：`item_text`=中文名、`item_value`=`sectionMapping`、`description`=`moduleCode`、`sort_order`=顺序、`item_properties` 只放 `moduleCode`/`nameEn`/`nameVi` 的 JSON；`layout` 存 `sys_dict.remark`。`icon`/`theme`/`badge`/`entryLevelCode` **不入库、不下发**，前端按 `moduleCode` 内置 |
-| 14 | **目录接口统一为三跳** | 5 个模块同一套响应结构：`levels`（单对象 + `papers[]`）→ `levels/{level}/intro` → `papers/{paperId}/parts`（对象包裹）。**4 个 `/papers` 端点删除**；板块数组统一 `parts`、时长统一 `durationMinutes`、卷状态统一小写。2026-11-11 起连路径也统一（决策 16） |
+| 14 | **目录接口统一为三跳** | 5 个模块同一套响应结构：`levels`（单对象 + `papers[]`）→ `levels/{level}/intro` → `papers/{paperId}/parts?module=`（对象包裹）。**4 个 `/papers` 端点删除**；板块数组统一 `parts`、时长统一 `durationMinutes`、卷状态统一小写。2026-11-11 起连路径也统一（决策 16） |
 | 15 | **`/parts` 进度字段** | 4 个通用字段（`status`/`doneCount`/`correctCount`/`wrongCount`）+ 3 个扩展块（`draft`/`report`/`stats`）。**不再平铺** `draftRecordId` / `draftAttemptId` / `latestReportId` / `feedbackStatus` 等模块专属字段 |
-| 16 | **目录端点合并为 U1–U3**（2026-11-11） | 5 个模块 × 3 跳 = 15 个目录端点 → **3 个统一端点**：`GET /hsk/practice/levels?module=&version=&level=`、`GET /hsk/practice/levels/{level}/intro?module=`、`GET /hsk/practice/papers/{paperId}/parts`。`module` 是路径段 `/{mod}` 的 query 化；U3 的 `paperId` 只判卷域（`exam_paper` 与 `speaking_exam_paper` 零交集）。响应统一加 `module` 字段。旧 15 条路径全部 404。⚠️ **U3 的模块来源待定**（`paperId` 推不出模块，见 §4 U3 的待定标注），**已定稿的是 U1/U2 的 `module` query 与 CR 的 `sectionMapping` 路径段** |
+| 16 | **目录端点合并为 U1–U3**（2026-11-11） | 5 个模块 × 3 跳 = 15 个目录端点 → **3 个统一端点**：`GET /hsk/practice/levels?module=&version=&level=`、`GET /hsk/practice/levels/{level}/intro?module=`、`GET /hsk/practice/papers/{paperId}/parts?module=&version=`。`module` 由路径段 `/{mod}` 全部改为 query 参数；`paperId` 只判卷域（`exam_paper` 与 `speaking_exam_paper` 零交集）。响应统一加 `module` 字段。旧 15 条路径全部 404。**U3 的 `module` 为必填**（决策 16b） |
+| 16b | **U3 补 `module` query**（2026-11-11 修订决策 16） | 「按 `paperId` 反查模块」**不成立**（与决策 17b 同源）：HSK 2.0 是综合卷，136 张非口语卷中 **135 张同时含 `SEC_LISTEN` + `SEC_READ`**，同一 `paperId` 下听/读/写板块并存 —— `module` 推不出，`parts[]` 还会把三个模块的板块混成一个列表。故改为 `GET /hsk/practice/papers/{paperId}/parts?module=&version=`，**`module` 必填**（`listening` / `reading` / `writing` / `speaking` / `translation`），只返回该模块的板块。原 A3/A7/A13/A16/B4 本就是模块内查询，合并时不得丢掉这层过滤 |
 | 17 | **报告端点合并为 CR**（2026-11-11） | 原 C1–C4 四个 `/{mod}/papers/{paperId}/parts/{section}/reports/latest` → **1 个统一端点**。`data` 形状按模块不同（听/读=题量正确率，写=评估反馈，说=录音评分），响应加 `module` 判别字段 |
 | 17b | **CR 路径补 `sectionMapping` 段**（2026-11-11 修订决策 17） | 决策 17 原定的「按 `paperId` 反查模块」**不成立**：HSK 2.0 是综合卷，实测 136 张非口语卷中 **135 张同时含 `SEC_LISTEN` + `SEC_READ`**（92 张还含 `SEC_WRITE`），同一 `paperId` 下听力第 1 部分与阅读第 1 部分并存；`practice_part_setting` 1201 行仅 **608** 个唯一 `(paper_id, section_code)`。故路径改为 `GET /papers/{paperId}/parts/{sectionMapping}/{section}/reports/latest`：**`paperId` 只判卷域**（`exam_paper` / `speaking_exam_paper`），**模块由 `sectionMapping` 决定**。定位键 `(paper_id, section_mapping, section_code)` 实测 **1201/1201 严格唯一** |
 | 18 | **`layouts` 只在题目接口下发**（2026-11-11） | 板块层（`/intro`、`/parts` 的 `parts[]`）**不再下发 `layouts`**；答题形式只由题目接口逐题下发 `layout`。板块卡片层只需要 `typeCode`（显示题型名） |
@@ -118,7 +119,7 @@
 > 路径为 service 内路径，客户端实际调用加网关前缀 `/api/practice`。
 > 鉴权：**全部端点必须登录**（`Authorization: Bearer <JWT>` + `X-Client-Type: APP`）。
 >
-> **2026-11-11 大合并**：目录端点 15 → 3（U1–U3，决策 16）、报告端点 4 → 1（CR，决策 17）、运营配置端点移除（D 组，决策 19）。`module` 不再是路径段，改为 query 参数（U1/U2）或路径段 `sectionMapping`（CR，决策 17b）；`paperId` 只决定卷域（`exam_paper` 与 `speaking_exam_paper` id 域隔离，零交集），**不代表模块**——HSK 2.0 一张卷横跨听/读/写三个模块。
+> **2026-11-11 大合并**：目录端点 15 → 3（U1–U3，决策 16）、报告端点 4 → 1（CR，决策 17）、运营配置端点移除（D 组，决策 19）。`module` 不再是路径段 —— U1/U2/U3 改为 **query 参数**（U3 必填，决策 16b），CR 用 **路径段 `sectionMapping`**（决策 17b）；`paperId` 只决定卷域（`exam_paper` 与 `speaking_exam_paper` id 域隔离，零交集），**不代表模块**——HSK 2.0 一张卷横跨听/读/写三个模块。
 
 ### 3.1 保留端点（共 11 个）
 
@@ -126,7 +127,7 @@
 | --- | ------ | ------------------------------------------------------------ | ------------ | ---- | --------------------------------------------------------------- |
 | U1  | GET    | `/hsk/practice/levels`                                       | 统一目录·等级概览 + 卷列表 | 合并新增   | `module`（必填）+ `version` + `level`。**替代原 5 个模块各自的 `/levels`**（A1/A4/A10/A14/B1） |
 | U2  | GET    | `/hsk/practice/levels/{level}/intro`                         | 统一目录·等级备考说明 | 合并新增   | `module`（必填）+ `version`。**替代原 5 个 `/intro`**（A2/A5/A11/A14b/B2） |
-| U3  | GET    | `/hsk/practice/papers/{paperId}/parts`                       | 统一目录·卷板块列表 | 合并新增   | **无 `module` 参数**，按 `paperId` 反查。**替代原 5 个 `/parts`**（A3/A7/A13/A16/B4） |
+| U3  | GET    | `/hsk/practice/papers/{paperId}/parts?module=&version=`       | 统一目录·卷板块列表 | 合并新增   | **`module` 必填**（决策 16b），只返回该模块的板块；`paperId` 只判卷域。**替代原 5 个 `/parts`**（A3/A7/A13/A16/B4） |
 | CR  | GET    | `/papers/{paperId}/parts/{sectionMapping}/{section}/reports/latest` | 统一板块最近报告 | 合并新增   | **无 `module` 路径段**，模块由 `sectionMapping` 决定（`SEC_LISTEN`/`SEC_READ`/`SEC_WRITE`/`SEC_SPEAK`）。**替代原 C1–C4**；`data` 形状按模块不同（§4.3） |
 | B5  | POST   | `/translation/attempts/start`                                | 开始翻译练习       | 新增   | 委托 `WritingAttemptService#start`                                |
 | B6  | GET    | `/translation/attempts/{attemptId}`                          | 练习详情         | 新增   | 委托 `#get`                                                       |
@@ -144,7 +145,7 @@
 |---|---|
 | A1 `GET /listening/levels`、A4 `/reading/levels`、A10 `/writing/levels`、A14 `/speaking/levels`、B1 `/translation/levels` | **U1**，模块编码进 `module` 参数（`listening` / `reading` / `writing` / `speaking` / `translation`） |
 | A2 `/listening/levels/{level}/intro`、A5 / A11 / A14b / B2 同构 | **U2** |
-| A3 `/listening/papers/{paperId}/parts`、A7 / A13 / A16 / B4 同构 | **U3**（`paperId` 反查模块） |
+| A3 `/listening/papers/{paperId}/parts`、A7 / A13 / A16 / B4 同构 | **U3** `GET /hsk/practice/papers/{paperId}/parts?module=`（`module` 必填，决策 16b） |
 | C1–C4 `/{mod}/papers/{paperId}/parts/{section}/reports/latest` | **CR** `GET /papers/{paperId}/parts/{sectionMapping}/{section}/reports/latest`（模块由 `sectionMapping` 决定，不再靠 `paperId` 反查，决策 17b） |
 | ~~A6~~ `/reading/papers`、~~A12~~ `/writing/papers`、~~A15~~ `/speaking/papers`、~~B3~~ `/translation/papers` | **删除**（卷列表并入 U1 的 `papers[]`） |
 | ~~A8~~ `/reading/preferences`、~~A9~~ `/reading/preferences/level`（写作 / 口语同款共 6 端点） | **删除**（偏好机制下线，2026-11-11） |
@@ -157,7 +158,7 @@
 | 合并新增 | 4   | U1 / U2 / U3 / CR（新路径，旧路径全部 404） |
 | 新增   | 7   | B5–B10（翻译作答链路）+ E1（首页聚合）         |
 
-> **目录接口从「四跳」变「三跳」，且五个模块共用同一组路径**：模块卡（E1）→ `U1 /hsk/practice/levels?module=&version=&level=`（等级概览 + 卷列表）→ `U2 /hsk/practice/levels/{level}/intro` → `U3 /hsk/practice/papers/{paperId}/parts` → 答题。响应结构五模块同构（§4.0.6），差异只在 `module` 值与口语 `stats` / 翻译双板块这些**响应内**差异。
+> **目录接口从「四跳」变「三跳」，且五个模块共用同一组路径**：模块卡（E1）→ `U1 /hsk/practice/levels?module=&version=&level=`（等级概览 + 卷列表）→ `U2 /hsk/practice/levels/{level}/intro?module=&version=` → `U3 /hsk/practice/papers/{paperId}/parts?module=` → 答题。**三跳都要带 `module`**（U3 必填，决策 16b）。响应结构五模块同构（§4.0.6），差异只在 `module` 值与口语 `stats` / 翻译双板块这些**响应内**差异。
 
 ---
 
@@ -225,7 +226,7 @@
 
 **可选字段 `durationMinutes`（仅口语）**：板块级建议时长，只有口语有（`speaking_exam_paper_question` 按板块推）。其余模块不下发该键。它**不是**模块级的 `durationMinutes`（那个在 `/intro` 顶层）。
 
-**`/papers/{paperId}/parts` 追加的进度字段（`/intro` 的 `parts[]` 没有这组字段）**
+**U3 `/papers/{paperId}/parts?module=` 追加的进度字段（`/intro` 的 `parts[]` 没有这组字段）**
 
 五模块统一用下面 4 个通用字段 + 2 个扩展块，**前端一套渲染逻辑**：
 
@@ -370,14 +371,15 @@
 |---|---|---|---|
 | 1 | `GET /hsk/practice/levels?module=&version=&level=` | **单对象** `{ module, level, levelName, paperCount, papers[] }` | 等级概览 + 该等级全部卷的作答进度 |
 | 2 | `GET /hsk/practice/levels/{level}/intro?module=&version=` | **单对象** `{ module, level, levelName, abilityDescription×3, totalQuestionCount, durationMinutes, parts[] }` | 该等级备考说明 |
-| 3 | `GET /hsk/practice/papers/{paperId}/parts` | **单对象** `{ module, paperId, paperCode, parts[] }` | 卷内板块 + 进度。**无 `module` 参数**，按 `paperId` 反查 |
+| 3 | `GET /hsk/practice/papers/{paperId}/parts?module=&version=` | **单对象** `{ module, paperId, paperCode, parts[] }` | 卷内该模块的板块 + 进度。**`module` 必填**（决策 16b） |
 
 `module` 取值：`listening` / `reading` / `writing` / `speaking` / `translation`（与 `/hsk/modules` 卡片的 `moduleCode` 一致）。
 
 **`paperId` 反查规则**：先查 `exam_paper`（听/读/写/译），未命中再查 `speaking_exam_paper`（口语）。两表 id 域**零交集**（TEST/PROD 实测），反查结果唯一；两边都未命中 → 404。
 
-> ⚠️ **待定（2026-11-11 发现，与 CR 决策 17b 同源）**：U3 的「按 `paperId` 反查模块」同样不成立 —— HSK 2.0 是综合卷，`practice_paper_structure` 实测 136 张非口语卷中 **135 张同时含 `SEC_LISTEN` + `SEC_READ`**，同一 `paperId` 下听/读/写板块并存，`module` 无法从 `paperId` 推出，`parts[]` 会把三个模块的板块混进一个列表。
-> 建议改法与 U1/U2 一致：**补 `module` query 参数**（`GET /hsk/practice/papers/{paperId}/parts?module=&version=`），只返回该模块的板块。**未拍板前 U3 保持原样**（代码尚未实现，不影响现有调用）。
+> **U3 为什么必须带 `module`**（决策 16b，2026-11-11 修订）：`paperId` 只能确定卷域，**不能确定模块** —— HSK 2.0 是综合卷，实测 136 张非口语卷中 **135 张同时含 `SEC_LISTEN` + `SEC_READ`**（92 张还含 `SEC_WRITE`），听力第 1 部分与阅读第 1 部分共存于同一 `paperId`。不传 `module` 就只能把三个模块的板块混成一个列表返回，且响应顶层的 `module` 无从赋值。原 A3/A7/A13/A16/B4 各是模块内查询，合并后必须保留这层过滤。
+>
+> 卷存在但**该模块在该卷下没有板块**（如某 3.0 卷只有听力）→ **404**，与「卷不存在」同码不同因（日志区分）。`version` 可选，传入且与卷的 `version` 不符 → 404。
 
 **七条统一规定**
 
@@ -468,7 +470,7 @@
 > **2026-11-11 起目录路径统一**（§3、决策 16）：以下 A1–A16 各节的旧路径**全部删除**，改调
 > `GET /hsk/practice/levels?module={mod}&version=&level=`（U1）、
 > `GET /hsk/practice/levels/{level}/intro?module={mod}&version=`（U2）、
-> `GET /hsk/practice/papers/{paperId}/parts`（U3）。
+> `GET /hsk/practice/papers/{paperId}/parts?module={mod}&version=`（U3）。
 > 各节保留的内容是**该模块在统一端点下的响应差异**（JSON 示例照旧有效，外层多一个 `module` 字段）；入参、字段、状态机以 §4.0.6 为准。
 
 #### A1 ~~GET /listening/levels~~ 【并入 U1：module=listening】
@@ -2210,7 +2212,7 @@ available = 存在 enabled=1 的 level_config 行
 | **6** | **`/levels` 从数组改单对象 + 路径统一** | 全部 5 个模块 | 原 `data: [ {level…} ]` → `data: { module, level, levelName, paperCount, papers[] }`；路径改 **U1 `/hsk/practice/levels?module=&version=&level=`**，原 5 条 `/{mod}/levels` 全部 404。**不再一次返回全部等级**，等级 chip 由前端按版本矩阵渲染（§4.0.6） |
 | **7** | **`sections[]` → `parts[]`；`suggestDurationMinutes` → `durationMinutes`** | 阅读 / 写作 / 口语 / 翻译 | 字段改名，值不变 |
 | **8** | **卷状态枚举统一小写** | 阅读 / 写作 / 口语 / 翻译 | `NOT_STARTED` → `not_started` 等。全局替换后再全局搜一遍大写残留 |
-| **9** | **`/parts` 外层加对象包裹、路径统一、进度字段收敛** | 全部 5 个模块 | 路径改 **U3 `/hsk/practice/papers/{paperId}/parts`**（无 `module` 参数，响应带 `module`）；原 5 条 `/{mod}/papers/{id}/parts` 404；`data: [part…]` → `data: { module, paperId, paperCode, parts: [...] }`；`draftRecordId`/`draftAttemptId` → `draft.id`；`hasReport`/`latestRecordId`/`latestReportId`/`feedbackStatus`/`reportStatus` → `report.*`；口语 4 个计数 → `stats.*` |
+| **9** | **`/parts` 外层加对象包裹、路径统一、进度字段收敛** | 全部 5 个模块 | 路径改 **U3 `/hsk/practice/papers/{paperId}/parts?module=&version=`**（**`module` 必填**，决策 16b；响应带 `module`）；原 5 条 `/{mod}/papers/{id}/parts` 404；`data: [part…]` → `data: { module, paperId, paperCode, parts: [...] }`；`draftRecordId`/`draftAttemptId` → `draft.id`；`hasReport`/`latestRecordId`/`latestReportId`/`feedbackStatus`/`reportStatus` → `report.*`；口语 4 个计数 → `stats.*` |
 | **10** | **数值等级字段删除** | 阅读 / 写作 / 口语 / 翻译 | `level`（数值）/ `levelCode` / `databaseLevel` / `levelId` 全部不再下发，只用 `level`（**数字串**）+ `levelName`（显示名） |
 | **11** | **偏好接口下线** | 阅读 / 写作 / 口语 | `GET /{mod}/preferences`、`PUT /{mod}/preferences/level` 共 6 个端点 **404**。如需「上次练到哪」，前端 `localStorage` 自存，或等后续由 `practice_record` 推导 |
 | **12** | **`/intro` 路径统一为 U2** | 全部 5 个模块 | `GET /hsk/practice/levels/{level}/intro?module=&version=`，原 5 条 `/{mod}/levels/{level}/intro` 全部 404；响应带 `module` |
@@ -2267,6 +2269,8 @@ available = 存在 enabled=1 的 level_config 行
 
 1. **part_config 查询不能带 `enabled=1`**。带上会把「关闭」误判成「未配置」，兜底逻辑又把板块放出来，开关直接失效。
 2. **`deleted = 1` 与「行不存在」不是一回事**。前者是模板行删除（丢弃），后者是未配置（兜底开放）。
+
+> `section_mapping` 由 `module` 推导（`listening→SEC_LISTEN`、`reading→SEC_READ`、`writing→SEC_WRITE`、`speaking→SEC_SPEAK`、`translation→SEC_TRANSLATION`），U1/U2/U3 一致。**U3 的 `module` 必填**（决策 16b），因此装配一次只处理一个 `section_mapping`，不会跨模块混装。
 
 ### 7.2 翻译开始练习（事务边界在写作链路内）
 
@@ -2336,7 +2340,10 @@ POST /translation/attempts/{attemptId}/submissions
 | # | 场景 | 预期结果 |
 |---|---|---|
 | 6 | 任一 parts 接口 | 响应里**不存在** `structureId`，存在 `section` |
-| 6a | 任一 `/papers/{paperId}/parts` | `data` 是对象：`{ paperId, paperCode, parts[] }`，**不是数组**；`paperCode` 非空 |
+| 6a | 任一 `/papers/{paperId}/parts?module=` | `data` 是对象：`{ module, paperId, paperCode, parts[] }`，**不是数组**；`paperCode` 非空；`parts[]` **只含该模块的板块** |
+| 6a-1 | 同一张 2.0 综合卷，`?module=listening` 与 `?module=reading` | 两次都 200，`parts[]` 数量与 `typeCode` 各不相同，**不得返回同一批板块** |
+| 6a-2 | `/papers/{id}/parts` 不带 `module` | **400**（必填缺失），不是 200/404 |
+| 6a-3 | `/papers/{id}/parts?module=listening`，但该卷没有听力板块 | **404**（卷存在、模块不在卷内），与「无板块」的 `parts: []` 区分开 |
 | 6b | 任一 `parts[]` 元素 | 含 4 个通用进度字段 `status`/`doneCount`/`correctCount`/`wrongCount`，且**必有** `draft`/`report`/`stats` 三个键（无值为 `null`，不能缺键） |
 | 6c | 无草稿的板块 | `draft` 为 `null`；`draft.answeredCount=0` 与「无草稿」不得混淆 |
 | 7 | 旧路径 `/listening/parts/{structureId}/reports/latest` | 404（路由已删），不是 500 |
@@ -2361,7 +2368,7 @@ POST /translation/attempts/{attemptId}/submissions
 |---|---|---|
 | 11 | 2.0 调 `/translation/levels` | 200，`paperCount=0` + `papers=[]`，**不 404** |
 | 12 | 3.0 调 `/translation/levels?level=7` | `paperCount=1`；`papers[0].paperCode='HSK7-9_1'`、`totalCount=4` |
-| 13 | U3 `module=translation`（或 `/hsk/practice/papers/{id}/parts`） | `data.parts` 2 个板块：`translation_written` / `translation_oral`；**无 `layouts`**，作答交互进题后按 `layout` 判 |
+| 13 | U3 `?module=translation`（`/hsk/practice/papers/{id}/parts?module=translation`） | `data.parts` 2 个板块：`translation_written` / `translation_oral`；**无 `layouts`**，作答交互进题后按 `layout` 判 |
 | 13a | `/translation/papers`（已删） | 404 |
 | 14 | 拿写作卷的 section 打翻译 start | 400 `SECTION_MAPPING_MISMATCH` |
 | 15 | 拿翻译卷的 section 打写作 start | 404（写作侧不放宽） |
@@ -2486,7 +2493,7 @@ ALTER TABLE practice_module_part_config
 | `writing/service/impl/WritingCatalogServiceImpl.java` | 常量改参数；`parseLevel` 扩到 `HSK7-9`；`introSections` 补 7 分支 |
 | `speaking/service/impl/SpeakingCatalogServiceImpl.java` | 常量改参数；板块换源；取题改按 `type_code` |
 | `speaking/mapper/SpeakingSourceQuestionMapper.xml` | **删 `PartCodeCase` 硬编码 8 题型**，改按 `part_config.type_code` 取题（B-19） |
-| `hsk/controller/PracticeCatalogController.java`（新增） | **U1–U3 统一目录端点**：`module` 参数路由到 5 个模块的装配逻辑；U3 按 `paperId` 反查模块。原 4 个模块 Catalog Controller 的目录端点全部摘除 |
+| `hsk/controller/PracticeCatalogController.java`（新增） | **U1–U3 统一目录端点**：`module` 参数路由到 5 个模块的装配逻辑；**U3 的 `module` 必填**（决策 16b），按 `(paperId, module→sectionMapping)` 只装该模块的板块，`paperId` 仅用于判卷域与取卷元信息。原 4 个模块 Catalog Controller 的目录端点全部摘除 |
 | `translation/controller/TranslationAttemptController.java` | 新增 6 个写链路端点（T5–T10），薄封装 |
 | `translation/service/impl/TranslationCatalogServiceImpl.java` | 新增：`SEC_TRANSLATION` 目录装配 |
 | `translation/support/TranslationPartGuard.java` | 新增：统一前置归属校验（返回空集 → 404，模块不符 → 400） |
