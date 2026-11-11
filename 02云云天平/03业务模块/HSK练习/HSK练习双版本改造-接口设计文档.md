@@ -116,53 +116,47 @@
 
 > 路径为 service 内路径，客户端实际调用加网关前缀 `/api/practice`。
 > 鉴权：**全部端点必须登录**（`Authorization: Bearer <JWT>` + `X-Client-Type: APP`）。
+>
+> **2026-11-11 大合并**：目录端点 15 → 3（U1–U3，决策 16）、报告端点 4 → 1（CR，决策 17）、运营配置端点移除（D 组，决策 19）。`module` 不再是路径段，改为 query 参数；`paperId` 全局唯一可反查模块（`exam_paper` 与 `speaking_exam_paper` id 域隔离，零交集）。
 
-| #   | Method | Path                                                         | 用途           | 接口类型 | 改动简述                                                            |
+### 3.1 保留端点（共 11 个）
+
+| #   | Method | Path                                                         | 用途           | 接口类型 | 说明                                                            |
 | --- | ------ | ------------------------------------------------------------ | ------------ | ---- | --------------------------------------------------------------- |
-| A1  | GET    | `/listening/levels`                                          | 听力等级概览 + 卷列表 | 改造   | 加 `version`、补 `exam_type=1`、走 `enabled_prac` 判定；**加 `levelName`** |
-| A2  | GET    | `/listening/levels/{level}/intro`                        | 听力等级备考说明     | 改造   | `selectOne` 带 `version` + `deleted=0`；`parts[]` 三语 + `typeCode`；加 `level`/`levelName` |
-| A3  | GET    | `/listening/papers/{paperId}/parts`                          | 听力卷板块列表      | 改造   | 加 `version`；板块换源配置表；`structureId` → `section`；进度收敛为 `draft`/`report`/`stats` |
-| A4  | GET    | `/reading/levels`                                            | 阅读等级概览 + 卷列表 | 改造   | **从「等级数组」改为「单等级概览 + 内嵌 `papers[]`」**（照听力）；常量改 `version` |
-| A5  | GET    | `/reading/levels/{level}/intro`                          | 阅读等级备考说明     | 改造   | `version` + `PracticeLevelCode` 解析；`sections` → `parts`、三语、`durationMinutes` |
-| ~~A6~~ | ~~GET~~ | ~~`/reading/papers`~~                                     | ~~阅读卷列表~~    | **删除** | **并入 A4 的 `papers[]`** |
-| A7  | GET    | `/reading/papers/{paperId}/parts`                            | 阅读卷板块列表      | 改造   | 卷 `version` 与入参不符 → 404；`structureId` → `section`；**外层加对象包裹** |
-| ~~A8~~ | ~~GET~~ | ~~`/reading/preferences`~~                                 | ~~阅读偏好~~     | **删除** | **端点整体移除**（2026-11-11 拍板）：后端无内部依赖，三模块偏好接口一并下线；「上次练到哪」由前端本地保存，或后续由 `practice_record` 推导 |
-| ~~A9~~ | ~~PUT~~ | ~~`/reading/preferences/level`~~                           | ~~更新阅读偏好~~   | **删除** | 同 A8 |
-| A10 | GET    | `/writing/levels`                                            | 写作等级概览 + 卷列表 | 改造   | 同 A4；补 `HSK7-9` 分支                                              |
-| A11 | GET    | `/writing/levels/{level}/intro`                          | 写作等级备考说明     | 改造   | `parseLevel` 正则扩到 `HSK7-9`；`sections` → `parts`、三语                   |
-| ~~A12~~ | ~~GET~~ | ~~`/writing/papers`~~                                    | ~~写作卷列表~~    | **删除** | **并入 A10 的 `papers[]`** |
-| A13 | GET    | `/writing/papers/{paperId}/parts`                            | 写作卷板块列表      | 改造   | `parseDbLevel` 替代裸 `parseInt`；`structureId` → `section`；进度收敛 |
-| A14 | GET    | `/speaking/levels`                                           | 口语等级概览 + 卷列表 | 改造   | 同 A4；**2.0 的 `level` 是 `"1"`–`"3"`，`levelName` 显示 HSKK 初/中/高**（换算表 §4.0.6） |
-| A14b | GET   | `/speaking/levels/{level}/intro`                             | 口语等级备考说明     | 改造   | **原文档缺这个端点，补登记**；`sections` → `parts`、三语              |
-| ~~A15~~ | ~~GET~~ | ~~`/speaking/papers`~~                                   | ~~口语卷列表~~    | **删除** | **并入 A14 的 `papers[]`** |
-| A16 | GET    | `/speaking/papers/{paperId}/parts`                           | 口语卷板块列表      | 改造   | 板块换源配置表；`structureId` → `section`；口语计数进 `stats`           |
-| B1  | GET    | `/translation/levels`                                        | 翻译等级概览 + 卷列表 | 新增   | 同 A4；2.0 → `paperCount=0` + `papers=[]`                          |
-| B2  | GET    | `/translation/levels/{level}/intro`                      | 翻译等级备考说明     | 新增   | `parts[]` 来自板块配置                                               |
-| ~~B3~~ | ~~GET~~ | ~~`/translation/papers`~~                                | ~~翻译卷列表~~    | **删除** | **并入 B1 的 `papers[]`** |
-| B4  | GET    | `/translation/papers/{paperId}/parts`                        | 翻译卷板块列表      | 新增   | 2 个板块：笔译 / 口译                                                   |
+| U1  | GET    | `/hsk/practice/levels`                                       | 统一目录·等级概览 + 卷列表 | 合并新增   | `module`（必填）+ `version` + `level`。**替代原 5 个模块各自的 `/levels`**（A1/A4/A10/A14/B1） |
+| U2  | GET    | `/hsk/practice/levels/{level}/intro`                         | 统一目录·等级备考说明 | 合并新增   | `module`（必填）+ `version`。**替代原 5 个 `/intro`**（A2/A5/A11/A14b/B2） |
+| U3  | GET    | `/hsk/practice/papers/{paperId}/parts`                       | 统一目录·卷板块列表 | 合并新增   | **无 `module` 参数**，按 `paperId` 反查。**替代原 5 个 `/parts`**（A3/A7/A13/A16/B4） |
+| CR  | GET    | `/papers/{paperId}/parts/{section}/reports/latest`           | 统一板块最近报告 | 合并新增   | **无 `module` 路径段**，按 `paperId` 反查。**替代原 C1–C4**；`data` 形状按模块不同（§4.3） |
 | B5  | POST   | `/translation/attempts/start`                                | 开始翻译练习       | 新增   | 委托 `WritingAttemptService#start`                                |
 | B6  | GET    | `/translation/attempts/{attemptId}`                          | 练习详情         | 新增   | 委托 `#get`                                                       |
-| B7  | GET    | `/translation/attempts/{attemptId}/questions`                | 题目列表         | 新增   | 委托 `#listQuestions`                                             |
+| B7  | GET    | `/translation/attempts/{attemptId}/questions`                | 题目列表         | 新增   | 委托 `#listQuestions`；**逐题下发 `layout`**                        |
 | B8  | PUT    | `/translation/attempts/{attemptId}/answers`                  | 批量保存答案       | 新增   | 委托 `WritingAnswerService#save`                                  |
 | B9  | POST   | `/translation/attempts/{attemptId}/submissions`              | 交卷           | 新增   | 委托 `WritingSubmissionService#submit`                            |
 | B10 | GET    | `/translation/reports/{reportId}`                            | 报告详情         | 新增   | 委托 `WritingReportService#get`                                   |
-| C1  | GET    | `/listening/papers/{paperId}/parts/{section}/reports/latest` | 听力板块最近报告     | 改造   | 路径 `structureId` → `paperId + section`                          |
-| C2  | GET    | `/reading/papers/{paperId}/parts/{section}/reports/latest`   | 阅读板块最近报告     | 改造   | 同上                                                              |
-| C3  | GET    | `/writing/papers/{paperId}/parts/{section}/reports/latest`   | 写作板块最近报告     | 改造   | 同上                                                              |
-| C4  | GET    | `/speaking/papers/{paperId}/parts/{section}/reports/latest`  | 口语板块最近报告     | 改造   | 同上                                                              |
-| D1  | GET    | `/hsk/module-config/parts`                                   | 运营：查板块配置     | 新增   | 按 `version + level + sectionMapping` 查，**含 `enabled=0` 行**      |
-| D2  | PATCH  | `/hsk/module-config/parts/{id}`                              | 运营：开关板块      | 新增   | 只改 `enabled`（可选 `sort_order`），不建行不删行                            |
 | E1  | GET    | `/hsk/modules`                                               | 首页模块卡聚合      | 新增   | 一次返回布局 + 卡片 + 可用性 + 进度                                          |
 
-**统计（共 28 个）**
+> U1–U3 与 CR 的响应统一带 `module` 字段，前端不需要自己记「这份响应属于哪个模块」。
+
+### 3.2 被合并 / 移除的原端点（21 + 2 个，全部 404，无兼容层）
+
+| 原端点 | 去向 |
+|---|---|
+| A1 `GET /listening/levels`、A4 `/reading/levels`、A10 `/writing/levels`、A14 `/speaking/levels`、B1 `/translation/levels` | **U1**，模块编码进 `module` 参数（`listening` / `reading` / `writing` / `speaking` / `translation`） |
+| A2 `/listening/levels/{level}/intro`、A5 / A11 / A14b / B2 同构 | **U2** |
+| A3 `/listening/papers/{paperId}/parts`、A7 / A13 / A16 / B4 同构 | **U3**（`paperId` 反查模块） |
+| C1–C4 `/{mod}/papers/{paperId}/parts/{section}/reports/latest` | **CR** |
+| ~~A6~~ `/reading/papers`、~~A12~~ `/writing/papers`、~~A15~~ `/speaking/papers`、~~B3~~ `/translation/papers` | **删除**（卷列表并入 U1 的 `papers[]`） |
+| ~~A8~~ `/reading/preferences`、~~A9~~ `/reading/preferences/level`（写作 / 口语同款共 6 端点） | **删除**（偏好机制下线，2026-11-11） |
+| D1 / D2 `/hsk/module-config/*` | **本期不规划**（决策 19）：运营临时直接改库 `practice_module_part_config`（只能改 `enabled` / `sort_order`，不能删行，规则照 §4.0.4）。接口化 P1 再议 |
+
+**统计（共 11 个）**
 
 | 类型 | 数量 | 明细 |
 |---|---|---|
-| 改造 | 17 | A 组 13（A1–A5、A7、A10、A11、A13、A14、A14b、A16）+ C 组 4 |
-| 新增 | 11 | B 组 9（B1、B2、B4–B10）+ D 组 2 + E 组 1 |
-| **删除** | **6** | A6 `/reading/papers`、A8 `/reading/preferences`、A9 `/reading/preferences/level`、A12 `/writing/papers`、A15 `/speaking/papers`、B3 `/translation/papers`。前 4 组并入各自模块的 `/levels`；A8/A9 是偏好接口，连同写作/口语同款（原本就未登记编号）一并下线 |
+| 合并新增 | 4 | U1 / U2 / U3 / CR（新路径，旧路径全部 404） |
+| 新增 | 7 | B5–B10（翻译作答链路）+ E1（首页聚合） |
 
-> **目录接口从「四跳」变「三跳」**：模块卡 → `/{mod}/levels?version=&level=`（等级概览 + 卷列表）→ `/{mod}/papers/{paperId}/parts` → 答题。听力本来就是这套，本次其余四个模块向它对齐（§4.0.6）。
+> **目录接口从「四跳」变「三跳」，且五个模块共用同一组路径**：模块卡（E1）→ `U1 /hsk/practice/levels?module=&version=&level=`（等级概览 + 卷列表）→ `U2 /hsk/practice/levels/{level}/intro` → `U3 /hsk/practice/papers/{paperId}/parts` → 答题。响应结构五模块同构（§4.0.6），差异只在 `module` 值与口语 `stats` / 翻译双板块这些**响应内**差异。
 
 ---
 
@@ -367,17 +361,19 @@
 
 **一条 UI 约定（沿用 CSCA 既有做法）**：`layout` **原样透传、不推算、不做 enum 换算**。理由是 `CscaQuestionResponse` 已经这么做了，且注释写得很明确——「取哪个字段只由 `layout` 决定，**不能按『字段是否为空』猜形态**」（`clozeGroup` 的 `content` 与 `passage` 可能都为空）。四个 HSK 模块沿用同一约定，前端一套解析逻辑。
 
-#### 4.0.6 目录三跳模型（5 个模块统一，照听力）
+#### 4.0.6 目录三跳模型（5 个模块统一，路径也统一）
 
-**结论**：听力、阅读、写作、口语、翻译的目录接口**收敛为同一套 3 个端点、同一套响应结构**。听力的「`/levels` 内嵌 `papers[]`」模型胜出，其余四个模块向它对齐。
+**结论**：听力、阅读、写作、口语、翻译的目录接口**收敛为同一套 3 个端点、同一套响应结构、同一组路径**。听力的「`/levels` 内嵌 `papers[]`」模型胜出，其余四个模块向它对齐；`module` 由路径段改为 query 参数（决策 16）。
 
 | # | 端点 | 返回 | 用途 |
 |---|---|---|---|
-| 1 | `GET /{module}/levels?version=&level=` | **单对象** `{ level, levelName, paperCount, papers[] }` | 等级概览 + 该等级全部卷的作答进度 |
-| 2 | `GET /{module}/levels/{level}/intro?version=` | **单对象** `{ level, levelName, abilityDescription×3, totalQuestionCount, durationMinutes, parts[] }` | 该等级备考说明 |
-| 3 | `GET /{module}/papers/{paperId}/parts?version=` | **单对象** `{ paperId, paperCode, parts[] }` | 卷内板块 + 进度 |
+| 1 | `GET /hsk/practice/levels?module=&version=&level=` | **单对象** `{ module, level, levelName, paperCount, papers[] }` | 等级概览 + 该等级全部卷的作答进度 |
+| 2 | `GET /hsk/practice/levels/{level}/intro?module=&version=` | **单对象** `{ module, level, levelName, abilityDescription×3, totalQuestionCount, durationMinutes, parts[] }` | 该等级备考说明 |
+| 3 | `GET /hsk/practice/papers/{paperId}/parts` | **单对象** `{ module, paperId, paperCode, parts[] }` | 卷内板块 + 进度。**无 `module` 参数**，按 `paperId` 反查 |
 
-`{module}` 取值：`listening` / `reading` / `writing` / `speaking` / `translation`。
+`module` 取值：`listening` / `reading` / `writing` / `speaking` / `translation`（与 `/hsk/modules` 卡片的 `moduleCode` 一致）。
+
+**`paperId` 反查规则**：先查 `exam_paper`（听/读/写/译），未命中再查 `speaking_exam_paper`（口语）。两表 id 域**零交集**（TEST/PROD 实测），反查结果唯一；两边都未命中 → 404。
 
 **七条统一规定**
 
@@ -465,7 +461,7 @@
 
 ### 4.1 目录端点（A 组：13 个改造 + 3 个删除）
 
-#### A1 `GET /listening/levels`
+#### A1 ~~GET /listening/levels~~ 【并入 U1：module=listening】
 
 **用途**：听力模块等级概览 + 该等级下全部试卷的答题情况
 **鉴权**：需要登录
@@ -481,7 +477,7 @@
 **请求示例**
 
 ```http
-GET /api/practice/listening/levels?version=HSK2.0&level=1
+GET /api/practice/hsk/practice/levels?module=listening&version=HSK2.0&level=1
 Authorization: Bearer xxx
 X-Client-Type: APP
 ```
@@ -530,7 +526,7 @@ X-Client-Type: APP
 
 ---
 
-#### A2 `GET /listening/levels/{level}/intro`
+#### A2 ~~GET /listening/levels/{level}/intro~~ 【并入 U2：module=listening】
 
 **用途**：听力等级备考说明（能力描述 + 题型结构）
 **鉴权**：需要登录
@@ -545,7 +541,7 @@ X-Client-Type: APP
 **请求示例**
 
 ```http
-GET /api/practice/listening/levels/1/intro?version=HSK2.0
+GET /api/practice/hsk/practice/levels/1/intro?module=listening&version=HSK2.0
 Authorization: Bearer xxx
 ```
 
@@ -594,7 +590,7 @@ Authorization: Bearer xxx
 
 ---
 
-#### A3 `GET /listening/papers/{paperId}/parts`
+#### A3 ~~GET /listening/papers/{paperId}/parts~~ 【并入 U3】
 
 **用途**：听力某张卷的板块列表 + 用户进度
 **鉴权**：需要登录
@@ -609,7 +605,7 @@ Authorization: Bearer xxx
 **请求示例**
 
 ```http
-GET /api/practice/listening/papers/2104193520701620225/parts?version=HSK2.0
+GET /api/practice/hsk/practice/papers/2104193520701620225/parts?version=HSK2.0
 Authorization: Bearer xxx
 ```
 
@@ -670,7 +666,7 @@ Authorization: Bearer xxx
 
 ---
 
-#### A4 `GET /reading/levels`
+#### A4 ~~GET /reading/levels~~ 【并入 U1：module=reading】
 
 **用途**：阅读模块「当前等级概览 + 该等级全部卷的作答进度」（原「全部等级列表」）
 **鉴权**：需要登录
@@ -685,7 +681,7 @@ Authorization: Bearer xxx
 **请求示例**
 
 ```http
-GET /api/practice/reading/levels?version=HSK3.0&level=7
+GET /api/practice/hsk/practice/levels?module=reading&version=HSK3.0&level=7
 Authorization: Bearer xxx
 ```
 
@@ -734,7 +730,7 @@ Authorization: Bearer xxx
 
 ---
 
-#### A5 `GET /reading/levels/{level}/intro`
+#### A5 ~~GET /reading/levels/{level}/intro~~ 【并入 U2：module=reading】
 
 **用途**：阅读单等级备考说明（原 A5 的 `sections[]` 改 `parts[]`，补齐三语与 `levelName`）
 **鉴权**：需要登录
@@ -749,7 +745,7 @@ Authorization: Bearer xxx
 **请求示例**
 
 ```http
-GET /api/practice/reading/levels/7/intro?version=HSK3.0
+GET /api/practice/hsk/practice/levels/7/intro?module=reading&version=HSK3.0
 Authorization: Bearer xxx
 ```
 
@@ -799,7 +795,7 @@ Authorization: Bearer xxx
 
 ---
 
-#### A6 `GET /reading/papers` 【已删除，并入 A4】
+#### A6 `GET /reading/papers` 【已删除，并入 U1】
 
 **用途**：~~阅读某等级的试卷列表~~ → 已合并进 A4 的 `papers[]`
 
@@ -814,7 +810,7 @@ Authorization: Bearer xxx
 
 ---
 
-#### A7 `GET /reading/papers/{paperId}/parts`
+#### A7 ~~GET /reading/papers/{paperId}/parts~~ 【并入 U3】
 
 **用途**：阅读某张卷的板块列表 + 草稿 / 报告进度
 **鉴权**：需要登录
@@ -829,7 +825,7 @@ Authorization: Bearer xxx
 **请求示例**
 
 ```http
-GET /api/practice/reading/papers/2104193520701620226/parts?version=HSK3.0
+GET /api/practice/hsk/practice/papers/2104193520701620226/parts?version=HSK3.0
 Authorization: Bearer xxx
 ```
 
@@ -899,7 +895,7 @@ Authorization: Bearer xxx
 
 ---
 
-#### A10 `GET /writing/levels`
+#### A10 ~~GET /writing/levels~~ 【并入 U1：module=writing】
 
 **用途**：写作模块「当前等级概览 + 该等级全部卷的作答进度」（原「全部等级列表」）
 **鉴权**：需要登录
@@ -914,7 +910,7 @@ Authorization: Bearer xxx
 **请求示例**
 
 ```http
-GET /api/practice/writing/levels?version=HSK3.0&level=7
+GET /api/practice/hsk/practice/levels?module=writing&version=HSK3.0&level=7
 Authorization: Bearer xxx
 ```
 
@@ -961,7 +957,7 @@ Authorization: Bearer xxx
 
 ---
 
-#### A11 `GET /writing/levels/{level}/intro`
+#### A11 ~~GET /writing/levels/{level}/intro~~ 【并入 U2：module=writing】
 
 **用途**：写作单等级备考说明
 **鉴权**：需要登录
@@ -1013,7 +1009,7 @@ Authorization: Bearer xxx
 
 ---
 
-#### A12 `GET /writing/papers` 【已删除，并入 A10】
+#### A12 `GET /writing/papers` 【已删除，并入 U1】
 
 | 项 | 结论 |
 |---|---|
@@ -1024,7 +1020,7 @@ Authorization: Bearer xxx
 
 ---
 
-#### A13 `GET /writing/papers/{paperId}/parts`
+#### A13 ~~GET /writing/papers/{paperId}/parts~~ 【并入 U3】
 
 **用途**：写作某张卷的板块列表 + 草稿 / 报告进度
 **鉴权**：需要登录
@@ -1080,7 +1076,7 @@ Authorization: Bearer xxx
 
 ---
 
-#### A14 `GET /speaking/levels`
+#### A14 ~~GET /speaking/levels~~ 【并入 U1：module=speaking】
 
 **用途**：口语模块「当前等级概览 + 该等级全部卷的作答进度」（原「全部等级列表」）
 **鉴权**：需要登录
@@ -1095,7 +1091,7 @@ Authorization: Bearer xxx
 **请求示例**
 
 ```http
-GET /api/practice/speaking/levels?version=HSK2.0&level=3
+GET /api/practice/hsk/practice/levels?module=speaking&version=HSK2.0&level=3
 Authorization: Bearer xxx
 ```
 
@@ -1147,7 +1143,7 @@ Authorization: Bearer xxx
 
 ---
 
-#### A14b `GET /speaking/levels/{level}/intro`
+#### A14b ~~GET /speaking/levels/{level}/intro~~ 【并入 U2：module=speaking】
 
 **用途**：口语单等级备考说明
 **鉴权**：需要登录
@@ -1195,7 +1191,7 @@ Authorization: Bearer xxx
 
 ---
 
-#### A15 `GET /speaking/papers` 【已删除，并入 A14】
+#### A15 `GET /speaking/papers` 【已删除，并入 U1】
 
 | 项 | 结论 |
 |---|---|
@@ -1206,7 +1202,7 @@ Authorization: Bearer xxx
 
 ---
 
-#### A16 `GET /speaking/papers/{paperId}/parts`
+#### A16 ~~GET /speaking/papers/{paperId}/parts~~ 【并入 U3】
 
 **用途**：口语某张卷的板块列表 + 录音 / 评分进度
 **鉴权**：需要登录
@@ -1283,7 +1279,7 @@ Authorization: Bearer xxx
 
 ---
 
-#### B1 `GET /translation/levels`
+#### B1 ~~GET /translation/levels~~ 【并入 U1：module=translation】
 
 **用途**：翻译模块「当前等级概览 + 该等级全部卷的作答进度」
 **鉴权**：需要登录
@@ -1298,7 +1294,7 @@ Authorization: Bearer xxx
 **请求示例**
 
 ```http
-GET /api/practice/translation/levels?version=HSK3.0&level=7
+GET /api/practice/hsk/practice/levels?module=translation&version=HSK3.0&level=7
 Authorization: Bearer xxx
 ```
 
@@ -1345,7 +1341,7 @@ Authorization: Bearer xxx
 
 ---
 
-#### B2 `GET /translation/levels/{level}/intro`
+#### B2 ~~GET /translation/levels/{level}/intro~~ 【并入 U2：module=translation】
 
 **用途**：翻译单等级备考说明
 **鉴权**：需要登录
@@ -1387,7 +1383,7 @@ Authorization: Bearer xxx
 
 ---
 
-#### B3 `GET /translation/papers` 【已删除，并入 B1】
+#### B3 `GET /translation/papers` 【已删除，并入 U1】
 
 | 项 | 结论 |
 |---|---|
@@ -1398,7 +1394,7 @@ Authorization: Bearer xxx
 
 ---
 
-#### B4 `GET /translation/papers/{paperId}/parts`
+#### B4 ~~GET /translation/papers/{paperId}/parts~~ 【并入 U3】
 
 **用途**：翻译某张卷的板块列表（笔译 / 口译两张卡）
 **鉴权**：需要登录
@@ -1813,7 +1809,7 @@ Authorization: Bearer xxx
 
 > 旧路径**直接删除，不保留兼容**。前端必须与后端同批上线。
 
-#### C1 `GET /listening/papers/{paperId}/parts/{section}/reports/latest`
+#### C1 ~~GET /listening/papers/{paperId}/parts/{section}/reports/latest~~ 【并入 CR】
 
 **用途**：查某卷某板块最近一次已出报告的摘要
 **鉴权**：需要登录
@@ -1859,7 +1855,7 @@ Authorization: Bearer xxx
 
 ---
 
-#### C2 `GET /reading/papers/{paperId}/parts/{section}/reports/latest`
+#### C2 ~~GET /reading/papers/{paperId}/parts/{section}/reports/latest~~ 【并入 CR】
 
 **用途**：阅读板块最近报告
 **鉴权**：需要登录
@@ -1900,7 +1896,7 @@ Authorization: Bearer xxx
 
 ---
 
-#### C3 `GET /writing/papers/{paperId}/parts/{section}/reports/latest`
+#### C3 ~~GET /writing/papers/{paperId}/parts/{section}/reports/latest~~ 【并入 CR】
 
 **用途**：写作板块最近报告状态
 **鉴权**：需要登录
@@ -1939,7 +1935,7 @@ Authorization: Bearer xxx
 
 ---
 
-#### C4 `GET /speaking/papers/{paperId}/parts/{section}/reports/latest`
+#### C4 ~~GET /speaking/papers/{paperId}/parts/{section}/reports/latest~~ 【并入 CR】
 
 **用途**：口语板块最近报告状态
 **鉴权**：需要登录
