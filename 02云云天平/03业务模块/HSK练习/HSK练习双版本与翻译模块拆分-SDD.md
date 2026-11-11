@@ -753,7 +753,21 @@ WHERE paper_id = ? AND deleted = 0 AND enabled_prac = 1 AND CAST(section AS SIGN
       WRITING_COMPATIBLE = Set.of("SEC_WRITE", "SEC_TRANSLATION")
 ```
 
-不加这条，翻译**根本开不了练习**。这是「目录独立、作答复用」的唯一侵入点，必须与目录隔离成对评审。
+不加这条，翻译**根本开不了练习**。
+
+> ⚠️ **2026-11-11 实施修正：侵入点不止 `validatePart` 一处，实际 7 处。** 原文「唯一侵入点」低估了：写作链路除板块校验外，题型/布局/答案类型都是**枚举硬编码**、题目归一化是 `switch (type_id_mapping)` 的 5 个写作分支、判卷任务无策略也会照排。落地清单：
+>
+> | # | 位置 | 改动 |
+> |---|---|---|
+> | 1 | `WritingQuestionType` / `WritingLayoutType` / `WritingAnswerType` | 各加 2 / 2 / 1 个枚举（`TRANSLATION_WRITTEN`、`TRANSLATION_ORAL` / `INPUT`、`RECORD` / `AUDIO`） |
+> | 2 | `WritingQuestionNormalizer` | 加 `translation_written`、`translation_oral` 两分支，原文取 `question.passage`，布局以 `question.layout` 为准 |
+> | 3 | `WritingQuestionSetFactory#create` | 增 `expectedMapping` 重载，`content_type` 校验由写死 `SEC_WRITE` 改为等于传入编码 |
+> | 4 | `WritingAttemptServiceImpl#validatePart` + `start` | 放宽如上；取题与建快照按传入 `sectionMapping` 走 |
+> | 5 | `WritingAnswerServiceImpl#prepare` | 加 `TRANSLATION_WRITTEN`（TEXT）/`TRANSLATION_ORAL`（AUDIO）两条作答校验 |
+> | 6 | `WritingSubmissionFinalizer` | 提交前查 `writing_evaluation_policy`，无策略不建判卷任务，报告直接 `READY`/`UNAVAILABLE`（翻译 P0 依赖此行为） |
+> | 7 | `WritingReportServiceImpl#requireReady` + `WritingExceptionHandler` | 放行 `UNAVAILABLE` 终态；advice 作用域补 `hsk.translation.controller`，否则 B8 的版本冲突落全局兜底变 500 |
+>
+> 结论不变（仍走「目录独立 + 作答复用」），但评审要点要从「一处放宽」改成「七处成对回归」：写作侧 5 种题型的开练/作答/交卷/报告必须全部回归。
 
 #### 3.3.5 异常处理
 
@@ -970,7 +984,7 @@ POST /translation/attempts/start {paperId, section}
 | 方案 | 新增端点 | 持久层 | 存量侵入 | 结论 |
 |---|---|---|---|---|
 | 只分目录 | 4 | 复用 `writing_*` | 0 | ❌ 前端要两个 basePath |
-| **目录独立 + 薄封装** | **4 + 6** | **复用 `writing_*`** | **1 处** | ✅ 采纳 |
+| **目录独立 + 薄封装** | **4 + 6** | **复用 `writing_*`** | **7 处**（原估 1 处，见 §3.3.4 修正） | ✅ 采纳 |
 | 完全独立 | 14 | 新建 7 张表 | 0 | ❌ 评分/报告/统计重造，工期最长 |
 
 风险：放宽 `validatePart` 后写作与翻译共用 attempt 表，靠 `content_type` + `section_mapping` 双条件隔离，这两个条件必须成对评审。

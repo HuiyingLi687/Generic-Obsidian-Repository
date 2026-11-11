@@ -32,7 +32,7 @@
 | 7   | 上下架口径                                                                                     | 练习侧只读 `enabled_prac = 1`；`enabled`（板块）/ `exam_paper.enabled_prac`（卷）/ `question.enabled_prac`（题）三级独立，详见 SDD §3.4                                                                                                                                                                                                                                                                                                                                          |
 | 8   | 板块开关                                                                                      | `practice_module_part_config.enabled`：`1` 开放 / `0` 关闭。`deleted` 回到纯逻辑删除，不作开关                                                                                                                                                                                                                                                                                                                                                                              |
 | 9   | 翻译版本门槛                                                                                    | 翻译仅 `HSK3.0` 有数据。2.0 调目录接口返回**空数组 / 空对象**，不报 404                                                                                                                                                                                                                                                                                                                                                                                                          |
-| 10  | 翻译作答复用写作链路                                                                                | 6 个写链路端点薄封装委托 `Writing*Service`，唯一侵入点是 `validatePart` 放宽 `contentType` 白名单                                                                                                                                                                                                                                                                                                                                                                                |
+| 10  | 翻译作答复用写作链路 | 6 个写链路端点薄封装委托 `Writing*Service`；**侵入点实测 7 处**（`validatePart` 放宽、3 个枚举扩容、题目归一化两分支、题目集合工厂按板块校验、答案校验两分支、无策略降级、报告放行 `UNAVAILABLE` + 异常作用域），详见 SDD §3.3.4 |
 | 11  | 环境基线                                                                                      | **以 TEST 为准**。生产差异只在 §9.1 登记，不改字段契约、不写进接口行为                                                                                                                                                                                                                                                                                                                                                                                                               |
 | 12  | 等级入参命名                                                                                    | 请求与响应一律用 **`level`**（query / path / body），**取数字串**（`"1"`–`"6"`、`"7"`=HSK7-9 整级）；显示名另给 `levelName`。`levelCode` / `databaseLevel` 全部废弃                                                                                                                                                                                                                                                                                                                      |
 | 13  | 模块卡数据源                                                                                    | `/hsk/modules` 的模块卡**取自字典表**（`hsk_practice_module_v2` / `_v3`），不做进程内常量。字段一列一义：`item_text`=中文名、`item_value`=`sectionMapping`、`description`=`moduleCode`、`sort_order`=顺序、`item_properties` 只放 `moduleCode`/`nameEn`/`nameVi` 的 JSON；`layout` 存 `sys_dict.remark`。`icon`/`theme`/`badge`/`entryLevelCode` **不入库、不下发**，前端按 `moduleCode` 内置                                                                                                                    |
@@ -1535,14 +1535,24 @@ Authorization: Bearer xxx
 **服务端内部执行顺序**
 
 1. 校验登录（委托 `requireAuthenticatedAppUserId`）
-2. **前置归属校验**：`question` 里 `(paperId, section)` 的 `section_mapping` 必须为 `SEC_TRANSLATION`
+2. **板块解析**：`practice_part_setting` 按三元组取一行
    ```sql
-   SELECT DISTINCT section_mapping FROM question
-   WHERE paper_id = ? AND deleted = 0 AND enabled_prac = 1 AND CAST(section AS SIGNED) = ?;
+   SELECT * FROM practice_part_setting
+   WHERE paper_id = ? AND section_mapping = 'SEC_TRANSLATION'
+     AND section_code = ? AND enabled = 1 AND deleted = 0
+   LIMIT 1;
    ```
-   - 返回空集 → **404**（板块不可练，题被逐题下架或不存在）
-   - 返回非 `SEC_TRANSLATION` → **400 `SECTION_MAPPING_MISMATCH`**
-3. 委托 `WritingAttemptServiceImpl#start`
+   取不到 → **404 `翻译板块不存在`**
+3. **题目存在性校验**：该板块下至少还有 1 道可练题（题被逐题下架就开不了练习）
+   ```sql
+   -- PracticeQuestionMapper#selectByPart，已内含 deleted=0 AND enabled_prac=1
+   SELECT * FROM question
+   WHERE paper_id = ? AND section_mapping = 'SEC_TRANSLATION' AND section = ? ...
+   ```
+   空集 → **404 `翻译板块没有可练习的题目`**
+
+   > ⚠️ **2026-11-11 修正**：本节原写的「`SELECT DISTINCT section_mapping FROM question WHERE paper_id=? AND CAST(section AS SIGNED)=?`，返回非 `SEC_TRANSLATION` → 400」**是错的**。HSK 3.0 的综合卷里听力/阅读/写作/口语/翻译的第 1 部分**同号共存**（实测卷 `2104188199979532289` 的 `section=1` 同时命中 `SEC_LISTEN`/`SEC_READ`/`SEC_WRITE`/`SEC_TRANSLATION`/`SEC_SPEAKING`），这条 SQL 必然返回多个 mapping，等于把正常的翻译请求判成 400。归属只能靠 `section_mapping='SEC_TRANSLATION'` 直接过滤，`SECTION_MAPPING_MISMATCH` 这个错误码**取消**（无歧义场景可判）。
+4. 委托 `WritingAttemptServiceImpl#start`
    - `requirePaper`：卷有效 + `exam_type=1` + **`enabled_prac=1`** + `level ≥ 3`
    - `validatePart`：`contentType ∈ {SEC_WRITE, SEC_TRANSLATION}` 且 `== sectionMapping`（**本次放宽，否则翻译开不了练习**）
    - 已有 `IN_PROGRESS` → 直接返回（`restored=true`）
@@ -1807,6 +1817,26 @@ Authorization: Bearer xxx
 | `questions[]` | Array | 【新增】 | 逐题明细（`WritingReportItemResponse`）。P0 无评分时为空数组 |
 
 **本接口抛出错误码**：401 / 404
+
+---
+
+**实现现状（2026-11-11，B5–B10 已落地）**
+
+| 层 | 落点 | 说明 |
+|---|---|---|
+| 控制器 | `hsk/translation/controller/Translation{Attempt,Answer,Submission,Report}Controller` | 6 个端点全部新增；交卷路径按契约用 `/submissions`（写作是 `/submit`） |
+| 服务 | `hsk/translation/service/impl/TranslationPracticeServiceImpl` | 只做四件事：解析板块 → 校验归属 → 委托写作链路 → 重映射契约 |
+| 板块解析 | `hsk/translation/support/TranslationPartResolver` | `(paperId, section)` → `practice_part_setting`；attempt 归属同样按 `section_mapping='SEC_TRANSLATION'` 判，**写作练习从翻译入口读不到**（404 而非串数据） |
+| 写作内核 | `WritingQuestionType.TRANSLATION_WRITTEN/ORAL`、`WritingLayoutType.INPUT/RECORD`、`WritingAnswerType.AUDIO` | 题型 / 布局 / 答案类型三处枚举扩容；布局以 `question.layout` 为准，枚举只作承载 |
+| 无策略降级 | `WritingSubmissionFinalizer` 提交前查 `writing_evaluation_policy` | 无策略 → **不建判卷任务**，报告直接 `evaluationStatus=READY` / `feedbackStatus=UNAVAILABLE`（见 D5），`WritingReportServiceImpl` 允许读取该终态（否则会 409） |
+| 异常作用域 | `WritingExceptionHandler` 的 `basePackages` 增加 `hsk.translation.controller` | 翻译 B8 复用写作答案保存，版本冲突异常不改作用域会落到全局兜底变成 500 |
+
+**已知数据缺口（非代码问题，验收时不要按 bug 记）**
+
+| 项 | 实测（TEST） | 影响 |
+|---|---|---|
+| **口译第 2 部分没有板块配置** | 卷 `2104188199979532289`：`practice_paper_structure` 只有 1 行 `SEC_TRANSLATION`（「第3部分」，`question_count=2`）；`practice_part_setting` 也只有 `section_code='1'`（`translation_written`）。而 `question` 里 `section=2` 有 2 道 `translation_oral` | B5 传 `section=2` → **404 翻译板块不存在**。要开口译需运营补 1 行 structure + 1 行 part_setting（`section_code='2'`、`type_code='translation_oral'`） |
+| 无评分策略 | `writing_evaluation_policy` 只有 HSK3–HSK6 的写作题型，**没有 `TRANSLATION_*`** | 报告 `feedbackStatus` 恒 `UNAVAILABLE`、`score` 为 `null`（与 D5 一致），B10 的 `questions[]` 为空数组 |
 
 ---
 
@@ -2493,9 +2523,7 @@ ALTER TABLE practice_module_part_config
 | `speaking/service/impl/SpeakingCatalogServiceImpl.java` | 常量改参数；板块换源；取题改按 `type_code` |
 | `speaking/mapper/SpeakingSourceQuestionMapper.xml` | **删 `PartCodeCase` 硬编码 8 题型**，改按 `part_config.type_code` 取题（B-19） |
 | `hsk/controller/PracticeCatalogController.java`（新增） | **U1–U3 统一目录端点**：`module` 参数路由到 5 个模块的装配逻辑；**U3 的 `module` 必填**（决策 16b），按 `(paperId, module→sectionMapping)` 只装该模块的板块，`paperId` 仅用于判卷域与取卷元信息。原 4 个模块 Catalog Controller 的目录端点全部摘除 |
-| `translation/controller/TranslationAttemptController.java` | 新增 6 个写链路端点（T5–T10），薄封装 |
 | `translation/service/impl/TranslationCatalogServiceImpl.java` | 新增：`SEC_TRANSLATION` 目录装配 |
-| `translation/support/TranslationPartGuard.java` | 新增：统一前置归属校验（返回空集 → 404，模块不符 → 400） |
 | `writing/service/impl/WritingAttemptServiceImpl.java` | **`validatePart` 放宽 `contentType` 白名单**（唯一侵入点） |
 | `writing/content/WritingQuestionNormalizer.java` | **`switch (getTypeIdMapping())` 改为读 `question.layout`**（§4.0.5）。现白名单只有 5 个老题型，3.0 的 `chart_analysis` / `topic_essay` 落 default → 直接挂（B-04） |
 | `writing/content/WritingLayoutType.java` | 若保留枚举：补 `CHART_ANALYSIS` / `TOPIC_ESSAY`，并加 `fromLayout(String)`；否则整体退化为直接透传 `layout` 字符串 |
@@ -2507,6 +2535,23 @@ ALTER TABLE practice_module_part_config
 | `hsk/report/service/impl/PracticeReportQueryServiceImpl.java`（新增） | 三元组定位 + 四模块分发；`module` 白名单校验（缺省/非法 → 400）；`section` 原样透传（**不拼 `PART_` 前缀**）；`BusinessException(404)` 与 `SpeakingException(404)` 都降级 `data=null`（后者非 `BusinessException` 子类、且本包不在其 advice 作用域内，非 404 要转 `BusinessException` 才能避免 500）；`selectByIdForReport` 不判 `enabled_prac`（下架卷的历史报告仍可查） |
 | `hsk/report/service/impl/PracticeReportQueryServiceImplTest.java`（新增 11 例） | 覆盖：`module` 缺省/非法 400、`section` 空 400、卷不存在/版本不符/板块不存在 404、大小写不敏感、读/听 happy path 回显 `module`、写作 404 与口语 `SpeakingException` 404 都降级 `data=null`、口语非 404 转 `BusinessException` |
 | `hsk/catalog/mapper/PracticePartSettingMapper` + `mapper/catalog/PracticePartSettingMapper.xml`（新增 `selectStructureIdByPart`） | 三元组 → `structure_id`；`section_code IN (N, CONCAT('PART_', N))`，把口语历史 `PART_N` 与数字 `section` 在 SQL 侧归一（该表本期 drop，届时一并删除） |
+| `hsk/translation/controller/TranslationAttemptController.java`（新增） | **B5/B6/B7**：`POST /translation/attempts/start`、`GET /translation/attempts/{attemptId}?section=`、`GET /translation/attempts/{attemptId}/questions` |
+| `hsk/translation/controller/TranslationAnswerController.java`（新增） | **B8**：`PUT /translation/attempts/{attemptId}/answers`，复用写作答案 DTO（笔译 `TEXT`、口译 `AUDIO`） |
+| `hsk/translation/controller/TranslationSubmissionController.java`（新增） | **B9**：`POST /translation/attempts/{attemptId}/submissions`（写作是 `/submit`，按契约改名） |
+| `hsk/translation/controller/TranslationReportController.java`（新增） | **B10**：`GET /translation/reports/{reportId}` |
+| `hsk/translation/support/TranslationPartResolver.java`（新增） | `(paperId, section)` → `practice_part_setting`（`section_mapping='SEC_TRANSLATION' AND enabled=1 AND deleted=0`）；题目存在性校验；attempt 归属校验（写作练习从翻译入口 404） |
+| `hsk/translation/service/impl/TranslationPracticeServiceImpl.java`（新增） | 6 个方法薄封装：委托 `WritingAttemptService` / `WritingAnswerService` / `WritingSubmissionFinalizer` / `WritingReportService`；读模型重映射 `structureId→section`、`layoutType→layout`（小写）、`levelCode→level`（去 `HSK` 前缀）、`AI_REVIEW→AI`、`instruction→stem`；`UNAVAILABLE` 报告不下发分数与逐题明细 |
+| `hsk/translation/dto/`（新增 4 个） | `TranslationStartRequest`、`TranslationAttemptResponse`、`TranslationQuestionResponse`、`TranslationReportResponse`；B8/B9 直接复用 `WritingAnswerSave*` / `WritingSubmit*` |
+| `hsk/writing/enums/`（扩容 3 个） | `WritingQuestionType` +`TRANSLATION_WRITTEN`/`TRANSLATION_ORAL`；`WritingLayoutType` +`INPUT`/`RECORD`；`WritingAnswerType` +`AUDIO` |
+| `hsk/writing/content/WritingQuestionNormalizer` | 新增 `translation_written` / `translation_oral` 两个分支：原文取 `question.passage`、参考答案进 evaluator 快照、布局以 `question.layout` 为准（缺失才回落题型默认） |
+| `hsk/writing/service/internal/WritingQuestionSetFactory` | `create(...)` 增 `expectedMapping` 重载，结构行 `content_type` 必须等于板块编码；翻译题额外校验 `sourceText` 非空 |
+| `hsk/writing/service/impl/WritingAttemptServiceImpl` | 新增 `start(userId, paperId, structureId, sectionMapping)`；`validatePart` 接受 `SEC_WRITE`/`SEC_TRANSLATION`，取题与建快照全按传入编码走（写作入口行为不变） |
+| `hsk/writing/service/impl/WritingAnswerServiceImpl` | 新增 `TRANSLATION_WRITTEN`（`TEXT`，5000 字上限）与 `TRANSLATION_ORAL`（`AUDIO`，`{url,durationMs}`）两条作答校验分支 |
+| `hsk/writing/service/internal/WritingSubmissionFinalizer` | 提交前按 `(levelCode, questionType)` 查 `writing_evaluation_policy`：无策略不建任务，报告直接 `READY`/`UNAVAILABLE`，`completedEvaluations=totalEvaluations=题数` |
+| `hsk/writing/service/impl/WritingReportServiceImpl` | `requireReady` 放行 `UNAVAILABLE` 终态（否则无评分报告永远 409） |
+| `hsk/writing/exception/WritingExceptionHandler` | `basePackages` 增加 `hsk.translation.controller`，翻译 B8 的版本冲突仍走 409 可恢复响应 |
+| `hsk/translation/service/impl/TranslationPracticeServiceImplTest.java`（新增 12 例） | 板块缺失 404、委托参数为 `SEC_TRANSLATION`、`level` 去前缀、`feedbackStatus` 空值补 `PENDING`、section 不符 404、题目映射（题型/布局/判卷方式/`instruction→stem`）、写作练习不可从翻译入口保存、交卷透传、报告非翻译 404、`UNAVAILABLE` 丢分数与明细、`READY` 保留 |
+| `hsk/translation/support/TranslationPartResolverTest.java`（新增 7 例） | 板块缺失/参数空/板块无题/写作 attempt 越权/未知 attempt 全部 404，正常翻译 attempt 放行 |
 | `hsk/speaking/mapper/SpeakingSourcePaperMapper`（改） | 新增 `selectByIdForReport`（只判 `deleted=0`，与 `selectActiveById` 并存） |
 
 
