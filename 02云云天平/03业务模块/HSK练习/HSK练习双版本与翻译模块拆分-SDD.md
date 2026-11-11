@@ -21,7 +21,7 @@
 | # | 覆盖 |
 |---|---|
 | 1 | 目录层（等级 → 卷 → 板块）全面支持 `version` 入参，缺省 `HSK2.0` |
-| 2 | 新增首页聚合接口 `GET /hsk/modules`，下发卡片顺序、布局、可用性（**角标/图标/主题色由前端按 `moduleCode` 内置，不下发**） |
+| 2 | 新增首页模块卡接口 `GET /hsk/modules`，**纯展示**：只下发卡片顺序、布局与三语名，**不含可用性 / 卷数 / 进度**（角标/图标/主题色由前端按 `moduleCode` 内置，不下发；可用性与进度归 U1） |
 | 3 | 翻译（`SEC_TRANSLATION`）剥离为独立入口 `/translation/**` |
 | 4 | `HSK7-9` ↔ 数字 `7` 双向映射收口，消灭 4 处硬编码版本常量与 3 处 `level` 解析缺陷 |
 | 5 | 上下架统一为**正向布尔 + 双场景**：`enabled_prac` / `enabled_exam` 两列铺到 5 张内容表（卷 / 题组 / 题 / 口语卷 / 口语题），练习侧只读 `_prac`；板块开关改用新表 `practice_module_part_config.enabled`；三张旧表（`practice_paper_structure` / `practice_part_setting` / `practice_paper_setting`）**全部 drop** |
@@ -777,7 +777,7 @@ WHERE paper_id = ? AND deleted = 0 AND enabled_prac = 1 AND CAST(section AS SIGN
 | `level` 在该版本下不存在 | 404，沿用各模块原有文案 |
 | `paperId` 的 version 与入参不符 | 404「试卷不存在」（**不提示版本不符**，避免探测） |
 | `sectionMapping` 与模块不匹配 | 400 `SECTION_MAPPING_MISMATCH` |
-| 目录查询异常 | 整卡 `available=false` + `LOAD_FAILED`，**不 500 整页** |
+| 首页字典查询异常 | 直接冒泡 500（字典没了就没有卡片可渲染，前端只好白屏，不如让监控看到）；字典「查得到但为空」返回 `modules=[]` + WARN，不报错 |
 | 报告评分策略缺失（翻译 P0） | 报告正常返回，`feedbackStatus=UNAVAILABLE`、`score=null` |
 | 板块配置缺行（R14） | 兜底命名 + 视为开放，记 `WARN` 日志供运营补配 |
 
@@ -799,7 +799,7 @@ WHERE paper_id = ? AND deleted = 0 AND enabled_prac = 1 AND CAST(section AS SIGN
 | 级 | 开关 | 粒度 | 关掉之后 |
 |---|---|---|---|
 | L1 版本 | 前端选择 / `exam_paper.version` | 版本 | 整版不出现 |
-| L2 模块 | `practice_module_level_config.enabled` | 版本×等级×模块 | 整卡消失，**不再求值下级** |
+| L2 模块 | `practice_module_level_config.enabled` | 版本×等级×模块 | 该模块在该等级不下发（U1 `paperCount=0`），**不再求值下级**。⚠️ **首页卡片不受此开关影响**——首页是字典驱动，开关管的是「有没有卷」 |
 | L3 卷 | `exam_paper.enabled_prac`（`1` 可练 / `0` 下架） | 卷 | 不在列表、详情与作答均拒绝 |
 | L4 板块 | `practice_module_part_config.enabled`（`1` 开放 / `0` 关闭） | 版本×等级×模块×板块 | 该板块不下发，新练习不含其题目 |
 | L5 题 | `question.enabled_prac`（`1` 上架 / `0` 下架） | 单题 | 题量现算时不计入；算完为 0 则该板块按 R6 不下发 |
@@ -818,9 +818,9 @@ WHERE paper_id = ? AND deleted = 0 AND enabled_prac = 1 AND CAST(section AS SIGN
 
 **首页首屏**
 ```
-GET /hsk/modules?version=HSK3.0 → 解析版本 → 模块元数据 → 批量查等级开关 → 批量查卷 → (可选)进度 → 排序返回
-前端：layout=LIST 渲染 1 列 5 行；TRANSLATION.available=true → 可点
-      entryLevelCode 非空 → 直达卷列表；否则 → 等级选择页
+GET /hsk/modules?version=HSK3.0 → 解析版本 → 查字典（唯一 1 次 SQL）→ 映射卡片 → 按 sortOrder 返回
+前端：layout=LIST 渲染 1 列 5 行，全部可点（首页不判可用性）
+      点卡片 → GET /hsk/levels?module=xx&version= 拿卷与进度；该版本 0 卷时 U1 返回 paperCount=0
 ```
 
 **翻译开始练习（含准入链）**
@@ -890,7 +890,7 @@ POST /translation/attempts/start {paperId, section}
 
 | 场景 | 数据量 | 设计 |
 |---|---|---|
-| 首页聚合 | 5 模块 × ≤ 7 等级 | SQL ≤ 5 次，全部批量；P95 ≤ 150ms |
+| 首页模块卡 | 字典固定 4 / 5 项 | **SQL 恰好 1 次**（`sys_dict ⨝ sys_dict_item`），与模块数无关；P95 ≤ 30ms |
 | 卷列表 | 2.0 单等级 20–21 卷、3.0 1–3 卷 | 无分页，上限 21 |
 | 题量统计 | 按卷批量 IN 查询 | 禁止逐卷循环 |
 | 容量 | 3.0 补齐后 15 卷 ≈ 1059 题，相对 2.0 的 10561 题属小量级 | — |
@@ -942,10 +942,10 @@ POST /translation/attempts/start {paperId, section}
 
 **边界**
 17. 未登录 → 401。
-18. 某模块数据缺失 → 该卡 `available=false`，不全页 500。
+18. 首页无用户态：不带 token 与带过期 token 都返回同一份 `modules`（响应零用户数据）；字典为空 → `modules=[]` + 200。
 19. 不存在的 `paperId` → 404 不 500。
 20. `enabled_prac = 0` 的卷 → **列表不出现、详情报 404、开始作答报 404**（三处都测，B-17）。
-21. 卷级上下架与模块/板块开关互不干扰：卷下架但模块开 → 该等级仍有其他卷；模块关但卷上架 → 整卡消失。
+21. 卷级上下架与模块/板块开关互不干扰：卷下架但模块开 → 该等级仍有其他卷；模块关但卷上架 → 该等级无卷（U1 `paperCount=0`，首页卡片照常显示）。
 
 **上下架（`enabled_prac` / `enabled_exam`）**
 22. `question.enabled_prac = 0` 的单题 → 目录题量 `-1`，答题时不出现在该板块题目列表；其它板块不受影响。
@@ -956,7 +956,7 @@ POST /translation/attempts/start {paperId, section}
 **板块开关**
 26. 关 `HSK2.0/L1/SEC_LISTEN/section=2` → 目录只剩另外三个板块，其题量名称题型不受影响。
 27. 新开练习不含 section=2 的题；历史记录仍可打开、报告题数不变（R13）。
-28. 关整模块 → 整卡消失，不再受板块开关影响（短路顺序）。
+28. 关整模块 → 该模块该等级不下发卷，不再受板块开关影响（短路顺序）。
 29. **区分「关闭」与「未配置」**：把某行 `enabled` 置 0 → 该板块**消失**；把该行物理删掉 → 该板块**仍出现**且名称为 `第N部分`（R14）。这两条必须分别测，否则开关会被兜底逻辑吃掉。
 30. `deleted = 1` 的行视同不存在：既不下发，也不参与兜底排重。
 31. 结构表 drop 后口语 6 个新题型板块（3.0 L4/L5/L6 的 `listen_retell`、L7 的三个）**都能取到题**——这是 B-19 的回归判据。
@@ -1101,7 +1101,8 @@ POST /translation/attempts/start {paperId, section}
 > ⚠️ 这意味着**前端必须已切到 U1–U3**，否则旧 15 条路径直接 404（此前它们虽然返回空板块，至少不是 404）。
 
 > ✅ **P0-d 已完成（2026-11-11）**：`GET /hsk/modules` 落地，模块卡**由字典驱动**——卡片顺序、三语名、`sectionMapping`、`moduleCode` 全部来自 `sys_dict` / `sys_dict_item`，代码里零常量（改 `sort_order` 即时生效）。`layout` 取 `sys_dict.remark`（`GRID_2` / `LIST`）。
-> 实现要点与四处**与文档字面的偏差**（不抛 401 改可选登录、`disabledReason` 扩为三值、降级粒度是「批次」、`header` 服务端拼）已写进接口文档 §4.5 末尾「实现现状」。
+> 🔴 **口径已收敛为「只做展示」（决策 13b）**：初版曾额外下发 `available` / `disabledReason` / `totalPapers` / `completedPapers` / `inProgressPaperId`（要 7 条 SQL 且必须登录），已全部砍掉——现在 **SQL 只有 1 条、接口完全免登录、响应零用户数据**。可用性 / 卷数 / 进度统一由 U1 提供。
+> ⚠️ **踩坑记录**：`sys_dict.remark` 存的是 JSON（`{"layout":"GRID_2"}`），不是裸值 `GRID_2`，服务端必须取 `layout` 键，否则整段 JSON 会被当布局下发。
 > 🔴 **上线前提**：`gateway.white-list` 必须加 `/api/practice/hsk/modules`（TEST / PROD 两份 yml 已改），否则免登录调用在网关就被 401。
 > 🔴 **生产仍需灌字典（E16）**：未灌时接口正常返回 200 但 `modules=[]`，首页空白——这是数据问题不是代码问题。
 

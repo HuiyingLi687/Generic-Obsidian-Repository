@@ -36,6 +36,7 @@
 | 11  | 环境基线                                                                                      | **以 TEST 为准**。生产差异只在 §9.1 登记，不改字段契约、不写进接口行为                                                                                                                                                                                                                                                                                                                                                                                                               |
 | 12  | 等级入参命名                                                                                    | 请求与响应一律用 **`level`**（query / path / body），**取数字串**（`"1"`–`"6"`、`"7"`=HSK7-9 整级）；显示名另给 `levelName`。`levelCode` / `databaseLevel` 全部废弃                                                                                                                                                                                                                                                                                                                      |
 | 13  | 模块卡数据源                                                                                    | `/hsk/modules` 的模块卡**取自字典表**（`hsk_practice_module_v2` / `_v3`），不做进程内常量。字段一列一义：`item_text`=中文名、`item_value`=`sectionMapping`、`description`=`moduleCode`、`sort_order`=顺序、`item_properties` 只放 `moduleCode`/`nameEn`/`nameVi` 的 JSON；`layout` 存 `sys_dict.remark`。`icon`/`theme`/`badge`/`entryLevelCode` **不入库、不下发**，前端按 `moduleCode` 内置                                                                                                                    |
+| 13b | **E1 首页只做展示**（2026-11-11 口径收敛） | `/hsk/modules` 只返回卡片元数据（`moduleCode` / `sectionMapping` / 三语名 / `sortOrder`）+ 版本级 `layout` / `header`，**不带 `available` / `disabledReason` / `totalPapers` / `completedPapers` / `inProgressPaperId`**。理由：那三样要跨表聚合（等级开关 / 卷数 / `practice_record`+`writing_attempt`+`speaking_attempt`），会让纯展示接口从 1 条 SQL 涨到 7 条，且必须登录才能算进度；而「能不能点、练了几张」本来就是 U1（等级概览）的职责，两处各算一遍必然口径打架。**直接后果**：SQL 降到 1 条、接口完全免登录、响应零用户数据 |
 | 14  | **目录接口统一为三跳**                                                                             | 5 个模块同一套响应结构：`levels`（单对象 + `papers[]`）→ `levels/{level}/intro` → `papers/{paperId}/parts?module=`（对象包裹）。**4 个 `/papers` 端点删除**；板块数组统一 `parts`、时长统一 `durationMinutes`、卷状态统一小写。2026-11-11 起连路径也统一（决策 16）                                                                                                                                                                                                                                                   |
 | 15  | **`/parts` 进度字段**                                                                         | 4 个通用字段（`status`/`doneCount`/`correctCount`/`wrongCount`）+ 3 个扩展块（`draft`/`report`/`stats`）。**不再平铺** `draftRecordId` / `draftAttemptId` / `latestReportId` / `feedbackStatus` 等模块专属字段                                                                                                                                                                                                                                                                     |
 | 16  | **目录端点合并为 U1–U3**（2026-11-11）                                                             | 5 个模块 × 3 跳 = 15 个目录端点 → **3 个统一端点**：`GET /hsk/levels?module=&version=&level=`、`GET /hsk/levels/{level}/intro?module=`、`GET /hsk/papers/{paperId}/parts?module=&version=`。`module` 由路径段 `/{mod}` 全部改为 query 参数；`paperId` 只判卷域（`exam_paper` 与 `speaking_exam_paper` 零交集）。响应统一加 `module` 字段。旧 15 条路径全部 404。**U3 的 `module` 为必填**（决策 16b）                                                                                         |
@@ -2219,61 +2220,47 @@ Accept-Language: zh
 | `sort_order`      | `sortOrder`         | 卡片顺序                                                             |
 | `item_properties` | `nameEn` / `nameVi` | JSON，**只有 `nameEn` / `nameVi` 两个键**                              |
 
-**`available` 判定规则**
-
-```
-available = 存在 enabled=1 的 level_config 行
-            AND 至少一个等级下存在 enabled_prac=1 且题量>0 的卷
-```
-
-**服务端内部执行顺序**（SQL ≤ 5 次，与模块数无关）
+**服务端执行顺序**（SQL **恰好 1 次**，与模块数无关）
 
 1. 解析 `version` → 非法 400
-2. 取模块元数据（**字典表** `hsk_practice_module_v2` / `_v3`，按 `sort_order` 排序；`layout` 取 `sys_dict.remark`）
-3. 批量查 `practice_module_level_config` 得各模块可用等级
-4. 批量查 `exam_paper` + `question` 统计 `totalPapers`（题量为 0 的卷剔除）
-5. 带 `userId` 时批量查进行中 / 已完成记录
-6. 按 `sortOrder` 返回
+2. 查字典（`hsk_practice_module_v2` / `_v3`，按 `sort_order` 升序）
+3. 映射成卡片（`layout` 取自 `sys_dict.remark` 的 `layout` 键）
+4. 按 `sortOrder` 返回
 
-**降级**：单个模块查询异常 → 该卡 `available=false` + `disabledReason=LOAD_FAILED`，**不要 500 整页**。
+🔴 **本接口只做展示**（2026-11-11 口径收敛）
 
-**本接口抛出错误码**：400（**不抛 401**，见下方偏差 1）
+首页卡片只回答「有哪些模块、叫什么、什么顺序」。**不判可用性、不算卷数、不查进度**：
+
+| 被砍掉的字段 | 原设计用途 | 为什么不在首页 |
+|---|---|---|
+| `available` / `disabledReason` | 没内容时置灰 | 判它要查等级开关 + 卷数（跨表 2 次聚合），而「能不能点」在 U1 打开模块后第一屏就知道了 |
+| `totalPapers` | 卡片显示「共 N 套」 | 同上；U1 已逐等级给出卷数与进度，首页再算一遍必然两套口径 |
+| `completedPapers` / `inProgressPaperId` | 卡片显示「已完成 N 张」「继续练习」 | 要读 `practice_record` / `writing_attempt` / `speaking_attempt` 三张表，且必须登录——与「免登录」直接冲突 |
+
+换来三条收益：① SQL 从 7 条降到 **1 条**；② 接口**完全免登录**（响应零用户数据，前端不必带 token，也不存在「未登录时进度显示 0」的误导）；③ 可用性 / 卷数 / 进度只剩 U1 一个真源。
+
+> 前端若想在卡片上显示卷数或置灰空模块，一律走 U1（`paperCount=0`），不要在首页加回来。
+
+**本接口抛出错误码**：400
 
 **实现现状（2026-11-11 已落地）**
 
 | 项 | 落地位置 |
 |---|---|
-| 控制器 | `hsk/catalog/controller/PracticeHomeController`（类级 `/hsk`，`GET /modules`）——对外 `GET /api/practice/hsk/modules?version=` |
-| 服务 | `PracticeHomeService` + `PracticeHomeServiceImpl` |
-| 查询 | `hsk/catalog/mapper/PracticeHomeMapper` + `resources/mapper/catalog/PracticeHomeMapper.xml` |
-| DTO | `PracticeHomeResponse` / `PracticeModuleCard` / `PracticeModuleDictRow` / `PracticeModuleCountRow` / `PracticeModuleProgressRow` |
-| 网关 | `application-{test,prod}.yml` 的 `gateway.white-list` 新增 `/api/practice/hsk/modules`（否则免登录调用被网关 401） |
-| 单测 | `PracticeHomeServiceImplTest` 16 例：字典映射、`available` 三态、降级粒度、进度合并、匿名跳过、`layout` / `sortOrder` / `item_properties` 兜底 |
+| 控制器 | `hsk/catalog/controller/PracticeHomeController`（类级 `/hsk`，`GET /modules`）——对外 `GET /api/practice/hsk/modules?version=`；**不解析 token，无 `X-Client-Type`** |
+| 服务 | `PracticeHomeService` + `PracticeHomeServiceImpl`，签名 `modules(version, language)` 两参 |
+| 查询 | `hsk/catalog/mapper/PracticeHomeMapper` + `resources/mapper/catalog/PracticeHomeMapper.xml`，**只有 `selectModuleDict` 一条** |
+| DTO | 3 个：`PracticeHomeResponse` / `PracticeModuleCard`（6 字段）/ `PracticeModuleDictRow` |
+| 网关 | `application-{test,prod}.yml` 的 `gateway.white-list` 增 `/api/practice/hsk/modules`（漏加则网关直接 401） |
+| 单测 | `PracticeHomeServiceImplTest` 17 例，含两条**防回归**用例：`wholeRequestHitsDictExactlyOnce`（只允许 1 次库调用）、`cardExposesOnlyDisplayFields` + `responseExposesOnlyDisplayFields`（反射锁字段集合，谁再加回可用性/进度就红） |
 
-**与文档字面的四处偏差（已知，非缺陷）**
+**两个实现细节（易踩）**
 
-| # | 偏差 | 原因 / 影响 |
+| # | 细节 | 说明 |
 |---|---|---|
-| 1 | **不抛 401，改为「可选登录」** | 「不需要登录」与「带 `userId` 时补进度」两条要求并存 → 带 `X-Client-Type: APP` 且 token 有效才填 `completedPapers` / `inProgressPaperId`，否则按 `0` / `null` 下发。**错误码只剩 400** |
-| 2 | **`disabledReason` 扩为三个值** | 文档只给了 `LOAD_FAILED`。但「运营没放开」和「查询炸了」是两件事，混成一个会让前端把前者提示成网络错误：`LEVEL_CLOSED`（该版本下没有任何 `enabled=1` 的等级配置）/ `NO_CONTENT`（有配置但一张可练卷都没有）/ `LOAD_FAILED`（查询异常降级） |
-| 3 | **降级粒度是「批次」不是「单卡」** | 统计是 3 批批量查询，不存在「单卡查询」这一层。口径：等级开关批失败 → 全部卡 `LOAD_FAILED`；`exam_paper` 卷数批失败 → 只听/读/写/译 4 卡降级，口语卡照常；口语卷数批失败 → 只口语卡降级。**进度查询失败不影响 `available`**，只把进度按 0 / null 下发 |
-| 4 | **`header` 由服务端拼，不来自字典** | 字典只有模块名、没有副标题 → `前缀 + " · " + 「/」拼接的模块显示名`，前缀按语言内置（zh `专项突破` / en `Targeted Practice` / vi `Luyện chuyên sâu`）。改字典里的模块名会同步改副标题 |
+| 1 | 🔴 **`sys_dict.remark` 是 JSON，不是裸值** | TEST 实测为 `{"layout":"GRID_2"}` / `{"layout":"LIST"}`。原实现直接透传会把整段 JSON 当布局下发 → 必须取 `layout` 键；同时兼容运营手改成裸值 `GRID_2` / `LIST`，解析失败回落版本缺省 |
+| 2 | `version` 缺省 `HSK2.0` | 文档写「必填」，实现为 `required=false` + 缺省 2.0（与 U1–U3 的 `version` 口径一致）；白名单外仍抛 400 `PRACTICE_VERSION_INVALID` |
 
-**查询清单（7 条，全部与模块数无关；卡片再多也不增加往返）**
-
-| # | 查询 | 用途 |
-|---|---|---|
-| 1 | `sys_dict ⨝ sys_dict_item` | 卡片元数据 + `layout`（← `sys_dict.remark`） |
-| 2 | `practice_module_level_config` GROUP BY `section_mapping`（`enabled=1 AND deleted=0`） | `available` 的前半个条件 |
-| 3 | `question ⨝ exam_paper` GROUP BY `section_mapping` | 听 / 读 / 写 / 译的可练卷数 |
-| 4 | `speaking_exam_paper ⨝ speaking_exam_paper_question` | 口语可练卷数 |
-| 5 | `practice_record` GROUP BY `section_mapping` | 听 / 读进度 |
-| 6 | `writing_attempt ⨝ practice_part_setting ⨝ exam_paper` | 写 / 译进度 |
-| 7 | `speaking_attempt ⨝ speaking_exam_paper` | 口语进度 |
-
-> ⚠️ 第 6 条仍经 `practice_part_setting` 中转——`writing_attempt` 还没有 `section_mapping` / `section` 两列（P0-h 未做），与 U1/U3 的进度口径完全一致；P0-h 加列后这条 SQL 可去掉 join。
-
-> 🔴 **`totalPapers` 不看等级开关**：它统计的是「该版本该模块总共能练几张卷」，与 `available` 分开判。所以会出现 `totalPapers=5` 但 `available=false`（`LEVEL_CLOSED`）——**这是有意的**，前端置灰时仍可显示「共 5 套」。
 
 > 🔴 **生产未灌字典（E16）时的行为**：`modules=[]`、`layout` 按版本缺省、`data` 正常返回 **200**，不打 500。前端表现为首页无卡片——排查方向是 `sys_dict` 而不是接口。
 
@@ -2326,7 +2313,7 @@ available = 存在 enabled=1 的 level_config 行
 2. 新增字段（`section`、三语、`sortOrder`、`levelName`）对旧客户端是**增量**，但 `structureId` 的删除、`/papers` 的删除、`/levels` 的数组→对象都是**硬破坏**，不可灰度
 3. `questionCount` 改为现算，数值可能与旧的配置值不同（生产库存在 `total_question_count` 与板块求和不一致的情况，差异 E13）。**不要在前端做「进度条 = completedCount / 旧的固定值」的硬编码**
 4. **状态枚举已统一为小写**（`not_started` / `in_progress` / `completed`），5 个模块一致，前端不再需要「按模块分别处理」（原文档此处写「本期不统一」，已作废）
-5. `paperId` 仍是 `Long`（19 位），JSON 里会有精度风险。`/hsk/modules` 的 `inProgressPaperId` 已改 String，其余接口 P1 再改；**过渡期前端必须用字符串接收或配置 JS 的 bigint 处理**
+5. `paperId` 仍是 `Long`（19 位），JSON 里会有精度风险，**过渡期前端必须用字符串接收或配置 JS 的 bigint 处理**。`/hsk/modules` 不含任何 `paperId`（纯展示），不受影响；其余接口 P1 再统一改 String
 6. 翻译 P0 交卷后 `report.status = UNAVAILABLE`、`score = null` 是**预期行为**，不是 bug。前端应展示「暂无评分」而不是「生成中」或错误页
 7. **`draft` / `report` / `stats` 三块可能为 `null`**，前端按「块是否为 null」判断，不要判内部字段是否为空——因为 `draft.answeredCount = 0` 与「没有草稿」是两件事
 
@@ -2337,7 +2324,7 @@ available = 存在 enabled=1 的 level_config 行
 | **答题形式** | **只看题目接口逐题下发的 `layout`**，原样值不换算。板块层不下发 `layouts`（2026-11-11 起，§4.0.3）；`typeCode` 只用于显示题型名 |
 | 翻译两张卡 | 卡片层按 `typeCode` 显示题型名与入口；**作答组件进题后按 `layout` 渲染**：`input` → 文本输入；`record` → 录音 |
 | 三语切换 | `parts[]` / `abilityDescription` ×3 / `header` / **`levelName`**（`practice_module_level_config.level_name` ×3，§4.0.6）均三语，服务端按 `Accept-Language` 选一 |
-| 模块卡片置灰 | `available=false` 时置灰 + Toast 提示，**不要隐藏卡片**（保持 5 卡/4 卡布局稳定），`disabledReason` 映射文案 |
+| 模块卡片 | 首页 `/hsk/modules` **不判可用性**，4 / 5 张卡一律可点、也不置灰。某模块在该版本下确实没内容时，点进去由 U1 返回 `paperCount=0`，在该页提示「即将上线」 |
 | 版本切换 | 清空已选 `level`、卷列表、滚动位置、本地「上次练习」。**不要复用旧 `level` 打新版本接口**：2.0 的 `HSK1` 在 3.0 下虽存在但卷集合不同；`HSK7-9` 在 2.0 下返回空结果 |
 | 等级切换 | 三跳下「等级 chip」与「卷列表」在同一屏：点 chip 只重拉 U1 `module=&level=`，**不要重拉整页** |
 | `questionCount = 0` | 该板块不会下发，前端不需要处理空板块 |
@@ -2638,12 +2625,12 @@ ALTER TABLE practice_module_part_config
 | `speaking/mapper/SpeakingSourceQuestionMapper#selectCountsBySections`（新增） | 口语题量改按 `section` 列统计，绕开 `PartCodeCase` 的 8 个题型白名单（B-19） |
 | `speaking/mapper/SpeakingSourcePaperMapper#selectByVersionAndLevels`（新增） | U1 按等级候选集取卷（`'7'` 同时覆盖 `'7'` / `'7-9'`；2.0 口语传文字档位） |
 | `speaking/mapper/SpeakingAttemptMapper#selectSubmittedByStructures`（新增） | U1 口语卷已答题数（`speaking_report` 没有 `answered_count`） |
-| `hsk/catalog/controller/PracticeHomeController.java`（新增） | **E1 首页聚合**：`GET /hsk/modules?version=`，类级前缀 `/hsk`。**可选登录**（`X-Client-Type: APP` + 有效 token 才补进度），不抛 401 |
-| `hsk/catalog/service/PracticeHomeService.java` + `impl/PracticeHomeServiceImpl.java`（新增） | 字典驱动卡片装配；`available` 三态（`LEVEL_CLOSED` / `NO_CONTENT` / `LOAD_FAILED`）；降级按 3 批独立兜底，不 500 整页 |
-| `hsk/catalog/mapper/PracticeHomeMapper.java` + `resources/mapper/catalog/PracticeHomeMapper.xml`（新增） | 7 条聚合查询：字典 / 等级开关 / `exam_paper` 卷数 / 口语卷数 / `practice_record` 进度 / `writing_attempt` 进度 / `speaking_attempt` 进度。**与模块数无关** |
-| `hsk/catalog/dto/`（新增 5 个） | `PracticeHomeResponse` / `PracticeModuleCard` / `PracticeModuleDictRow` / `PracticeModuleCountRow` / `PracticeModuleProgressRow`；`inProgressPaperId` 用 **String**（19 位雪花不丢精度） |
+| `hsk/catalog/controller/PracticeHomeController.java`（新增） | **E1 首页模块卡**：`GET /hsk/modules?version=`，类级前缀 `/hsk`。**纯展示、完全免登录**：不解析 token、不需要 `X-Client-Type` |
+| `hsk/catalog/service/PracticeHomeService.java` + `impl/PracticeHomeServiceImpl.java`（新增） | 字典驱动卡片装配（`modules(version, language)` 两参）；`layout` 从 `sys_dict.remark` 的 JSON 取 `layout` 键；无可用性 / 卷数 / 进度计算 |
+| `hsk/catalog/mapper/PracticeHomeMapper.java` + `resources/mapper/catalog/PracticeHomeMapper.xml`（新增） | **只有 1 条查询**：`sys_dict ⨝ sys_dict_item`。等级开关 / 卷数 / 三张作答表都不查 |
+| `hsk/catalog/dto/`（新增 3 个） | `PracticeHomeResponse` / `PracticeModuleCard`（6 字段：`moduleCode` / `sectionMapping` / `name` / `nameEn` / `nameVi` / `sortOrder`）/ `PracticeModuleDictRow` |
 | `gateway/application-{test,prod}.yml`（改） | `gateway.white-list` 增 `/api/practice/hsk/modules`（E1 免登录；漏加则网关直接 401） |
-| `hsk/catalog/service/impl/PracticeHomeServiceImplTest.java`（新增 16 例） | 字典列映射、`header` 三语与无模块名回落、`available` 三态、等级批失败全降级 / `exam_paper` 批失败只降 4 卡 / 进度失败不影响可用性、匿名跳过 3 条进度查询、`layout` / `sortOrder` / 坏 JSON 兜底 |
+| `hsk/catalog/service/impl/PracticeHomeServiceImplTest.java`（新增 17 例） | 字典列映射、`version` 缺省、`header` 三语与空名回落、`layout` 三种形态（JSON / 裸值 / 坏 JSON）、`sortOrder` 与 `item_properties` 兜底；**两条防回归**：全请求只打 1 次库、反射锁死卡片与响应的字段集合 |
 | `hsk/catalog/support/PracticePartAssemblerTest.java`（新增 10 例） | 开关分流 / 题量过滤 / closed 不被兜底放出 / deleted 行 / 兜底命名 / 口语 partCode / 排序 / intro 退标准题量 / U3 不退 |
 | `hsk/catalog/support/PracticeLevelCodeTest.java`（新增 11 例） | `version` 大小写敏感、`level` 值域、`'7'` 候选集、2.0 口语文字档位、反向换算、`partCode` |
 | `hsk/catalog/service/impl/PracticeCatalogServiceImplTest.java`（新增 15 例） | 参数校验 400、空目录 200、卷/版本/板块 404、题量 0 卷剔除、进度填充、口语走独立卷域 |
@@ -2681,9 +2668,9 @@ ALTER TABLE practice_module_part_config
 | # | 待确认点 | 暂定方案 | 确认人 |
 |---|---|---|---|
 | 1 | 板块级时长 / 满分 / 提示语是否入库 | 本期**不加列**，走 P1 同表加列；口语的 `suggestedDurationMinutes` 暂时沿用 `level_config` 的模块级时长 | 产品 |
-| 2 | `paperId` 何时改 String | P0 保持 `Long`；仅 `/hsk/modules` 的 `inProgressPaperId` 用 String。P1 全量改（涉及所有目录与作答接口） | 前端 + 后端 |
+| 2 | `paperId` 何时改 String | P0 保持 `Long`（`/hsk/modules` 已不含 `paperId`）。P1 全量改（涉及所有目录与作答接口） | 前端 + 后端 |
 | 3 | 翻译 P0 无评分的用户可见文案 | 报告页展示「暂无评分」，不展示「生成中」，不报错 | 产品 |
-| 4 | 模块关闭时是否仍下发板块配置供前端置灰 | 暂定**不下发**（整卡消失）。若产品要「置灰但可点」，需后端在 `level_config.enabled=0` 时仍返回板块骨架 + `available=false` | 产品 |
+| 4 | 模块关闭时是否仍下发板块配置供前端置灰 | 暂定**不下发**（该等级无卷，U1 `paperCount=0`）。若产品要「置灰但可点」，需后端在 `level_config.enabled=0` 时仍返回板块骨架 | 产品 |
 | 5 | `practice_module_part_config` 唯一键何时补 | **本期补**（§9.1.1）：当前 132 行无重复，补键只防未来 | DBA |
 | 6 | `SEC_SPEAKING` 残留配置清理 | 删 TEST 的 1 行模块配置 + 3 行板块配置；`question` 里 5 条造数软删（生产无此差异） | 运营 |
 | 7 | `enabled_exam` 何时真正生效 | **当前有列无逻辑**：考试侧所有 SQL 未加 `enabled_exam = 1`。值全 1 时行为不变；要生效需另行接入 exam-service | 产品 + 后端 |
