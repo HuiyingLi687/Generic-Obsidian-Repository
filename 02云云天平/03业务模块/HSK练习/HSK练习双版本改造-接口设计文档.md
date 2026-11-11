@@ -34,8 +34,10 @@
 | 9 | 翻译版本门槛 | 翻译仅 `HSK3.0` 有数据。2.0 调目录接口返回**空数组 / 空对象**，不报 404 |
 | 10 | 翻译作答复用写作链路 | 6 个写链路端点薄封装委托 `Writing*Service`，唯一侵入点是 `validatePart` 放宽 `contentType` 白名单 |
 | 11 | 环境基线 | **以 TEST 为准**。生产差异只在 §9.1 登记，不改字段契约、不写进接口行为 |
-| 12 | 等级入参命名 | 请求侧一律用 **`level`**（query / path / body），弃用 `levelCode`；**响应字段仍叫 `levelCode`**，不改前端已有解析 |
+| 12 | 等级入参命名 | 请求与响应一律用 **`level`**（query / path / body），**取数字串**（`"1"`–`"6"`、`"7"`=HSK7-9 整级）；显示名另给 `levelName`。`levelCode` / `databaseLevel` 全部废弃 |
 | 13 | 模块卡数据源 | `/hsk/modules` 的模块卡**取自字典表**（`hsk_practice_module_v2` / `_v3`），不做进程内常量。字段一列一义：`item_text`=中文名、`item_value`=`sectionMapping`、`description`=`moduleCode`、`sort_order`=顺序、`item_properties` 只放 `moduleCode`/`nameEn`/`nameVi` 的 JSON；`layout` 存 `sys_dict.remark`。`icon`/`theme`/`badge`/`entryLevelCode` **不入库、不下发**，前端按 `moduleCode` 内置 |
+| 14 | **目录接口统一为三跳** | 5 个模块同一套 3 端点：`/{mod}/levels`（单对象 + `papers[]`）→ `/{mod}/levels/{level}/intro` → `/{mod}/papers/{paperId}/parts`（对象包裹）。**4 个 `/papers` 端点删除**；板块数组统一 `parts`、时长统一 `durationMinutes`、卷状态统一小写 |
+| 15 | **`/parts` 进度字段** | 4 个通用字段（`status`/`doneCount`/`correctCount`/`wrongCount`）+ 3 个扩展块（`draft`/`report`/`stats`）。**不再平铺** `draftRecordId` / `draftAttemptId` / `latestReportId` / `feedbackStatus` 等模块专属字段 |
 
 ---
 
@@ -87,7 +89,7 @@
 | 字段                         | 值                                         | 含义                                                                               |
 | -------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------- |
 | `version`                  | `HSK2.0` / `HSK3.0`                       | 【修改】由代码常量改为请求参数，缺省 `HSK2.0`                                                      |
-| `level`                    | `HSK1`…`HSK6`、`HSK7-9`                    | 【修改】请求参数名由 `levelCode` 统一为 `level`（响应里仍叫 `levelCode`）。`HSK7-9` 是**一个**等级，数值 `7`；禁止 `HSK7` |
+| `level`                    | `"1"`…`"6"`、`"7"`                    | 【修改】请求参数名由 `levelCode` 统一为 `level`，**取数字串**；响应里也叫 `level`（回显同一数字串）+ `levelName`（显示名）。`"7"` 是 HSK7-9 **整级**，查询走候选集 `IN ('7','7-9')`；禁止 `HSK7` 这种拼接值 |
 | `exam_paper.level`（DB）     | TEST `"7"` / PROD `"7-9"`                 | 【无变更】查询必须用候选集 `IN ('7','7-9')`                                                   |
 | `section`                  | `1`…`N`                                   | 【新增】板块号，替代 `structureId`                                                         |
 | `partCode`                 | `"1"`/`"2"`… 或 `PART_1`/`PART_2`/`PART_3` | 【无变更】口语带 `PART_` 前缀，其余纯数字串                                                       |
@@ -113,25 +115,26 @@
 
 | #   | Method | Path                                                         | 用途           | 接口类型 | 改动简述                                                            |
 | --- | ------ | ------------------------------------------------------------ | ------------ | ---- | --------------------------------------------------------------- |
-| A1  | GET    | `/listening/levels`                                          | 听力等级概览 + 卷列表 | 改造   | 加 `version`、补 `exam_type=1`、走 `enabled_prac` 判定                 |
-| A2  | GET    | `/listening/levels/{level}/intro`                        | 听力等级备考说明     | 改造   | `selectOne` 带 `version` + `deleted=0`；`parts[]` 三语 + `typeCode` |
-| A3  | GET    | `/listening/papers/{paperId}/parts`                          | 听力卷板块列表      | 改造   | 加 `version`；板块换源配置表；`structureId` → `section`                   |
-| A4  | GET    | `/reading/levels`                                            | 阅读等级列表       | 改造   | 常量改 `version` 参数                                                |
-| A5  | GET    | `/reading/levels/{level}/intro`                          | 阅读等级备考说明     | 改造   | `version` + `PracticeLevelCode` 解析；`sections[]` 三语 + `typeCode` |
-| A6  | GET    | `/reading/papers`                                            | 阅读卷列表        | 改造   | `version` + `level IN (候选集)`                                    |
-| A7  | GET    | `/reading/papers/{paperId}/parts`                            | 阅读卷板块列表      | 改造   | 卷 `version` 与入参不符 → 404；`structureId` → `section`               |
+| A1  | GET    | `/listening/levels`                                          | 听力等级概览 + 卷列表 | 改造   | 加 `version`、补 `exam_type=1`、走 `enabled_prac` 判定；**加 `levelName`** |
+| A2  | GET    | `/listening/levels/{level}/intro`                        | 听力等级备考说明     | 改造   | `selectOne` 带 `version` + `deleted=0`；`parts[]` 三语 + `typeCode`；加 `level`/`levelName` |
+| A3  | GET    | `/listening/papers/{paperId}/parts`                          | 听力卷板块列表      | 改造   | 加 `version`；板块换源配置表；`structureId` → `section`；进度收敛为 `draft`/`report`/`stats` |
+| A4  | GET    | `/reading/levels`                                            | 阅读等级概览 + 卷列表 | 改造   | **从「等级数组」改为「单等级概览 + 内嵌 `papers[]`」**（照听力）；常量改 `version` |
+| A5  | GET    | `/reading/levels/{level}/intro`                          | 阅读等级备考说明     | 改造   | `version` + `PracticeLevelCode` 解析；`sections` → `parts`、三语、`durationMinutes` |
+| ~~A6~~ | ~~GET~~ | ~~`/reading/papers`~~                                     | ~~阅读卷列表~~    | **删除** | **并入 A4 的 `papers[]`** |
+| A7  | GET    | `/reading/papers/{paperId}/parts`                            | 阅读卷板块列表      | 改造   | 卷 `version` 与入参不符 → 404；`structureId` → `section`；**外层加对象包裹** |
 | A8  | GET    | `/reading/preferences`                                       | 阅读偏好         | 无变更  | P0 不动（表无 `version` 列）                                           |
 | A9  | PUT    | `/reading/preferences/level`                                 | 更新阅读偏好       | 无变更  | P0 仅 2.0 可写                                                     |
-| A10 | GET    | `/writing/levels`                                            | 写作等级列表       | 改造   | 常量改参数；补 `HSK7-9` 分支                                             |
-| A11 | GET    | `/writing/levels/{level}/intro`                          | 写作等级备考说明     | 改造   | `parseLevel` 正则扩到 `HSK7-9`；`sections[]` 三语                      |
-| A12 | GET    | `/writing/papers`                                            | 写作卷列表        | 改造   | 常量改参数                                                           |
-| A13 | GET    | `/writing/papers/{paperId}/parts`                            | 写作卷板块列表      | 改造   | `parseDbLevel` 替代裸 `parseInt`；`structureId` → `section`         |
-| A14 | GET    | `/speaking/levels`                                           | 口语等级列表       | 改造   | 常量改参数                                                           |
-| A15 | GET    | `/speaking/papers`                                           | 口语卷列表        | 改造   | 常量改参数；2.0 / 3.0 都读 `speaking_exam_paper`                        |
-| A16 | GET    | `/speaking/papers/{paperId}/parts`                           | 口语卷板块列表      | 改造   | 板块换源配置表；`structureId` → `section`                               |
-| B1  | GET    | `/translation/levels`                                        | 翻译等级列表       | 新增   | 2.0 → `[]`                                                      |
-| B2  | GET    | `/translation/levels/{level}/intro`                      | 翻译等级备考说明     | 新增   | `sections[]` 来自板块配置                                             |
-| B3  | GET    | `/translation/papers`                                        | 翻译卷列表        | 新增   | 过滤 `totalQuestionCount=0`                                       |
+| A10 | GET    | `/writing/levels`                                            | 写作等级概览 + 卷列表 | 改造   | 同 A4；补 `HSK7-9` 分支                                              |
+| A11 | GET    | `/writing/levels/{level}/intro`                          | 写作等级备考说明     | 改造   | `parseLevel` 正则扩到 `HSK7-9`；`sections` → `parts`、三语                   |
+| ~~A12~~ | ~~GET~~ | ~~`/writing/papers`~~                                    | ~~写作卷列表~~    | **删除** | **并入 A10 的 `papers[]`** |
+| A13 | GET    | `/writing/papers/{paperId}/parts`                            | 写作卷板块列表      | 改造   | `parseDbLevel` 替代裸 `parseInt`；`structureId` → `section`；进度收敛 |
+| A14 | GET    | `/speaking/levels`                                           | 口语等级概览 + 卷列表 | 改造   | 同 A4；**2.0 的 `level` 是 `"1"`–`"3"`，`levelName` 显示 HSKK 初/中/高**（换算表 §4.0.6） |
+| A14b | GET   | `/speaking/levels/{level}/intro`                             | 口语等级备考说明     | 改造   | **原文档缺这个端点，补登记**；`sections` → `parts`、三语              |
+| ~~A15~~ | ~~GET~~ | ~~`/speaking/papers`~~                                   | ~~口语卷列表~~    | **删除** | **并入 A14 的 `papers[]`** |
+| A16 | GET    | `/speaking/papers/{paperId}/parts`                           | 口语卷板块列表      | 改造   | 板块换源配置表；`structureId` → `section`；口语计数进 `stats`           |
+| B1  | GET    | `/translation/levels`                                        | 翻译等级概览 + 卷列表 | 新增   | 同 A4；2.0 → `paperCount=0` + `papers=[]`                          |
+| B2  | GET    | `/translation/levels/{level}/intro`                      | 翻译等级备考说明     | 新增   | `parts[]` 来自板块配置                                               |
+| ~~B3~~ | ~~GET~~ | ~~`/translation/papers`~~                                | ~~翻译卷列表~~    | **删除** | **并入 B1 的 `papers[]`** |
 | B4  | GET    | `/translation/papers/{paperId}/parts`                        | 翻译卷板块列表      | 新增   | 2 个板块：笔译 / 口译                                                   |
 | B5  | POST   | `/translation/attempts/start`                                | 开始翻译练习       | 新增   | 委托 `WritingAttemptService#start`                                |
 | B6  | GET    | `/translation/attempts/{attemptId}`                          | 练习详情         | 新增   | 委托 `#get`                                                       |
@@ -147,13 +150,16 @@
 | D2  | PATCH  | `/hsk/module-config/parts/{id}`                              | 运营：开关板块      | 新增   | 只改 `enabled`（可选 `sort_order`），不建行不删行                            |
 | E1  | GET    | `/hsk/modules`                                               | 首页模块卡聚合      | 新增   | 一次返回布局 + 卡片 + 可用性 + 进度                                          |
 
-**统计（共 33 个）**
+**统计（共 30 个）**
 
 | 类型 | 数量 | 明细 |
 |---|---|---|
-| 改造 | 18 | A 组 14（A1–A7、A10–A16）+ C 组 4 |
-| 新增 | 13 | B 组 10 + D 组 2 + E 组 1 |
+| 改造 | 17 | A 组 13（A1–A5、A7、A10、A11、A13、A14、A14b、A16）+ C 组 4 |
+| 新增 | 11 | B 组 9（B1、B2、B4–B10）+ D 组 2 + E 组 1 |
+| **删除** | **4** | A6 `/reading/papers`、A12 `/writing/papers`、A15 `/speaking/papers`、B3 `/translation/papers`（全部并入各自模块的 `/levels`） |
 | 无变更（仅登记） | 2 | A8 `GET /reading/preferences`、A9 `PUT /reading/preferences/level` |
+
+> **目录接口从「四跳」变「三跳」**：模块卡 → `/{mod}/levels?version=&level=`（等级概览 + 卷列表）→ `/{mod}/papers/{paperId}/parts` → 答题。听力本来就是这套，本次其余四个模块向它对齐（§4.0.6）。
 
 ---
 
@@ -180,7 +186,7 @@
 | 大小写 | **敏感**，`hsk3.0` → 400 `PRACTICE_VERSION_INVALID` |
 | 落点 | 必须**同时**作为 `practice_module_level_config.version` 与 `exam_paper.version` 的条件，漏一处会出现「等级列表是 2.0、卷列表是 3.0」 |
 
-#### 4.0.3 统一的 Part 对象（A2/A3/A5/A7/A11/A13/A14/A16/B1/B2/B4 共用）
+#### 4.0.3 统一的 Part 对象（五个模块的 `/intro` 与 `/parts` 共用）
 
 `parts[]` / `sections[]` 的元素统一为下面这套字段，全部直取 `practice_module_part_config` 同名列：
 
@@ -219,6 +225,51 @@
 
 > **不再下发 `answerMode`**。`answerMode` 是「`typeCode` → 一套自定义枚举」的二次映射，而 `question.layout` 已经是落库的答题形式，直接透传即可——**少一层映射就少一处漏配**（写作 `WritingLayoutType` 的 switch 白名单漏了 3.0 的 `chart_analysis` / `topic_essay` 就是现成教训，B-04）。
 > **三语实测填充率 132/132**，前端可放心直接取，不需要回退。
+
+**可选字段 `durationMinutes`（仅口语）**：板块级建议时长，只有口语有（`speaking_exam_paper_question` 按板块推）。其余模块不下发该键。它**不是**模块级的 `durationMinutes`（那个在 `/intro` 顶层）。
+
+**`/papers/{paperId}/parts` 追加的进度字段（`/intro` 的 `parts[]` 没有这组字段）**
+
+五模块统一用下面 4 个通用字段 + 2 个扩展块，**前端一套渲染逻辑**：
+
+```json
+{
+  "status": "in_progress",
+  "doneCount": 4,
+  "correctCount": null,
+  "wrongCount": null,
+  "draft":  { "id": 88123, "answeredCount": 4, "currentQuestionId": 90012 },
+  "report": { "id": 88100, "hasReport": true, "status": "READY" },
+  "stats":  null
+}
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `status` | String | 统一小写：`not_started` / `in_progress` / `completed`。**原阅读/写作/口语/翻译的大写枚举本次统一为小写** |
+| `doneCount` | Integer | 已作答题数（口语 = 已录音题数） |
+| `correctCount` | Integer | 正确数；**未提交或主观题为 `null`**（写作/翻译/口语恒 `null`） |
+| `wrongCount` | Integer | 错误数，规则同上 |
+| `draft` | Object \| null | 进行中草稿，无则 `null`。见下表 |
+| `report` | Object \| null | 最近一次已出报告，无则 `null`。见下表 |
+| `stats` | Object \| null | **模块特有计数**，目前只有口语返回，其余模块恒 `null`（见下表） |
+
+`draft` / `report` / `stats` 三块的内部字段：
+
+| 块 | 字段 | 类型 | 说明 |
+|---|---|---|---|
+| `draft` | `id` | Long | 草稿主键。听力/阅读 = `practice_record.id`；写作/翻译 = `writing_attempt.id`；口语 = `speaking_attempt.id` |
+| `draft` | `answeredCount` | Integer | 草稿已答题数（续练时恢复进度用） |
+| `draft` | `currentQuestionId` | Long \| null | 停在的题，无则 `null`（「继续上次位置」用） |
+| `report` | `id` | Long | 报告主键。写作/翻译/口语 = 独立报告表 ID（可直接调 `GET /translation/reports/{id}`）；听力/阅读的报告以 `practice_record` 为载体，此值 = 该记录 ID，**查详情仍走 C 组 `/reports/latest`** |
+| `report` | `hasReport` | Boolean | 是否已有可看报告 |
+| `report` | `status` | String \| null | 报告状态：`READY` / `PENDING` / `FAILED` / `UNAVAILABLE`。听力/阅读恒 `READY`；写作/翻译取 `feedbackStatus`；口语取 `reportStatus` |
+| `stats` | `recordedCount` | Integer | 【口语】已录音题数 |
+| `stats` | `scoredCount` | Integer | 【口语】已评分题数 |
+| `stats` | `unansweredCount` | Integer | 【口语】未作答（未录音）题数 |
+| `stats` | `failedCount` | Integer | 【口语】录音/评分失败题数 |
+
+> **为什么把这些塞进扩展块而不是平铺**：听力原本只有 `status/doneCount`，阅读有 `draftRecordId/draftCurrentQuestionId`，写作有 `draftAttemptId/latestAttemptId/latestReportId/feedbackStatus`，口语有 `recordedCount/scoredCount/unansweredCount/failedCount`。平铺后必有大量恒 `null` 的字段，且同名不同义（`recordId` vs `attemptId` 都是「草稿 ID」）。收敛成 `draft.id` / `report.id` 后，前端只判「块是否为 `null`」，不判模块。
 
 **各接口原本有没有这些字段（决定「新增」还是「改名」）**
 
@@ -314,9 +365,82 @@
 
 **一条 UI 约定（沿用 CSCA 既有做法）**：`layout` **原样透传、不推算、不做 enum 换算**。理由是 `CscaQuestionResponse` 已经这么做了，且注释写得很明确——「取哪个字段只由 `layout` 决定，**不能按『字段是否为空』猜形态**」（`clozeGroup` 的 `content` 与 `passage` 可能都为空）。四个 HSK 模块沿用同一约定，前端一套解析逻辑。
 
+#### 4.0.6 目录三跳模型（5 个模块统一，照听力）
+
+**结论**：听力、阅读、写作、口语、翻译的目录接口**收敛为同一套 3 个端点、同一套响应结构**。听力的「`/levels` 内嵌 `papers[]`」模型胜出，其余四个模块向它对齐。
+
+| # | 端点 | 返回 | 用途 |
+|---|---|---|---|
+| 1 | `GET /{module}/levels?version=&level=` | **单对象** `{ level, levelName, paperCount, papers[] }` | 等级概览 + 该等级全部卷的作答进度 |
+| 2 | `GET /{module}/levels/{level}/intro?version=` | **单对象** `{ level, levelName, abilityDescription×3, totalQuestionCount, durationMinutes, parts[] }` | 该等级备考说明 |
+| 3 | `GET /{module}/papers/{paperId}/parts?version=` | **单对象** `{ paperId, paperCode, parts[] }` | 卷内板块 + 进度 |
+
+`{module}` 取值：`listening` / `reading` / `writing` / `speaking` / `translation`。
+
+**七条统一规定**
+
+| # | 规定 | 与旧实现的差别 |
+|---|---|---|
+| 1 | **响应一律是对象，不再是裸数组** | 阅读/写作/口语/翻译的 `/levels`、`/papers`、`/parts` 原本都返 `data: [...]`，全部改为对象包裹 |
+| 2 | **`/{module}/papers` 删除** | 阅读/写作/口语/翻译的卷列表并入端点 1 的 `papers[]`；听力本就无此接口（A6/A12/A15/B3 标【删除】） |
+| 3 | **`level` 是数字串**（`"1"`–`"7"`），请求与响应同值同域。`"7"` 代表 **HSK7-9 整级**；DB 里 `'7'`(TEST) / `'7-9'`(PROD) 两种存法都靠候选集 `IN ('7','7-9')` 兜住 | 原阅读返数值 `7`、口语返 `databaseLevel`、听力回显 `"1"`——统一成「**数字串 `level` + `levelName` 显示名**」；`levelCode` / `databaseLevel` / 数值 `level` 一律不再下发 |
+| 4 | **新增 `levelName`**（本地化显示名，`Accept-Language` 决定） | 听力原本只有 `level`，本次补 `levelName`；其余模块的 `levelName` 保留 |
+| 5 | **板块数组统一叫 `parts`** | 阅读/写作/口语/翻译原叫 `sections` |
+| 6 | **时长统一叫 `durationMinutes`** | 原 `suggestDurationMinutes`，本次改名 |
+| 7 | **卷对象统一 5 字段**：`{ paperId, paperCode, status, completedCount, totalCount }` | 原阅读/写作/翻译用 `totalQuestionCount` / `completedQuestionCount` / `paperName`，口语还有 `recordedCount` / `scoredCount`；全部收敛（口语的评分统计移到板块页 `stats`） |
+
+**`level` 的值域按模块 × 版本不同（唯一一处不统一，因为数据本就不同）**
+
+| 模块 | `HSK2.0` | `HSK3.0` | 数据来源 |
+|---|---|---|---|
+| 听力 / 阅读 | `"1"`–`"6"` | `"1"`–`"6"`、`"7"` | `exam_paper.level` = `'1'…'6'` / `'7'`(TEST)、`'7-9'`(PROD) |
+| 写作 | `"3"`–`"6"`（1/2 级 `enabled=0`） | `"2"`–`"6"`、`"7"` | 同上 |
+| 翻译 | 无（返回空） | 仅 `"7"` | `exam_paper.level` |
+| 口语 | `"1"` / `"2"` / `"3"`（HSKK 初/中/高） | `"3"`–`"6"`、`"7"` | `level_config.level`；卷侧 `speaking_exam_paper.level` = `Beginner`/`Intermediate`/`Advanced`（2.0）、`'3'…'6'` / `'7-9'`（3.0） |
+
+> ⚠️ **口语卷的 `level` 是唯一与「数字串」不一致的地方**（`Beginner` / `Intermediate` / `Advanced`），接口对外仍用数字串，靠一张换算表兜住（**只能落在 `PracticeLevelCode` 一个地方**，禁止各接口自行拼接）。只有 `levelName` 需要按版本区分：
+
+| 版本 | 接口 `level` | `level_config.level` | 卷 `level` | `levelName`（zh） |
+|---|---|---|---|---|
+| HSK2.0 口语 | `"1"` | 1 | `Beginner` | HSKK 初级 |
+| HSK2.0 口语 | `"2"` | 2 | `Intermediate` | HSKK 中级 |
+| HSK2.0 口语 | `"3"` | 3 | `Advanced` | HSKK 高级 |
+| HSK3.0 口语 | `"3"`–`"6"` | 3–6 | `'3'…'6'` | HSK 3 – HSK 6 |
+| HSK3.0 口语 | `"7"` | 7 | `'7-9'` | HSK 7-9 |
+
+> 即：**同一个 `"3"` 在 2.0 口语是「HSKK 高级」、在 3.0 口语是「HSK 3」** —— `levelName` 必须按「模块 + 版本」取，不能只按 `level` 数值查字典。
+
+
+**卷状态枚举统一为小写**
+
+| 值 | 含义 |
+|---|---|
+| `not_started` | 未开始 |
+| `in_progress` | 进行中 |
+| `completed` | 已完成 |
+
+> 原阅读/写作/口语/翻译返的是 `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED`，本次全部改小写——**这是破坏性变更，必须与前端同批上线**（§6.1）。全部模块只有这一种枚举，不再「按模块分别处理」。
+
+**模块无内容时不报错**
+
+| 场景 | 返回 |
+|---|---|
+| 2.0 调 `/translation/levels` | 200，`paperCount = 0`、`papers = []` |
+| 某等级无卷（如写作 2.0 的 `"1"`/`"2"`） | 200，`paperCount = 0`、`papers = []` |
+| 该等级 `level_config.enabled = 0` 或 `deleted = 1` | 200，空对象同上；**不 404**（前端据此显示「该等级暂未开放」） |
+
+**等级选择页的数据源（三跳带来的唯一代价）**
+
+改成三跳后，不再有「一次拿全部等级 + 各等级能力描述」的接口。P0 采用：
+
+1. 等级 chip 由前端按版本矩阵渲染（`HSK2.0`：听/读 `1`–`6`、写 `3`–`6`、口 `1`–`3`（HSKK 初/中/高）；`HSK3.0`：听/读 `1`–`7`、写 `2`–`7`、口 `3`–`7`）
+2. 需要显示每级能力描述时，逐级调端点 2（6–7 个并发请求，可本地缓存 1 天）
+
+> 若产品坚持「一次请求拿全部等级」，再加 `GET /{module}/levels/all?version=`（只返 `{level, levelName, abilityDescription×3, totalQuestionCount}`，不含 `parts`），**不塞进端点 1**——否则「单等级概览」与「全等级列表」两个语义又会分叉回旧问题。见 §10 第 14 条。
+
 ---
 
-### 4.1 目录端点（A 组，16 个）
+### 4.1 目录端点（A 组：13 个改造 + 3 个删除）
 
 #### A1 `GET /listening/levels`
 
@@ -347,6 +471,7 @@ X-Client-Type: APP
   "message": "操作成功",
   "data": {
     "level": "1",
+    "levelName": "HSK1",
     "paperCount": 20,
     "papers": [
       { "paperId": 2104193520701620225, "paperCode": "HSK1听力模拟卷1",
@@ -358,20 +483,21 @@ X-Client-Type: APP
 
 **返回字段说明**
 
-| 字段                        | 类型      | 改动标记  | 说明                                             |
-| ------------------------- | ------- | ----- | ---------------------------------------------- |
-| `level`                   | String  | 【无变更】 | 当前返回的等级编码                                      |
-| `paperCount`              | Integer | 【修改】  | 该等级卷数。**旧实现混入 3.0 卷且 `totalCount=0`，本次修正**     |
-| `papers[].paperId`        | Long    | 【无变更】 | 试卷 ID（19 位，**P1 改 String**）                    |
-| `papers[].paperCode`      | String  | 【无变更】 | 试卷名称，取 `exam_paper.source`                     |
-| `papers[].status`         | String  | 【无变更】 | `not_started` / `in_progress` / `completed`    |
-| `papers[].completedCount` | Integer | 【无变更】 | 已答题数                                           |
-| `papers[].totalCount`     | Integer | 【修改】  | 总题数。**旧实现为 0**（未按 `section_mapping` 过滤），本次改为现算 |
+| 字段                        | 类型      | 改动标记  | 说明                                                                                 |
+| ------------------------- | ------- | ----- | ---------------------------------------------------------------------------------- |
+| `level`                   | String  | 【无变更】 | 数字串 `"1"`…`"6"`、`"7"`（`7` = HSK7-9 整级），与请求参数同值同域（§4.0.6 规定 3）。听力原本就是数字串，**本次不改取值** |
+| `levelName`               | String  | 【新增】  | 本地化显示名（`HSK1` / `HSK7-9`），随 `Accept-Language`                                      |
+| `paperCount`              | Integer | 【修改】  | 该等级卷数。**旧实现混入 3.0 卷且 `totalCount=0`，本次修正**                                         |
+| `papers[].paperId`        | Long    | 【无变更】 | 试卷 ID（19 位，**P1 改 String**）                                                        |
+| `papers[].paperCode`      | String  | 【无变更】 | 试卷名称，取 `exam_paper.source`                                                         |
+| `papers[].status`         | String  | 【无变更】 | `not_started` / `in_progress` / `completed`                                        |
+| `papers[].completedCount` | Integer | 【无变更】 | 已答题数                                                                               |
+| `papers[].totalCount`     | Integer | 【修改】  | 总题数。**旧实现为 0**（未按 `section_mapping` 过滤），本次改为现算                                     |
 
 **服务端内部执行顺序**
 
 1. 校验登录，解析 `version`（非法 → 400）
-2. 解析 `level` → `PracticeLevelCode`（`HSK7-9` → 数值 7）
+2. 校验 `level` 在白名单内（`"1"`–`"7"`）→ 查库时 `"7"` 展开成候选集 `IN ('7','7-9')`
 3. 查 `exam_paper`：`version = ? AND exam_type = 1 AND deleted = 0 AND enabled_prac = 1 AND level IN (候选集)`
 4. 批量查 `question` 统计每卷 `SEC_LISTEN` 题数（`deleted=0 AND enabled_prac=1`），`totalCount=0` 的卷剔除
 5. 带 `userId` 批量查进行中 / 已完成记录，填充 `status` / `completedCount`
@@ -390,13 +516,13 @@ X-Client-Type: APP
 
 | 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
 |---|---|---|---|---|
-| `level` | path | String | 是 | 【无变更】`HSK1`…`HSK6`、`HSK7-9` |
+| `level` | path | String | 是 | 【修改】数字串 `1`…`6`、`7`（原传 `HSK1` 形式，现改数字串，**URL 形态变化**） |
 | `version` | query | String | 是 | 【新增】 |
 
 **请求示例**
 
 ```http
-GET /api/practice/listening/levels/HSK1/intro?version=HSK2.0
+GET /api/practice/listening/levels/1/intro?version=HSK2.0
 Authorization: Bearer xxx
 ```
 
@@ -407,6 +533,8 @@ Authorization: Bearer xxx
   "code": 200,
   "message": "操作成功",
   "data": {
+    "level": "1",
+    "levelName": "HSK 1",
     "abilityDescription": "能理解并使用一些非常简单的中文词语和句子",
     "abilityDescriptionEn": "Can understand and use very simple Chinese words and sentences",
     "abilityDescriptionVi": "Có thể hiểu và sử dụng một số từ và câu tiếng Trung rất đơn giản",
@@ -415,7 +543,7 @@ Authorization: Bearer xxx
     "parts": [
       { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
         "typeCode": "listening_judge", "typeName": "看图判断题", "typeNameEn": "Picture Judgment",
-        "typeNameVi": "Nhận định hình ảnh", "questionCount": 5, "sortOrder": 1 }
+        "typeNameVi": "Nhận định hình ảnh", "questionCount": 5, "sortOrder": 1, "layouts": ["judge"] }
     ]
   }
 }
@@ -425,10 +553,11 @@ Authorization: Bearer xxx
 
 | 字段 | 类型 | 改动标记 | 说明 |
 |---|---|---|---|
+| `level` / `levelName` | String | 【新增】 | 等级编码 + 本地化名，与 A1 同义（§4.0.6 规定 3/4） |
 | `abilityDescription` × 3 | String | 【无变更】 | 三语能力描述，来自 `practice_module_level_config` |
 | `totalQuestionCount` | Integer | 【无变更】 | 模块标准总题量 |
 | `durationMinutes` | Integer | 【无变更】 | 建议时长（分钟） |
-| `parts[]` | Array | 【修改】 | **来源从 `parts_config` JSON 改为 `practice_module_part_config` 行式表**；字段见 §4.0.3，其中 `partCode` / `section` / `typeCode` / `partNameEn` / `partNameVi` / `typeNameVi` 为新增 |
+| `parts[]` | Array | 【修改】 | **来源从 `parts_config` JSON 改为 `practice_module_part_config` 行式表**；字段见 §4.0.3，其中 `partCode` / `section` / `typeCode` / `partNameEn` / `partNameVi` / `typeNameVi` / `layouts` 为新增 |
 
 **服务端内部执行顺序**
 
@@ -473,12 +602,18 @@ Authorization: Bearer xxx
     "parts": [
       { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
         "typeCode": "listening_judge", "typeName": "看图判断题", "typeNameEn": "Picture Judgment",
-        "typeNameVi": "Nhận định hình ảnh", "questionCount": 5, "sortOrder": 1,
-        "status": "completed", "doneCount": 5, "correctCount": 4, "wrongCount": 1 },
+        "typeNameVi": "Nhận định hình ảnh", "questionCount": 5, "sortOrder": 1, "layouts": ["judge"],
+        "status": "completed", "doneCount": 5, "correctCount": 4, "wrongCount": 1,
+        "draft": null,
+        "report": { "id": 88100, "hasReport": true, "status": "READY" },
+        "stats": null },
       { "partCode": "2", "section": 2, "partName": "第二部分", "partNameEn": "Part 2", "partNameVi": "Phần 2",
         "typeCode": "listening_pic_choice", "typeName": "看图选择题", "typeNameEn": "Picture Choice",
-        "typeNameVi": "Lựa chọn hình ảnh", "questionCount": 5, "sortOrder": 2,
-        "status": "not_started", "doneCount": 0, "correctCount": null, "wrongCount": null }
+        "typeNameVi": "Lựa chọn hình ảnh", "questionCount": 5, "sortOrder": 2, "layouts": ["choice"],
+        "status": "in_progress", "doneCount": 2, "correctCount": null, "wrongCount": null,
+        "draft": { "id": 88123, "answeredCount": 2, "currentQuestionId": 90012 },
+        "report": null,
+        "stats": null }
     ]
   }
 }
@@ -488,13 +623,16 @@ Authorization: Bearer xxx
 
 | 字段 | 类型 | 改动标记 | 说明 |
 |---|---|---|---|
-| `paperId` / `paperCode` | — | 【无变更】 | |
+| `paperId` / `paperCode` | — | 【无变更】 | 外层对象本次**从裸数组改成对象包裹**（§4.0.6 规定 1） |
 | `parts[].structureId` | Long | 【删除】 | 改 `section` |
-| `parts[]` 其余通用字段 | — | 见 §4.0.3 | |
+| `parts[]` 基础字段 | — | 见 §4.0.3 | `partCode` / `section` / 三语名 / `typeCode` / `questionCount` / `sortOrder` / `layouts` |
 | `parts[].status` | String | 【无变更】 | `not_started` / `in_progress` / `completed` |
 | `parts[].doneCount` | Integer | 【无变更】 | 已答题数 |
 | `parts[].correctCount` | Integer | 【无变更】 | 正确数，仅已提交板块有值，否则 `null` |
 | `parts[].wrongCount` | Integer | 【无变更】 | 错误数，规则同上 |
+| `parts[].draft` | Object | 【修改】 | **原本是平铺的 `draftRecordId` / `draftAnsweredCount` / `draftCurrentQuestionId`（听力只有前两项）**，本次收敛成 `{id, answeredCount, currentQuestionId}`（§4.0.3 扩展块）；无草稿为 `null` |
+| `parts[].report` | Object | 【修改】 | 原本是平铺的 `hasReport` / `latestRecordId`，收敛成 `{id, hasReport, status}`；听力/阅读 `status` 恒 `READY` |
+| `parts[].stats` | Object | 【新增】 | 听力恒 `null`（仅口语有值） |
 
 **服务端内部执行顺序**
 
@@ -511,7 +649,7 @@ Authorization: Bearer xxx
 
 #### A4 `GET /reading/levels`
 
-**用途**：阅读模块等级列表（含备考说明）
+**用途**：阅读模块「当前等级概览 + 该等级全部卷的作答进度」（原「全部等级列表」）
 **鉴权**：需要登录
 
 **入参说明**
@@ -519,11 +657,12 @@ Authorization: Bearer xxx
 | 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
 |---|---|---|---|---|
 | `version` | query | String | 是 | 【新增】旧实现是代码常量 |
+| `level` | query | String | 否 | 【新增】数字串 `"1"`…`"6"`、`"7"`；不传取用户上次选择，再缺省 `"1"` |
 
 **请求示例**
 
 ```http
-GET /api/practice/reading/levels?version=HSK3.0
+GET /api/practice/reading/levels?version=HSK3.0&level=7
 Authorization: Bearer xxx
 ```
 
@@ -533,94 +672,15 @@ Authorization: Bearer xxx
 {
   "code": 200,
   "message": "操作成功",
-  "data": [
-    {
-      "levelId": 3001,
-      "level": 7,
-      "levelName": "HSK 7-9",
-      "totalQuestionCount": 40,
-      "suggestDurationMinutes": 60,
-      "sections": [
-        { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
-          "typeCode": "reading_detail_choice", "typeName": "细节选择题", "typeNameEn": "Detail Multiple Choice",
-          "typeNameVi": "Lựa chọn chi tiết", "questionCount": 10, "sortOrder": 1 }
-      ]
-    }
-  ]
-}
-```
-
-**返回字段说明**
-
-| 字段                                              | 类型      | 改动标记  | 说明                                                                         |
-| ----------------------------------------------- | ------- | ----- | -------------------------------------------------------------------------- |
-| `levelId`                                       | Long    | 【无变更】 | `practice_module_level_config.id`                                          |
-| `level`                                         | Integer | 【无变更】 | 数值等级；`HSK7-9` 恒为 `7`                                                       |
-| `levelName`                                     | String  | 【无变更】 | 按 `Accept-Language` 本地化                                                    |
-| `abilityDesc`                                   | String  | 【无变更】 | 单语（沿用 `Accept-Language`）                                                   |
-| `totalQuestionCount` / `suggestDurationMinutes` | Integer | 【无变更】 |                                                                            |
-| `sections[]`                                    | Array   | 【修改】  | 字段见 §4.0.3；旧字段 `questionType` → `typeCode`、`questionTypeName` → `typeName` |
-
-**服务端内部执行顺序**
-
-1. 校验登录、`version` → `PracticeVersion.of`
-2. 查 `practice_module_level_config`：`version = ? AND section_mapping = 'SEC_READ' AND enabled = 1 AND deleted = 0`，按 `level` 升序
-3. 逐等级查板块配置（或批量）+ 现算题量
-4. `totalQuestionCount = 0` 的等级不下发（R6）
-5. `HSK7-9` 的 code 由 `PracticeLevelCode.toCode(7)` 统一输出
-
-**本接口抛出错误码**：400 / 401
-
----
-
-#### A5 `GET /reading/levels/{level}/intro`
-
-**用途**：阅读单等级备考说明
-**鉴权**：需要登录
-
-**入参说明**
-
-| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
-|---|---|---|---|---|
-| `level` | path | String | 是 | 【修改】`HSK7-9` 由 `PracticeLevelCode` 解析，**旧实现裸 `parseInt` 必 404**（B-06） |
-| `version` | query | String | 是 | 【新增】 |
-
-**返回示例 / 字段说明**：与 A4 的数组元素**结构完全一致**（单对象）。
-
-**本接口抛出错误码**：400 / 401 / 404
-
----
-
-#### A6 `GET /reading/papers`
-
-**用途**：阅读某等级的试卷列表
-**鉴权**：需要登录
-
-**入参说明**
-
-| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
-|---|---|---|---|---|
-| `level` | query | String | 是 | 【修改】参数名 `levelCode` → `level`，值域不变 |
-| `version` | query | String | 是 | 【新增】 |
-
-**请求示例**
-
-```http
-GET /api/practice/reading/papers?level=7&version=HSK3.0
-Authorization: Bearer xxx
-```
-
-**返回完整示例**
-
-```json
-{
-  "code": 200,
-  "message": "操作成功",
-  "data": [
-    { "paperId": 2104193520701620226, "level": 7, "paperCode": "HSK7-9阅读模拟卷1",
-      "paperName": "HSK7-9阅读模拟卷1", "totalQuestionCount": 40,
-      "completedQuestionCount": 12, "status": "IN_PROGRESS" }
-  ]
+  "data": {
+    "level": "7",
+    "levelName": "HSK 7-9",
+    "paperCount": 15,
+    "papers": [
+      { "paperId": 2104193520701620226, "paperCode": "HSK7-9阅读模拟卷1",
+        "status": "in_progress", "completedCount": 12, "totalCount": 40 }
+    ]
+  }
 }
 ```
 
@@ -628,16 +688,106 @@ Authorization: Bearer xxx
 
 | 字段 | 类型 | 改动标记 | 说明 |
 |---|---|---|---|
-| `paperId` | Long | 【无变更】 | |
-| `level` | Integer | 【修改】 | **旧实现 `eq(level, "7")` 匹配不到 PROD 的 `"7-9"`**（B-03 同源），改 `IN ('7','7-9')` |
-| `paperCode` / `paperName` | String | 【无变更】 | 取 `source` |
-| `totalQuestionCount` | Integer | 【修改】 | 现算，排除 `enabled_prac=0` 的单题 |
-| `completedQuestionCount` | Integer | 【无变更】 | |
-| `status` | String | 【无变更】 | **注意阅读是 `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED` 大写，与听力的 snake_case 不一致** |
+| `level` | String | 【修改】 | 原「数值 `7` + `levelCode`」双字段，**统一为数字串** `"7"`（`levelCode` 删除）；显示名另给 `levelName`（§4.0.6 规定 3） |
+| `levelName` | String | 【无变更】 | 本地化显示名 |
+| `paperCount` | Integer | 【新增】 | 该等级可练卷数（`totalCount=0` 的卷不计） |
+| `papers[]` | Array | 【新增】 | 原先由 A6 单独返回，现内嵌；**A6 已删除** |
+| `papers[].paperId` / `paperCode` | — | 【无变更】 | `paperCode` 取 `source`；原 `paperName` 与之同值，删除 |
+| `papers[].status` | String | 【修改】 | **原大写 `NOT_STARTED` 改小写** `not_started`（§4.0.6） |
+| `papers[].completedCount` / `totalCount` | Integer | 【修改】 | 原 `completedQuestionCount` / `totalQuestionCount` **改名**，口径不变（`totalCount` 现算，排除 `enabled_prac=0` 的题） |
+| ~~`levelId`~~ | — | 【删除】 | 内部主键不下发 |
+| ~~`abilityDesc` / `totalQuestionCount` / `suggestDurationMinutes` / `sections[]`~~ | — | 【删除】 | 全部挪到 A5 `/levels/{level}/intro` |
 
-**服务端内部执行顺序**：登录 → `version` → `level` → 查卷（`deleted=0 AND enabled_prac=1 AND exam_type=1 AND version=? AND level IN (候选集)`）→ 批量现算题量 → 批量查记录 → 返回
+**服务端内部执行顺序**
+
+1. 校验登录、`version`
+2. 解析 `level`（缺省：用户上次选择 → `"1"`）；`"7"` 展开成候选集 `IN ('7','7-9')`
+3. 查 `practice_module_level_config`：`version = ? AND level = ? AND section_mapping = 'SEC_READ' AND enabled = 1 AND deleted = 0`；**查不到 → `paperCount=0` + `papers=[]`，不 404**
+4. 查卷：`version=? AND exam_type=1 AND deleted=0 AND enabled_prac=1 AND level IN (候选集)`；现算 `SEC_READ` 题量，`totalCount=0` 剔除
+5. 带 `userId` 批量查进行中 / 已完成记录，填 `status` / `completedCount`
+6. 返回
+
+**本接口抛出错误码**：400 / 401
+
+---
+
+#### A5 `GET /reading/levels/{level}/intro`
+
+**用途**：阅读单等级备考说明（原 A5 的 `sections[]` 改 `parts[]`，补齐三语与 `levelName`）
+**鉴权**：需要登录
+
+**入参说明**
+
+| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
+|---|---|---|---|---|
+| `level` | path | String | 是 | 【修改】数字串 `7`（= HSK7-9 整级）；**旧实现裸 `parseInt("7-9")` 必 500/404**（B-06），改走 `PracticeLevelCode` |
+| `version` | query | String | 是 | 【新增】 |
+
+**请求示例**
+
+```http
+GET /api/practice/reading/levels/7/intro?version=HSK3.0
+Authorization: Bearer xxx
+```
+
+**返回完整示例**
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "level": "7",
+    "levelName": "HSK 7-9",
+    "abilityDescription": "能理解多种话题的中文材料并进行推断",
+    "abilityDescriptionEn": "Can understand Chinese materials on a variety of topics and make inferences",
+    "abilityDescriptionVi": "Có thể hiểu tài liệu tiếng Trung về nhiều chủ đề và suy luận",
+    "totalQuestionCount": 40,
+    "durationMinutes": 60,
+    "parts": [
+      { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
+        "typeCode": "reading_detail_choice", "typeName": "细节选择题", "typeNameEn": "Detail Multiple Choice",
+        "typeNameVi": "Lựa chọn chi tiết", "questionCount": 10, "sortOrder": 1, "layouts": ["choice"] }
+    ]
+  }
+}
+```
+
+**返回字段说明**
+
+| 字段 | 类型 | 改动标记 | 说明 |
+|---|---|---|---|
+| `level` / `levelName` | String | 【新增】 | 与 A4 同义 |
+| `abilityDescription` × 3 | String | 【修改】 | 原只有单语 `abilityDesc`（随 `Accept-Language`），**改为三语同发**，字段名与小节名对齐（`abilityDesc` → `abilityDescription`） |
+| `totalQuestionCount` | Integer | 【无变更】 | 模块标准总题量 |
+| `durationMinutes` | Integer | 【修改】 | 原 `suggestDurationMinutes` **改名**，值不变 |
+| `parts[]` | Array | 【修改】 | 原 `sections[]` **改名为 `parts`**；字段见 §4.0.3，`questionType` → `typeCode`、`questionTypeName` → `typeName` |
+| ~~`levelId`~~ | — | 【删除】 | 内部主键不下发 |
+
+**服务端内部执行顺序**
+
+1. 校验登录、`version`、`level`
+2. `practice_module_level_config` 按 `version + level + SEC_READ + deleted=0` 查唯一一行（**不能带 `enabled=1` 再判空**，否则关掉的等级会被当成「不存在」而 404；应查全量后内存判 `enabled`）
+3. `practice_module_part_config` 按 `version + level + SEC_READ` 查全量行 → 内存分拨（§4.0.4）
+4. 现算每个板块题量，`0` 的不下发
+5. 兜底：`question` 里出现但配置里没有的 `section`，命名 `第N部分`、视为开放、记 `WARN`
 
 **本接口抛出错误码**：400 / 401 / 404
+
+---
+
+#### A6 `GET /reading/papers` 【已删除，并入 A4】
+
+**用途**：~~阅读某等级的试卷列表~~ → 已合并进 A4 的 `papers[]`
+
+| 项 | 结论 |
+|---|---|
+| 端点 | **删除**（不保留兼容，不返 410） |
+| 原因 | 与听力模型对齐：卷列表由 `GET /reading/levels?version=&level=` 的 `papers[]` 一并返回（§4.0.6 规定 2），避免「等级」与「卷」两个接口各自维护一套过滤条件 |
+| 前端动作 | 原 `GET /reading/papers?level=7&version=HSK3.0` → `GET /reading/levels?level=7&version=HSK3.0`；从 `data.papers` 取值 |
+| 字段变化 | `paperName` 删（与 `paperCode` 同值）、`totalQuestionCount` → `totalCount`、`completedQuestionCount` → `completedCount`、`status` 改小写 |
+
+**本接口已不存在，调用必然 404**（路由删除后，网关会返回 `{"code":500}` + HTTP 200 的 `NoResourceFoundException`，排查见 §5 注）。
 
 ---
 
@@ -653,19 +803,32 @@ Authorization: Bearer xxx
 | `paperId` | path | Long | 是 | 【无变更】 |
 | `version` | query | String | 是 | 【新增】卷 `version` 不符 → 404 |
 
+**请求示例**
+
+```http
+GET /api/practice/reading/papers/2104193520701620226/parts?version=HSK3.0
+Authorization: Bearer xxx
+```
+
 **返回完整示例**
 
 ```json
 {
   "code": 200,
   "message": "操作成功",
-  "data": [
-    { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
-      "typeCode": "reading_detail_choice", "typeName": "细节选择题", "typeNameEn": "Detail Multiple Choice",
-      "typeNameVi": "Lựa chọn chi tiết", "questionCount": 10, "sortOrder": 1,
-      "draftRecordId": 88123, "draftAnsweredCount": 4, "draftCurrentQuestionId": 90012,
-      "hasReport": true, "latestRecordId": 88100, "correctCount": 8, "wrongCount": 2 }
-  ]
+  "data": {
+    "paperId": 2104193520701620226,
+    "paperCode": "HSK7-9阅读模拟卷1",
+    "parts": [
+      { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
+        "typeCode": "reading_detail_choice", "typeName": "细节选择题", "typeNameEn": "Detail Multiple Choice",
+        "typeNameVi": "Lựa chọn chi tiết", "questionCount": 10, "sortOrder": 1, "layouts": ["choice"],
+        "status": "completed", "doneCount": 10, "correctCount": 8, "wrongCount": 2,
+        "draft": null,
+        "report": { "id": 88100, "hasReport": true, "status": "READY" },
+        "stats": null }
+    ]
+  }
 }
 ```
 
@@ -673,14 +836,22 @@ Authorization: Bearer xxx
 
 | 字段 | 类型 | 改动标记 | 说明 |
 |---|---|---|---|
+| `paperId` / `paperCode` | — | 【新增】 | **外层从裸数组改成对象包裹**（§4.0.6 规定 1），前端取 `data.parts` |
 | `structureId` | Long | 【删除】 | 改 `section` |
 | `partCode` / `partName` / `questionCount` | — | 见 §4.0.3 | |
-| `draftRecordId` | Long | 【无变更】 | 当前进行中草稿的 `practice_record.id` |
-| `draftAnsweredCount` | Integer | 【无变更】 | 草稿已答题数 |
-| `draftCurrentQuestionId` | Long | 【无变更】 | 草稿停留题目 |
-| `hasReport` | Boolean | 【无变更】 | 是否已有生成完成的报告 |
-| `latestRecordId` | Long | 【无变更】 | 最近报告对应的记录 |
+| `status` | String | 【修改】 | **新增通用进度字段**，原接口没有，用 `draftRecordId != null` 猜状态 → 改为显式 `not_started` / `in_progress` / `completed` |
+| `doneCount` | Integer | 【修改】 | 原 `draftAnsweredCount` 改名并升级为「通用已答数」（含已提交的那次） |
 | `correctCount` / `wrongCount` | Integer | 【无变更】 | 最近报告正误题数 |
+| `draft` | Object | 【修改】 | 原平铺 `draftRecordId` / `draftAnsweredCount` / `draftCurrentQuestionId` → 收敛为 `{id, answeredCount, currentQuestionId}` |
+| `report` | Object | 【修改】 | 原平铺 `hasReport` / `latestRecordId` → 收敛为 `{id, hasReport, status}` |
+| `stats` | Object | 【新增】 | 阅读恒 `null` |
+
+**服务端内部执行顺序**
+
+1. 登录、`version`
+2. 查卷：`id=? AND version=? AND exam_type=1 AND deleted=0 AND enabled_prac=1`，不满足 → 404
+3. 板块骨架 + 开关分流 + 现算题量（§7.1）
+4. 按 `section` 查 `practice_record` 草稿与最近报告
 
 **本接口抛出错误码**：400 / 401 / 404
 
@@ -714,10 +885,22 @@ P0 **只保证 2.0 可写**；3.0 传 `HSK7-9` 会 404（表无 `version` 列时
 
 #### A10 `GET /writing/levels`
 
-**用途**：写作模块等级列表
+**用途**：写作模块「当前等级概览 + 该等级全部卷的作答进度」（原「全部等级列表」）
 **鉴权**：需要登录
 
-**入参说明**：`version`（query，必填，【新增】）
+**入参说明**
+
+| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
+|---|---|---|---|---|
+| `version` | query | String | 是 | 【新增】旧实现是代码常量 |
+| `level` | query | String | 否 | 【新增】数字串 `"1"`…`"6"`、`"7"`；不传取上次选择，再缺省该版本**最低可用**等级（2.0 = `"3"`，1/2 级 `enabled=0`；3.0 = `"2"`） |
+
+**请求示例**
+
+```http
+GET /api/practice/writing/levels?version=HSK3.0&level=7
+Authorization: Bearer xxx
+```
 
 **返回完整示例**
 
@@ -725,19 +908,15 @@ P0 **只保证 2.0 可写**；3.0 传 `HSK7-9` 会 404（表无 `version` 列时
 {
   "code": 200,
   "message": "操作成功",
-  "data": [
-    { "levelId": 3021, "level": 7, "levelCode": "HSK7-9", "levelName": "HSK 7-9",
-      "abilityDesc": "能用中文撰写观点明确的文章", "writingAvailable": true,
-      "totalQuestionCount": 2, "suggestDurationMinutes": 55,
-      "sections": [
-        { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
-          "typeCode": "chart_analysis", "typeName": "图表描述", "typeNameEn": "Chart Description",
-          "typeNameVi": "Mô tả biểu đồ", "questionCount": 1, "sortOrder": 1 },
-        { "partCode": "2", "section": 2, "partName": "第二部分", "partNameEn": "Part 2", "partNameVi": "Phần 2",
-          "typeCode": "topic_essay", "typeName": "话题作文", "typeNameEn": "Topic Essay",
-          "typeNameVi": "Bài luận chủ đề", "questionCount": 1, "sortOrder": 2 }
-      ] }
-  ]
+  "data": {
+    "level": "7",
+    "levelName": "HSK 7-9",
+    "paperCount": 15,
+    "papers": [
+      { "paperId": 2104193520701620227, "paperCode": "HSK7-9写作模拟卷1",
+        "status": "not_started", "completedCount": 0, "totalCount": 2 }
+    ]
+  }
 }
 ```
 
@@ -745,19 +924,23 @@ P0 **只保证 2.0 可写**；3.0 传 `HSK7-9` 会 404（表无 `version` 列时
 
 | 字段 | 类型 | 改动标记 | 说明 |
 |---|---|---|---|
-| `levelId` / `level` / `levelName` | — | 【无变更】 | |
-| `levelCode` | String | 【修改】 | `HSK7-9` 修正（B-05） |
-| `abilityDesc` | String | 【无变更】 | |
-| `writingAvailable` | Boolean | 【无变更】 | 该等级写作是否开放 |
-| `totalQuestionCount` / `suggestDurationMinutes` | Integer | 【无变更】 | |
-| `sections[]` | Array | 【修改】 | 字段见 §4.0.3；**3.0 的 `HSK7-9` 新增两个板块分支**（图表描述 + 话题作文），旧 `introSections` switch 只到 6 级 |
+| `level` | String | 【修改】 | 原数值 `7` + `levelCode` 双字段 → 统一数字串 `"7"`（§4.0.6 规定 3） |
+| `levelName` | String | 【无变更】 | 本地化名 |
+| `paperCount` | Integer | 【新增】 | 该等级可练卷数（`totalCount=0` 的卷不计） |
+| `papers[]` | Array | 【新增】 | 原先由 A12 单独返回，现内嵌；**A12 已删除** |
+| `papers[].paperId` / `paperCode` | — | 【无变更】 | `paperCode` 取 `source`；`paperName` 删除 |
+| `papers[].status` | String | 【修改】 | **大写改小写** `not_started` |
+| `papers[].completedCount` / `totalCount` | Integer | 【修改】 | 原 `completedQuestionCount` / `totalQuestionCount` 改名；写作 `totalCount` 是**题数**（HSK7-9 为 2），不是卷数 |
+| ~~`levelId` / `writingAvailable`~~ | — | 【删除】 | `levelId` 是内部主键；`writingAvailable` 与 `level_config.enabled` 重复，等级关掉时本就不出现在 `papers` 里 |
+| ~~`abilityDesc` / `totalQuestionCount` / `suggestDurationMinutes` / `sections[]`~~ | — | 【删除】 | 全部挪到 A11 `/levels/{level}/intro` |
 
 **服务端内部执行顺序**
 
 1. 登录 → `version`
-2. `practice_module_level_config`：`version + SEC_WRITE + enabled=1 + deleted=0`
-3. **`introSections` 的 switch 补 `7` 分支**：`chart_analysis` 1 题 + `topic_essay` 1 题（B-04）
-4. 板块配置 + 现算题量
+2. 解析 `level`（缺省按版本矩阵取最低可用等级）
+3. `practice_module_level_config`：`version + level + SEC_WRITE + deleted=0`；内存判 `enabled`，关掉 → `paperCount=0` + `papers=[]`
+4. 查卷 + 现算 `SEC_WRITE` 题量，`totalCount=0` 剔除
+5. 带 `userId` 批量查 `writing_attempt` 填进度
 
 **本接口抛出错误码**：400 / 401
 
@@ -770,38 +953,59 @@ P0 **只保证 2.0 可写**；3.0 传 `HSK7-9` 会 404（表无 `version` 列时
 
 | 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
 |---|---|---|---|---|
-| `level` | path | String | 是 | 【修改】`parseLevel` 正则从 `HSK[1-6]` 扩到含 `HSK7-9` |
+| `level` | path | String | 是 | 【修改】数字串 `1`…`7`；`parseLevel` 不再用 `HSK[1-6]` 正则匹配，直接按数字串校验 |
 | `version` | query | String | 是 | 【新增】 |
 
-响应结构与 A10 数组元素一致。**本接口抛出错误码**：400 / 401 / 404
-
----
-
-#### A12 `GET /writing/papers`
-
-**用途**：写作某等级的试卷列表
-**鉴权**：需要登录
-
-| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
-|---|---|---|---|---|
-| `level` | query | String | 是 | 【修改】参数名 `levelCode` → `level`，值域不变 |
-| `version` | query | String | 是 | 【新增】 |
-
-**返回示例**
+**返回完整示例**
 
 ```json
 {
   "code": 200,
   "message": "操作成功",
-  "data": [
-    { "paperId": 2104193520701620227, "level": 7, "paperCode": "HSK7-9写作模拟卷1",
-      "paperName": "HSK7-9写作模拟卷1", "totalQuestionCount": 2,
-      "completedQuestionCount": 0, "status": "NOT_STARTED" }
-  ]
+  "data": {
+    "level": "7",
+    "levelName": "HSK 7-9",
+    "abilityDescription": "能用中文撰写观点明确的文章",
+    "abilityDescriptionEn": "Can write articles with a clear point of view in Chinese",
+    "abilityDescriptionVi": "Có thể viết bài tiếng Trung với quan điểm rõ ràng",
+    "totalQuestionCount": 2,
+    "durationMinutes": 55,
+    "parts": [
+      { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
+        "typeCode": "chart_analysis", "typeName": "图表描述", "typeNameEn": "Chart Description",
+        "typeNameVi": "Mô tả biểu đồ", "questionCount": 1, "sortOrder": 1, "layouts": ["input"] },
+      { "partCode": "2", "section": 2, "partName": "第二部分", "partNameEn": "Part 2", "partNameVi": "Phần 2",
+        "typeCode": "topic_essay", "typeName": "话题作文", "typeNameEn": "Topic Essay",
+        "typeNameVi": "Bài luận chủ đề", "questionCount": 1, "sortOrder": 2, "layouts": ["input"] }
+    ]
+  }
 }
 ```
 
-字段说明同 A6（`level` 走候选集、`totalQuestionCount` 现算）。**本接口抛出错误码**：400 / 401 / 404
+**返回字段说明**
+
+| 字段 | 类型 | 改动标记 | 说明 |
+|---|---|---|---|
+| `level` / `levelName` | String | 【新增】 | 与 A10 同义 |
+| `abilityDescription` × 3 | String | 【修改】 | 原单语 `abilityDesc` → 三语，字段改名为 `abilityDescription` |
+| `totalQuestionCount` | Integer | 【无变更】 | |
+| `durationMinutes` | Integer | 【修改】 | 原 `suggestDurationMinutes` 改名 |
+| `parts[]` | Array | 【修改】 | 原 `sections[]` 改名为 `parts`；**3.0 的 `HSK7-9` 新增两个板块**（`chart_analysis` + `topic_essay`），旧 `introSections` switch 只到 6 级（B-04） |
+
+> **写作 3.0 的 `HSK7-9` 是本次新增分支**：`introSections` 的 `switch` 补 `7` 分支即可，但更彻底的做法是**直接读 `practice_module_part_config`**（不再按 level 写死板块），否则以后每加一个等级都要改代码。
+
+**本接口抛出错误码**：400 / 401 / 404
+
+---
+
+#### A12 `GET /writing/papers` 【已删除，并入 A10】
+
+| 项 | 结论 |
+|---|---|
+| 端点 | **删除** |
+| 原因 | 卷列表由 `GET /writing/levels?version=&level=` 的 `papers[]` 一并返回（§4.0.6 规定 2） |
+| 前端动作 | `GET /writing/papers?level=7&version=HSK3.0` → `GET /writing/levels?level=7&version=HSK3.0`，取 `data.papers` |
+| 字段变化 | `paperName` 删、`totalQuestionCount` → `totalCount`、`completedQuestionCount` → `completedCount`、`status` 改小写 |
 
 ---
 
@@ -821,14 +1025,19 @@ P0 **只保证 2.0 可写**；3.0 传 `HSK7-9` 会 404（表无 `version` 列时
 {
   "code": 200,
   "message": "操作成功",
-  "data": [
-    { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
-      "typeCode": "chart_analysis", "typeName": "图表描述", "typeNameEn": "Chart Description",
-      "typeNameVi": "Mô tả biểu đồ", "questionCount": 1, "sortOrder": 1,
-      "draftAttemptId": 5512, "draftAnsweredCount": 1, "draftCurrentQuestionId": 91001,
-      "latestAttemptId": 5500, "latestReportId": 7712, "feedbackStatus": "READY",
-      "hasReport": true, "answeredCount": 1, "correctCount": null, "wrongCount": null }
-  ]
+  "data": {
+    "paperId": 2104193520701620227,
+    "paperCode": "HSK7-9写作模拟卷1",
+    "parts": [
+      { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
+        "typeCode": "chart_analysis", "typeName": "图表描述", "typeNameEn": "Chart Description",
+        "typeNameVi": "Mô tả biểu đồ", "questionCount": 1, "sortOrder": 1, "layouts": ["input"],
+        "status": "in_progress", "doneCount": 1, "correctCount": null, "wrongCount": null,
+        "draft": { "id": 5512, "answeredCount": 1, "currentQuestionId": 91001 },
+        "report": { "id": 7712, "hasReport": true, "status": "READY" },
+        "stats": null }
+    ]
+  }
 }
 ```
 
@@ -836,12 +1045,14 @@ P0 **只保证 2.0 可写**；3.0 传 `HSK7-9` 会 404（表无 `version` 列时
 
 | 字段 | 类型 | 改动标记 | 说明 |
 |---|---|---|---|
+| `paperId` / `paperCode` | — | 【新增】 | 外层从裸数组改对象包裹（§4.0.6 规定 1） |
 | `structureId` | Long | 【删除】 | 改 `section` |
-| `draftAttemptId` | Long | 【无变更】 | `writing_attempt.id` |
-| `draftAnsweredCount` / `draftCurrentQuestionId` | — | 【无变更】 | |
-| `latestAttemptId` / `latestReportId` | Long | 【无变更】 | |
-| `feedbackStatus` | String | 【无变更】 | `PENDING` / `READY` / `FAILED` / `UNAVAILABLE` |
-| `hasReport` / `answeredCount` / `correctCount` / `wrongCount` | — | 【无变更】 | 写作主观题 `correctCount` 恒为 `null` |
+| `status` | String | 【新增】 | 通用进度字段，原接口没有 |
+| `doneCount` | Integer | 【修改】 | 原 `answeredCount` / `draftAnsweredCount` 两个口径统一成一个 |
+| `correctCount` / `wrongCount` | Integer | 【无变更】 | 写作主观题**恒 `null`**（HSK 无客观判分） |
+| `draft` | Object | 【修改】 | 原 `draftAttemptId` / `draftAnsweredCount` / `draftCurrentQuestionId` → `{id, answeredCount, currentQuestionId}` |
+| `report` | Object | 【修改】 | 原 `latestAttemptId` / `latestReportId` / `feedbackStatus` / `hasReport` → `{id, hasReport, status}`；`status` 取 `feedbackStatus`（`PENDING` / `READY` / `FAILED` / `UNAVAILABLE`） |
+| `stats` | Object | 【新增】 | 写作恒 `null` |
 
 **服务端内部执行顺序**
 
@@ -856,10 +1067,22 @@ P0 **只保证 2.0 可写**；3.0 传 `HSK7-9` 会 404（表无 `version` 列时
 
 #### A14 `GET /speaking/levels`
 
-**用途**：口语模块等级列表
+**用途**：口语模块「当前等级概览 + 该等级全部卷的作答进度」（原「全部等级列表」）
 **鉴权**：需要登录
 
-**入参说明**：`version`（query，必填，【新增】）
+**入参说明**
+
+| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
+|---|---|---|---|---|
+| `version` | query | String | 是 | 【新增】旧实现是代码常量 |
+| `level` | query | String | 否 | 【新增】数字串：2.0 为 `"1"`–`"3"`（HSKK 初/中/高），3.0 为 `"3"`–`"7"`。不传取上次选择，再缺省该版本最低等级 |
+
+**请求示例**
+
+```http
+GET /api/practice/speaking/levels?version=HSK2.0&level=3
+Authorization: Bearer xxx
+```
 
 **返回完整示例**
 
@@ -867,16 +1090,15 @@ P0 **只保证 2.0 可写**；3.0 传 `HSK7-9` 会 404（表无 `version` 列时
 {
   "code": 200,
   "message": "操作成功",
-  "data": [
-    { "levelId": 3031, "databaseLevel": 7, "levelCode": "HSK7-9", "levelName": "HSK 7-9",
-      "abilityDescription": "能就复杂话题进行连贯表达", "enabled": true,
-      "totalQuestionCount": 5, "suggestedDurationMinutes": 24,
-      "sections": [
-        { "partCode": "PART_1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
-          "typeCode": "applied_read_speak", "typeName": "应用读说", "typeNameEn": "Apply and read aloud",
-          "typeNameVi": "Đọc và nói ứng dụng", "questionCount": 1, "sortOrder": 1 }
-      ] }
-  ]
+  "data": {
+    "level": "3",
+    "levelName": "HSKK 高级",
+    "paperCount": 11,
+    "papers": [
+      { "paperId": 2095069502045491202, "paperCode": "H91000",
+        "status": "in_progress", "completedCount": 2, "totalCount": 5 }
+    ]
+  }
 }
 ```
 
@@ -884,27 +1106,40 @@ P0 **只保证 2.0 可写**；3.0 传 `HSK7-9` 会 404（表无 `version` 列时
 
 | 字段 | 类型 | 改动标记 | 说明 |
 |---|---|---|---|
-| `levelId` | Long | 【无变更】 | |
-| `databaseLevel` | Integer | 【无变更】 | DB 里的等级值 |
-| `levelCode` | String | 【修改】 | `HSK7-9` 修正 |
-| `levelName` / `abilityDescription` | String | 【无变更】 | 单语，走 `Accept-Language` |
-| `enabled` | Boolean | 【无变更】 | **模块级开关**（`level_config.enabled`），不是板块开关 |
-| `totalQuestionCount` / `suggestedDurationMinutes` | Integer | 【无变更】 | |
-| `sections[]` | Array | 【修改】 | 字段见 §4.0.3。**`partCode` 保持 `PART_1` 形态**，同时新增 `section=1` |
-| `sections[].questionCount` | Integer | 【修改】 | **口语取题改按 `part_config.type_code`**，不再用 `PartCodeCase` 硬编码 8 个题型；`listen_retell` / `applied_read_speak` / `listen_material_answer` / `viewpoint_express` 等新题型从此能取到题（B-19） |
+| `level` | String | 【修改】 | 数字串（**原返回 `levelCode` + `databaseLevel` 两个字段**：前者是 `HSK7` 之类的错误拼接、后者是裸数值，本次收敛成一个数字串，显示名交给 `levelName`，见 §4.0.6 换算表） |
+| `levelName` | String | 【无变更】 | 本地化名 |
+| `paperCount` | Integer | 【新增】 | 该等级可练卷数 |
+| `papers[]` | Array | 【新增】 | 原先由 A15 单独返回，现内嵌；**A15 已删除** |
+| `papers[].paperId` | Long | 【无变更】 | **指向 `speaking_exam_paper.id`**，与 `exam_paper.id` 零交集 |
+| `papers[].paperCode` | String | 【无变更】 | `speaking_exam_paper.source`（如 `H91000`） |
+| `papers[].status` | String | 【修改】 | **大写改小写** |
+| `papers[].completedCount` / `totalCount` | Integer | 【修改】 | 原 `completedCount` 保留语义（已完成题数）；`totalCount` = 卷内题数（现算，排除 `enabled_prac=0`） |
+| ~~`levelId` / `databaseLevel` / `enabled` / `abilityDescription` / `sections[]`~~ | — | 【删除】 | `levelId` / `databaseLevel` 是内部值；`enabled` 与 `level_config.enabled` 重复；`abilityDescription` 与 `parts` 挪到 A14b `/intro` |
+| ~~`papers[].recordedCount` / `scoredCount`~~ | — | 【删除】 | 录音 / 评分统计移到板块页 `parts[].stats`（卷列表只显示一条进度） |
+
+**关键改动**：**2.0 与 3.0 口语内容都读 `speaking_exam_paper`**（旧 ADR「3.0 读 `exam_paper`」是错的）。`question` 里 `SEC_SPEAKING` 的 5 条是造数残留，不读。
+
+**服务端内部执行顺序**
+
+1. 登录 → `version`
+2. 解析 `level` 数字串 → 2.0 走 `1/2/3 ↔ Beginner/Intermediate/Advanced` 换算（§4.0.6），3.0 直接按数字串查 `speaking_exam_paper.level`
+3. `practice_module_level_config`：`version + level(数值) + SEC_SPEAK + deleted=0`；内存判 `enabled`
+4. 查 `speaking_exam_paper`：`version=? AND level IN (候选) AND deleted=0 AND enabled_prac=1`
+5. 现算题量（`speaking_exam_paper_question`，`number>0`、`enabled_prac=1`），`totalCount=0` 剔除
+6. 带 `userId` 批量查 `speaking_attempt` 填进度
 
 **本接口抛出错误码**：400 / 401
 
 ---
 
-#### A15 `GET /speaking/papers`
+#### A14b `GET /speaking/levels/{level}/intro`
 
-**用途**：口语某等级的试卷列表
+**用途**：口语单等级备考说明
 **鉴权**：需要登录
 
 | 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
 |---|---|---|---|---|
-| `level` | query | String | 是 | 【修改】参数名 `levelCode` → `level`，值域不变 |
+| `level` | path | String | 是 | 值域同 A14（数字串）；2.0 传 `1`/`2`/`3` |
 | `version` | query | String | 是 | 【新增】 |
 
 **返回完整示例**
@@ -913,11 +1148,21 @@ P0 **只保证 2.0 可写**；3.0 传 `HSK7-9` 会 404（表无 `version` 列时
 {
   "code": 200,
   "message": "操作成功",
-  "data": [
-    { "paperId": 3101, "levelCode": "HSK7-9", "paperCode": "HSK7-9口语模拟卷1",
-      "paperName": "HSK7-9口语模拟卷1", "totalQuestionCount": 5,
-      "recordedCount": 2, "scoredCount": 2, "completedCount": 2, "status": "IN_PROGRESS" }
-  ]
+  "data": {
+    "level": "3",
+    "levelName": "HSKK 高级",
+    "abilityDescription": "能就复杂话题进行连贯表达",
+    "abilityDescriptionEn": "Can express coherently on complex topics",
+    "abilityDescriptionVi": "Có thể diễn đạt mạch lạc về các chủ đề phức tạp",
+    "totalQuestionCount": 5,
+    "durationMinutes": 24,
+    "parts": [
+      { "partCode": "PART_1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
+        "typeCode": "applied_read_speak", "typeName": "应用读说", "typeNameEn": "Apply and read aloud",
+        "typeNameVi": "Đọc và nói ứng dụng", "questionCount": 1, "sortOrder": 1, "layouts": ["record"],
+        "durationMinutes": 5 }
+    ]
+  }
 }
 ```
 
@@ -925,15 +1170,24 @@ P0 **只保证 2.0 可写**；3.0 传 `HSK7-9` 会 404（表无 `version` 列时
 
 | 字段 | 类型 | 改动标记 | 说明 |
 |---|---|---|---|
-| `paperId` | Long | 【无变更】 | **指向 `speaking_exam_paper.id`**，与 `exam_paper.id` 零交集 |
-| `levelCode` | String | 【修改】 | `HSK7-9` 修正 |
-| `totalQuestionCount` | Integer | 【修改】 | 现算，排除 `enabled_prac=0` 的单题 |
-| `recordedCount` / `scoredCount` / `completedCount` | Integer | 【无变更】 | 已录音 / 已评分 / 已完成 |
-| `status` | String | 【无变更】 | `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED` |
-
-**关键改动**：**2.0 与 3.0 口语内容都读 `speaking_exam_paper`**（旧 ADR「3.0 读 `exam_paper`」是错的）。`question` 里 `SEC_SPEAKING` 的 5 条是造数残留，不读。
+| `level` / `levelName` | String | 【新增】 | 与 A14 同义 |
+| `abilityDescription` × 3 | String | 【修改】 | 原单语 → 三语同发 |
+| `durationMinutes` | Integer | 【修改】 | 原 `suggestedDurationMinutes` **改名**（注意口语原字段是 `suggested*`，阅读是 `suggest*`，两者都收敛到 `durationMinutes`） |
+| `parts[]` | Array | 【修改】 | 原 `sections[]` 改名；**`partCode` 保持 `PART_1` 形态**，同时给 `section=1`；**口语板块独有的 `durationMinutes`**（板块级时长）放在 Part 内 |
+| `parts[].questionCount` | Integer | 【修改】 | **口语取题改按 `part_config.type_code`**，不再用 `PartCodeCase` 硬编码 8 个题型；`listen_retell` / `applied_read_speak` / `listen_material_answer` / `viewpoint_express` 等新题型从此能取到题（B-19） |
 
 **本接口抛出错误码**：400 / 401 / 404
+
+---
+
+#### A15 `GET /speaking/papers` 【已删除，并入 A14】
+
+| 项 | 结论 |
+|---|---|
+| 端点 | **删除** |
+| 原因 | 卷列表由 `GET /speaking/levels?version=&level=` 的 `papers[]` 一并返回（§4.0.6 规定 2） |
+| 前端动作 | `GET /speaking/papers?level=7&version=HSK3.0` → `GET /speaking/levels?level=7&version=HSK3.0`，取 `data.papers` |
+| 字段变化 | `levelCode` 删（等级在 `data.level` 上一层）、`paperName` 删、`totalQuestionCount` → `totalCount`、`recordedCount`/`scoredCount` 移到 `parts[].stats`、`status` 改小写 |
 
 ---
 
@@ -953,14 +1207,20 @@ P0 **只保证 2.0 可写**；3.0 传 `HSK7-9` 会 404（表无 `version` 列时
 {
   "code": 200,
   "message": "操作成功",
-  "data": [
-    { "partCode": "PART_3", "section": 3, "partName": "第三部分", "partNameEn": "Part 3", "partNameVi": "Phần 3",
-      "typeCode": "viewpoint_express", "typeName": "观点表达", "typeNameEn": "Expressing Viewpoints",
-      "typeNameVi": "Thể hiện quan điểm", "questionCount": 1, "sortOrder": 3,
-      "suggestedDurationMinutes": 5, "draftAttemptId": 6620, "draftCurrentQuestionId": 92001,
-      "recordedCount": 1, "latestAttemptId": 6600, "latestReportId": 8801,
-      "reportStatus": "READY", "scoredCount": 1, "unansweredCount": 0, "failedCount": 0 }
-  ]
+  "data": {
+    "paperId": 2095069502045491202,
+    "paperCode": "H91000",
+    "parts": [
+      { "partCode": "PART_3", "section": 3, "partName": "第三部分", "partNameEn": "Part 3", "partNameVi": "Phần 3",
+        "typeCode": "viewpoint_express", "typeName": "观点表达", "typeNameEn": "Expressing Viewpoints",
+        "typeNameVi": "Thể hiện quan điểm", "questionCount": 1, "sortOrder": 3, "layouts": ["record"],
+        "durationMinutes": 5,
+        "status": "in_progress", "doneCount": 1, "correctCount": null, "wrongCount": null,
+        "draft": { "id": 6620, "answeredCount": 1, "currentQuestionId": 92001 },
+        "report": { "id": 8801, "hasReport": true, "status": "READY" },
+        "stats": { "recordedCount": 1, "scoredCount": 1, "unansweredCount": 0, "failedCount": 0 } }
+    ]
+  }
 }
 ```
 
@@ -968,12 +1228,15 @@ P0 **只保证 2.0 可写**；3.0 传 `HSK7-9` 会 404（表无 `version` 列时
 
 | 字段 | 类型 | 改动标记 | 说明 |
 |---|---|---|---|
+| `paperId` / `paperCode` | — | 【新增】 | 外层从裸数组改对象包裹（§4.0.6 规定 1） |
 | `structureId` | Long | 【删除】 | 改 `section` |
 | `partCode` | String | 【无变更】 | **`PART_1` / `PART_2` / `PART_3` 形态不变** |
-| `suggestedDurationMinutes` | Integer | 【无变更】 | 口语独有的板块级时长 |
-| `draftAttemptId` / `draftCurrentQuestionId` | Long | 【无变更】 | |
-| `recordedCount` / `scoredCount` / `unansweredCount` / `failedCount` | Integer | 【无变更】 | 录音 / 评分统计 |
-| `latestAttemptId` / `latestReportId` / `reportStatus` | — | 【无变更】 | |
+| `durationMinutes` | Integer | 【修改】 | 原 `suggestedDurationMinutes` 改名（口语独有的板块级时长） |
+| `status` / `doneCount` | — | 【新增】 | 通用进度字段（`doneCount` = 已录音题数） |
+| `correctCount` / `wrongCount` | Integer | 【无变更】 | 口语恒 `null`（无客观判分） |
+| `draft` | Object | 【修改】 | 原 `draftAttemptId` / `draftCurrentQuestionId` → `{id, answeredCount, currentQuestionId}` |
+| `report` | Object | 【修改】 | 原 `latestAttemptId` / `latestReportId` / `reportStatus` → `{id, hasReport, status}` |
+| `stats` | Object | 【修改】 | 原平铺 `recordedCount` / `scoredCount` / `unansweredCount` / `failedCount` → 收敛为 `stats` 块（口语是唯一有该块的模块） |
 
 **服务端内部执行顺序**
 
@@ -983,11 +1246,13 @@ P0 **只保证 2.0 可写**；3.0 传 `HSK7-9` 会 404（表无 `version` 列时
 4. 取题：`speaking_exam_paper_question WHERE paper_id=? AND deleted=0 AND enabled_prac=1 AND number>0 AND question_type_mapping = <该板块 type_code>`
 5. 按 `section` 查 `speaking_attempt` 草稿与报告
 
+> ⚠️ 口语的 `paperId` 域与其它三个模块**不重叠**：`speaking_attempt.paper_id` 指向 `speaking_exam_paper.id`。前端不要把听力/阅读的 `paperId` 传进来，会返回 404。
+
 **本接口抛出错误码**：400 / 401 / 404
 
 ---
 
-### 4.2 翻译模块（B 组，10 个新增）
+### 4.2 翻译模块（B 组：9 个新增 + 1 个删除）
 
 #### 翻译模块的实测数据基线（TEST，2026-11-10）
 
@@ -1005,19 +1270,20 @@ P0 **只保证 2.0 可写**；3.0 传 `HSK7-9` 会 404（表无 `version` 列时
 
 #### B1 `GET /translation/levels`
 
-**用途**：翻译模块等级列表
+**用途**：翻译模块「当前等级概览 + 该等级全部卷的作答进度」
 **鉴权**：需要登录
 
 **入参说明**
 
 | 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
 |---|---|---|---|---|
-| `version` | query | String | 是 | 【新增】`HSK2.0` → 返回 `[]` |
+| `version` | query | String | 是 | 【新增】`HSK2.0` → `paperCount=0` + `papers=[]` |
+| `level` | query | String | 否 | 【新增】仅 `HSK7-9`（本期唯一等级）。不传按 `HSK7-9` 处理；传其它值 → 空结果（不 404） |
 
 **请求示例**
 
 ```http
-GET /api/practice/translation/levels?version=HSK3.0
+GET /api/practice/translation/levels?version=HSK3.0&level=7
 Authorization: Bearer xxx
 ```
 
@@ -1027,36 +1293,38 @@ Authorization: Bearer xxx
 {
   "code": 200,
   "message": "操作成功",
-  "data": [
-    {
-      "levelId": 3041,
-      "level": 7,
-      "levelCode": "HSK7-9",
-      "levelName": "HSK 7-9",
-      "abilityDesc": "能准确理解并进行中英互译",
-      "totalQuestionCount": 4,
-      "suggestDurationMinutes": 30,
-      "sections": [
-        { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
-          "typeCode": "translation_written", "typeName": "笔译", "typeNameEn": "Written Translation",
-          "typeNameVi": "Biên dịch viết", "questionCount": 2, "sortOrder": 1 },
-        { "partCode": "2", "section": 2, "partName": "第二部分", "partNameEn": "Part 2", "partNameVi": "Phần 2",
-          "typeCode": "translation_oral", "typeName": "口译", "typeNameEn": "Oral Interpretation",
-          "typeNameVi": "Phiên dịch nói", "questionCount": 2, "sortOrder": 2 }
-      ]
-    }
-  ]
+  "data": {
+    "level": "7",
+    "levelName": "HSK 7-9",
+    "paperCount": 1,
+    "papers": [
+      { "paperId": 2104188199979532289, "paperCode": "HSK7-9_1",
+        "status": "not_started", "completedCount": 0, "totalCount": 4 }
+    ]
+  }
 }
 ```
 
-**返回字段说明**：与 A4 完全同构（`ReadingLevelResponse` 复用）。差异只有 `sectionMapping` 换成 `SEC_TRANSLATION`。
+**返回字段说明**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `level` / `levelName` | String | 等级编码 + 本地化名（§4.0.6） |
+| `paperCount` | Integer | 该等级可练卷数（`totalCount=0` 剔除） |
+| `papers[]` | Array | 与 A4/A10/A14 完全同构 |
+| `papers[].status` | String | `not_started` / `in_progress` / `completed` |
+| `papers[].completedCount` / `totalCount` | Integer | 只统计 `SEC_TRANSLATION` 的题（`totalCount` 现算） |
+
+> 原实现返「等级数组 + `sections[]`」，现改为与听力同构的单等级概览；能力描述与板块结构挪到 B2。
 
 **服务端内部执行顺序**
 
-1. 登录 → `version`。`HSK2.0` **直接返回 `[]`**，不查库
-2. 查 `practice_module_level_config`：`version + SEC_TRANSLATION + enabled=1 + deleted=0`
-3. 板块来自 `practice_module_part_config`（`SEC_TRANSLATION`，实测 2 行）
-4. 现算题量，`0` 的不下发
+1. 登录 → `version`。`HSK2.0` **直接返回 `paperCount=0` + `papers=[]`**，不查库
+2. 解析 `level`（非 `HSK7-9` → 空结果）
+3. 查 `practice_module_level_config`：`version + level + SEC_TRANSLATION + deleted=0`，内存判 `enabled`
+4. 查卷：`version=? AND level IN (候选集) AND exam_type=1 AND deleted=0 AND enabled_prac=1`
+5. 现算 `SEC_TRANSLATION` 题量，`totalCount=0` 剔除
+6. 批量查 `writing_attempt`（翻译复用写作链路）填充进度
 
 **本接口抛出错误码**：400 / 401
 
@@ -1069,31 +1337,8 @@ Authorization: Bearer xxx
 
 | 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
 |---|---|---|---|---|
-| `level` | path | String | 是 | `HSK7-9`；2.0 下任意值 → 404 |
+| `level` | path | String | 是 | `HSK7-9`（本期唯一） |
 | `version` | query | String | 是 | 【新增】 |
-
-响应结构与 B1 数组元素一致（单对象）。2.0 → 返回空对象 `{}`（不 404）。
-
-**本接口抛出错误码**：400 / 401 / 404
-
----
-
-#### B3 `GET /translation/papers`
-
-**用途**：翻译某等级的试卷列表
-**鉴权**：需要登录
-
-| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
-|---|---|---|---|---|
-| `level` | query | String | 是 | 【修改】参数名 `levelCode` → `level`；`HSK7-9` |
-| `version` | query | String | 是 | 【新增】 |
-
-**请求示例**
-
-```http
-GET /api/practice/translation/papers?level=HSK7-9&version=HSK3.0
-Authorization: Bearer xxx
-```
 
 **返回完整示例**
 
@@ -1101,24 +1346,40 @@ Authorization: Bearer xxx
 {
   "code": 200,
   "message": "操作成功",
-  "data": [
-    { "paperId": 2104188199979532289, "level": 7, "paperCode": "HSK7-9_1",
-      "paperName": "HSK7-9_1", "totalQuestionCount": 4,
-      "completedQuestionCount": 0, "status": "NOT_STARTED" }
-  ]
+  "data": {
+    "level": "7",
+    "levelName": "HSK 7-9",
+    "abilityDescription": "能准确理解并进行中英互译",
+    "abilityDescriptionEn": "Can understand accurately and translate between Chinese and English",
+    "abilityDescriptionVi": "Có thể hiểu chính xác và dịch giữa tiếng Trung và tiếng Anh",
+    "totalQuestionCount": 4,
+    "durationMinutes": 30,
+    "parts": [
+      { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
+        "typeCode": "translation_written", "typeName": "笔译", "typeNameEn": "Written Translation",
+        "typeNameVi": "Biên dịch viết", "questionCount": 2, "sortOrder": 1, "layouts": ["input"] },
+      { "partCode": "2", "section": 2, "partName": "第二部分", "partNameEn": "Part 2", "partNameVi": "Phần 2",
+        "typeCode": "translation_oral", "typeName": "口译", "typeNameEn": "Oral Interpretation",
+        "typeNameVi": "Phiên dịch nói", "questionCount": 2, "sortOrder": 2, "layouts": ["record"] }
+    ]
+  }
 }
 ```
 
-**返回字段说明**：与 A6 同构（`ReadingPaperResponse` 复用）。`totalQuestionCount` 只统计 `SEC_TRANSLATION` 的题。
-
-**服务端内部执行顺序**
-
-1. 登录 → `version`（2.0 → `[]`）
-2. 查卷：`version=? AND level IN ('7','7-9') AND exam_type=1 AND deleted=0 AND enabled_prac=1`
-3. 现算 `SEC_TRANSLATION` 题数，`totalQuestionCount = 0` 的卷剔除
-4. 批量查 `writing_attempt`（翻译阅写作链路）填充进度
+**返回字段说明**：与 A5/A11/A14b 完全同构。2.0 → **返回空对象**（`level` 保留回显，其余字段 `null` / `[]`），**不 404**——前端据「`totalQuestionCount == null` 或 `parts` 为空」显示空态。
 
 **本接口抛出错误码**：400 / 401 / 404
+
+---
+
+#### B3 `GET /translation/papers` 【已删除，并入 B1】
+
+| 项 | 结论 |
+|---|---|
+| 端点 | **删除** |
+| 原因 | 卷列表由 `GET /translation/levels?version=&level=` 的 `papers[]` 一并返回（§4.0.6 规定 2） |
+| 前端动作 | `GET /translation/papers?level=7&version=HSK3.0` → `GET /translation/levels?level=7&version=HSK3.0`，取 `data.papers` |
+| 字段变化 | `paperName` 删、`totalQuestionCount` → `totalCount`、`completedQuestionCount` → `completedCount`、`status` 改小写 |
 
 ---
 
@@ -1138,24 +1399,26 @@ Authorization: Bearer xxx
 {
   "code": 200,
   "message": "操作成功",
-  "data": [
-    { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
-      "typeCode": "translation_written", "typeName": "笔译", "typeNameEn": "Written Translation",
-      "typeNameVi": "Biên dịch viết", "questionCount": 2, "sortOrder": 1,
-      "draftAttemptId": null, "draftAnsweredCount": 0, "draftCurrentQuestionId": null,
-      "latestAttemptId": null, "latestReportId": null, "feedbackStatus": null,
-      "hasReport": false, "answeredCount": 0, "correctCount": null, "wrongCount": null },
-    { "partCode": "2", "section": 2, "partName": "第二部分", "partNameEn": "Part 2", "partNameVi": "Phần 2",
-      "typeCode": "translation_oral", "typeName": "口译", "typeNameEn": "Oral Interpretation",
-      "typeNameVi": "Phiên dịch nói", "questionCount": 2, "sortOrder": 2,
-      "draftAttemptId": null, "draftAnsweredCount": 0, "draftCurrentQuestionId": null,
-      "latestAttemptId": null, "latestReportId": null, "feedbackStatus": null,
-      "hasReport": false, "answeredCount": 0, "correctCount": null, "wrongCount": null }
-  ]
+  "data": {
+    "paperId": 2104188199979532289,
+    "paperCode": "HSK7-9_1",
+    "parts": [
+      { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
+        "typeCode": "translation_written", "typeName": "笔译", "typeNameEn": "Written Translation",
+        "typeNameVi": "Biên dịch viết", "questionCount": 2, "sortOrder": 1, "layouts": ["input"],
+        "status": "not_started", "doneCount": 0, "correctCount": null, "wrongCount": null,
+        "draft": null, "report": null, "stats": null },
+      { "partCode": "2", "section": 2, "partName": "第二部分", "partNameEn": "Part 2", "partNameVi": "Phần 2",
+        "typeCode": "translation_oral", "typeName": "口译", "typeNameEn": "Oral Interpretation",
+        "typeNameVi": "Phiên dịch nói", "questionCount": 2, "sortOrder": 2, "layouts": ["record"],
+        "status": "not_started", "doneCount": 0, "correctCount": null, "wrongCount": null,
+        "draft": null, "report": null, "stats": null }
+    ]
+  }
 }
 ```
 
-**返回字段说明**：与 A13 完全同构（`WritingPartResponse` 复用）。**前端按 `layouts` 渲染两张卡**（答题形式看 `layouts`，不看 `typeCode`，§4.0.5）：
+**返回字段说明**：与 A13 完全同构（`WritingPartResponse` 复用）+ §4.0.6 的对象包裹。**前端按 `layouts` 渲染两张卡**（答题形式看 `layouts`，不看 `typeCode`，§4.0.5）：
 
 | `layouts` | `typeCode` | 卡片 | 作答交互 |
 |---|---|---|---|
@@ -1206,7 +1469,7 @@ Authorization: Bearer xxx
     "paperId": 2104188199979532289,
     "section": 1,
     "sectionMapping": "SEC_TRANSLATION",
-    "levelCode": "HSK7-9",
+    "level": "7",
     "status": "IN_PROGRESS",
     "feedbackStatus": "PENDING",
     "currentQuestionId": 91001,
@@ -1237,7 +1500,7 @@ Authorization: Bearer xxx
 | `structureId` | Long | 【删除】 | **原写作接口有此字段，翻译版直接改为 `section`** |
 | `section` | Integer | 【新增】 | 板块号 |
 | `sectionMapping` | String | 【新增】 | 翻译恒为 `SEC_TRANSLATION` |
-| `levelCode` / `status` / `feedbackStatus` | — | 【新增】 | |
+| `level` / `status` / `feedbackStatus` | — | 【新增】 | `level` 是等级编码（与目录接口同义）；`status` 本次仍是**大写**（作答链路，见 §10 第 17 条） |
 | `currentQuestionId` / `currentQuestionNumber` / `answerVersion` | — | 【新增】 | 续练定位 |
 | `totalQuestions` / `answeredCount` | Integer | 【新增】 | |
 | `accumulatedActiveSeconds` / `resumeElapsedSeconds` / `readingSeconds` / `writingSeconds` / `sourceViewCount` | Integer | 【新增】 | 计时统计 |
@@ -1947,7 +2210,7 @@ available = 存在 enabled=1 的 level_config 行
 | 400 | `PRACTICE_VERSION_INVALID` | practice-service | `version` 不在白名单【新增】 |
 | 400 | `SECTION_MAPPING_MISMATCH` | practice-service | `(paperId, section)` 的实际模块不属于该接口【新增】 |
 | 400 | `PART_CONFIG_INVALID` | practice-service | `PATCH` 传的 `enabled` 不是 0/1【新增】 |
-| 404 | `TRANSLATION_NOT_IN_VERSION` | practice-service | 2.0 调翻译写链路（**目录接口返回空数组不报错**）【新增】 |
+| 404 | `TRANSLATION_NOT_IN_VERSION` | practice-service | 2.0 调翻译写链路（**目录接口返回空 papers 不报错**）【新增】 |
 | 404 | 沿用各模块文案 | practice-service | `paperId` 的 version 与入参不符 / 卷已下架 / 板块不可练【修改】旧实现部分场景返回 500 |
 | 403 | `NO_ADMIN_PERMISSION` | practice-service | 运营端接口非后台账号【新增】 |
 | 409 | `ANSWER_VERSION_CONFLICT` | practice-service | 交卷时 `expectedAnswerVersion` 或 `questionSetVersion` 不一致【新增，沿用写作链路】 |
@@ -1967,15 +2230,24 @@ available = 存在 enabled=1 的 level_config 行
 | 2 | `questionType` → `typeCode`，`questionTypeName` → `typeName` | 阅读/写作/口语的 parts 与 intro | 字段改名，值不变。建议全局替换后回归一遍 |
 | 3 | 报告 latest 路径变更 | 4 个模块 | `/{module}/parts/{structureId}/reports/latest` → `/{module}/papers/{paperId}/parts/{section}/reports/latest` |
 | 4 | 所有目录接口必须传 `version` | 全部 | 首页切换版本时清理本地缓存的 `level` / 卷列表 / 滚动位置 |
+| **5** | **4 个 `/papers` 端点删除** | 阅读 / 写作 / 口语 / 翻译 | 卷列表改从 `/{mod}/levels` 的 `data.papers` 取。**接口 404，没有兼容层** |
+| **6** | **`/levels` 从数组改单对象** | 阅读 / 写作 / 口语 / 翻译 | 原 `data: [ {level…} ]` → `data: { level, levelName, paperCount, papers[] }`。**不再一次返回全部等级**，等级 chip 由前端按版本矩阵渲染（§4.0.6） |
+| **7** | **`sections[]` → `parts[]`；`suggestDurationMinutes` → `durationMinutes`** | 阅读 / 写作 / 口语 / 翻译 | 字段改名，值不变 |
+| **8** | **卷状态枚举统一小写** | 阅读 / 写作 / 口语 / 翻译 | `NOT_STARTED` → `not_started` 等。全局替换后再全局搜一遍大写残留 |
+| **9** | **`/parts` 外层加对象包裹，进度字段收敛** | 全部 5 个模块 | `data: [part…]` → `data: { paperId, paperCode, parts: [...] }`；`draftRecordId`/`draftAttemptId` → `draft.id`；`hasReport`/`latestRecordId`/`latestReportId`/`feedbackStatus`/`reportStatus` → `report.*`；口语 4 个计数 → `stats.*` |
+| **10** | **数值等级字段删除** | 阅读 / 写作 / 口语 / 翻译 | `level`（数值）/ `levelCode` / `databaseLevel` / `levelId` 全部不再下发，只用 `level`（**数字串**）+ `levelName`（显示名） |
+
+> 第 5–10 条是**本轮新增的破坏性变更**（三跳对齐），与 1–4 一起构成「前端必须同批上线」的完整清单。**没有灰度通道**：任一条漏改都会导致白屏或空列表。
 
 ### 6.2 兼容性说明
 
 1. `partCode` **值域不变**（口语仍是 `PART_1/2/3`，其它仍是 `"1"/"2"`），本地如有按 `partCode` 的分支逻辑不受影响
-2. 新增字段（`section`、三语、`sortOrder`）对旧客户端是**增量**，但 `structureId` 的删除是**硬破坏**，不可灰度
+2. 新增字段（`section`、三语、`sortOrder`、`levelName`）对旧客户端是**增量**，但 `structureId` 的删除、`/papers` 的删除、`/levels` 的数组→对象都是**硬破坏**，不可灰度
 3. `questionCount` 改为现算，数值可能与旧的配置值不同（生产库存在 `total_question_count` 与板块求和不一致的情况，差异 E13）。**不要在前端做「进度条 = completedCount / 旧的固定值」的硬编码**
-4. 状态枚举大小写不统一是历史遗留：听力用 `not_started / in_progress / completed`，阅读/写作/口语用 `NOT_STARTED / IN_PROGRESS / COMPLETED`。本期**不统一**，前端按模块分别处理
+4. **状态枚举已统一为小写**（`not_started` / `in_progress` / `completed`），5 个模块一致，前端不再需要「按模块分别处理」（原文档此处写「本期不统一」，已作废）
 5. `paperId` 仍是 `Long`（19 位），JSON 里会有精度风险。`/hsk/modules` 的 `inProgressPaperId` 已改 String，其余接口 P1 再改；**过渡期前端必须用字符串接收或配置 JS 的 bigint 处理**
-6. 翻译 P0 交卷后 `feedbackStatus = UNAVAILABLE`、`score = null` 是**预期行为**，不是 bug。前端应展示「暂无评分」而不是「生成中」或错误页
+6. 翻译 P0 交卷后 `report.status = UNAVAILABLE`、`score = null` 是**预期行为**，不是 bug。前端应展示「暂无评分」而不是「生成中」或错误页
+7. **`draft` / `report` / `stats` 三块可能为 `null`**，前端按「块是否为 null」判断，不要判内部字段是否为空——因为 `draft.answeredCount = 0` 与「没有草稿」是两件事
 
 ### 6.3 渲染约定
 
@@ -1983,11 +2255,13 @@ available = 存在 enabled=1 的 level_config 行
 |---|---|
 | **答题形式** | **只看 `layout`**（题目接口）与 `layouts`（板块接口），原样值不换算。`typeCode` 只用于显示题型名与选择评分策略 |
 | 翻译两张卡 | 按 `parts[].layouts` 区分：`["input"]` → 文本输入；`["record"]` → 录音 |
-| 三语切换 | `parts[]` 三语同发，前端本地切换无需重新请求；`abilityDesc` / `levelName` / `header` 仍随 `Accept-Language` |
+| 三语切换 | `parts[]` 三语同发，前端本地切换无需重新请求；`abilityDescription` / `levelName` / `header` 仍随 `Accept-Language` |
 | 模块卡片置灰 | `available=false` 时置灰 + Toast 提示，**不要隐藏卡片**（保持 5 卡/4 卡布局稳定），`disabledReason` 映射文案 |
-| 版本切换 | 清空已选 `level`、卷列表、滚动位置、本地「上次练习」。**不要复用旧 `level` 打新版本接口**：2.0 的 `HSK1` 在 3.0 下虽存在但卷集合不同；`HSK7-9` 在 2.0 下直接 404 |
+| 版本切换 | 清空已选 `level`、卷列表、滚动位置、本地「上次练习」。**不要复用旧 `level` 打新版本接口**：2.0 的 `HSK1` 在 3.0 下虽存在但卷集合不同；`HSK7-9` 在 2.0 下返回空结果 |
+| 等级切换 | 三跳下「等级 chip」与「卷列表」在同一屏：点 chip 只重拉 `/{mod}/levels?level=`，**不要重拉整页** |
 | `questionCount = 0` | 该板块不会下发，前端不需要处理空板块 |
 | `layouts` 有多个值 | 说明该板块混了两种交互（TEST 有 2 个板块、PROD 有 48 个）。前端按题渲染即可，**不要在板块层强制选一种** |
+| 口语 `stats` | 只有口语的 `parts[].stats` 非 `null`，展示「已录音 x / 已评分 y / 失败 z」 |
 
 ---
 
@@ -1998,7 +2272,7 @@ available = 存在 enabled=1 的 level_config 行
 ```
 解析 version + level
   → 查 level_config（version + section_mapping + enabled=1 + deleted=0）
-      └ 空 → 返回 []（模块整体关闭，短路，不再往下）
+      └ 空 → 返回空 parts（模块整体关闭，短路，不再往下）
   → 查 part_config（version + level + section_mapping，**不带 enabled 条件**）
       ├ enabled=1 AND deleted=0 → 骨架，按 sort_order 排序
       ├ enabled=0 AND deleted=0 → closedSections（该 section 一律不下发，且不参与兜底）
@@ -2073,17 +2347,24 @@ POST /translation/attempts/{attemptId}/submissions
 | 1 | 不传 `version` | 按 `HSK2.0` 处理，`/hsk/modules` 返回 `layout=GRID_2`、**4 卡且不含翻译卡**（字典 v2 本就无 `SEC_TRANSLATION` 项） |
 | 2 | `version=HSK3.0` | `layout=LIST`、5 卡；翻译在写作与口语之间（`sortOrder=4`）；**响应 `modules[]` 里不存在 `icon` / `theme` / `badge` / `entryLevelCode` 键**（前端按 `moduleCode` 内置） |
 | 3 | `hsk3.0`（小写）/ `HSK4.0` | 400 `PRACTICE_VERSION_INVALID`，**不得静默降级** |
-| 4 | `/reading/levels?version=HSK3.0` | 含 `HSK7-9`；2.0 不含 |
-| 5 | `/reading/papers?level=HSK7-9&version=HSK3.0` | 能查到卷（验证候选集）。⚠️ TEST 的 `level` 存 `'7'`，验不到 `'7-9'` 那条腿 → **必须补单测**：把 `level` 造为 `'7-9'` 仍能查到（差异 E11，最易漏） |
+| 4 | `/reading/levels?version=HSK3.0&level=7` | **单对象**：`level=7`、`levelName=HSK 7-9`、`paperCount>0`、`papers[]` 非空；2.0 下传 `HSK7-9` → `paperCount=0` + `papers=[]`（**不 404**） |
+| 5 | `/reading/levels?level=7&version=HSK3.0` 的 `papers[]` | 能查到卷（验证候选集）。⚠️ TEST 的 `level` 存 `'7'`，验不到 `'7-9'` 那条腿 → **必须补单测**：把 `level` 造为 `'7-9'` 仍能查到（差异 E11，最易漏） |
+| 5a | 5 个模块的 `/levels`（带 `version`） | 返回 **`data` 是对象**（`level`/`levelName`/`paperCount`/`papers`），**不是数组**；缺省 `level` 时自动落到该版本最低可用等级 |
+| 5b | 4 个已删端点 | `GET /reading/papers`、`/writing/papers`、`/speaking/papers`、`/translation/papers` 全部 404（路由不存在） |
 
 ### 破坏性变更
 
 | # | 场景 | 预期结果 |
 |---|---|---|
 | 6 | 任一 parts 接口 | 响应里**不存在** `structureId`，存在 `section` |
+| 6a | 任一 `/papers/{paperId}/parts` | `data` 是对象：`{ paperId, paperCode, parts[] }`，**不是数组**；`paperCode` 非空 |
+| 6b | 任一 `parts[]` 元素 | 含 4 个通用进度字段 `status`/`doneCount`/`correctCount`/`wrongCount`，且**必有** `draft`/`report`/`stats` 三个键（无值为 `null`，不能缺键） |
+| 6c | 无草稿的板块 | `draft` 为 `null`；`draft.answeredCount=0` 与「无草稿」不得混淆 |
 | 7 | 旧路径 `/listening/parts/{structureId}/reports/latest` | 404（路由已删），不是 500 |
 | 8 | 新路径 `/listening/papers/{paperId}/parts/{section}/reports/latest` | 200；无报告时 `data=null` |
 | 9 | 阅读/写作/口语 parts | 字段为 `typeCode` / `typeName`，**没有** `questionType` / `questionTypeName` |
+| 9a | 阅读/写作/口语/翻译的 `/levels` 与 `/intro` | **不存在** `levelCode` / `databaseLevel` / `levelId`；**不存在** `sections`、`suggestDurationMinutes` |
+| 9b | 三个带「完成」语义的卷状态 | 5 个模块全部是小写 `not_started` / `in_progress` / `completed`，**没有**大写残留 |
 | 10 | `parts[]` 三语 | `partNameEn` / `partNameVi` / `typeNameEn` / `typeNameVi` 全部非空 |
 | 10a | 任一 parts 接口 | 每个板块都有 `layouts`，且非空数组 |
 | 10b | 阅读 / 翻译取题接口 | 每道题都有 `layout`，值在 7 个规范值内；**阅读系本次新补字段** |
@@ -2095,9 +2376,10 @@ POST /translation/attempts/{attemptId}/submissions
 
 | # | 场景 | 预期结果 |
 |---|---|---|
-| 11 | 2.0 调 `/translation/levels` | `[]`，**不 404** |
-| 12 | 3.0 调 `/translation/levels` | 1 个等级、`totalQuestionCount=4` |
-| 13 | `/translation/papers/{id}/parts` | 2 个板块：`translation_written` / `translation_oral` |
+| 11 | 2.0 调 `/translation/levels` | 200，`paperCount=0` + `papers=[]`，**不 404** |
+| 12 | 3.0 调 `/translation/levels?level=7` | `paperCount=1`；`papers[0].paperCode='HSK7-9_1'`、`totalCount=4` |
+| 13 | `/translation/papers/{id}/parts` | `data.parts` 2 个板块：`translation_written`（`layouts=["input"]`）/ `translation_oral`（`layouts=["record"]`） |
+| 13a | `/translation/papers`（已删） | 404 |
 | 14 | 拿写作卷的 section 打翻译 start | 400 `SECTION_MAPPING_MISMATCH` |
 | 15 | 拿翻译卷的 section 打写作 start | 404（写作侧不放宽） |
 | 16 | 笔译交卷 | `reportId` 立即返回；报告 `feedbackStatus=UNAVAILABLE`、`score=null` |
@@ -2133,12 +2415,15 @@ POST /translation/attempts/{attemptId}/submissions
 
 | # | 场景 | 预期结果 |
 |---|---|---|
-| 34 | 2.0 四模块全链路（等级→卷→板块→答题→报告） | 除 `structureId→section` 与新增字段外，**与改造前逐字段一致** |
-| 35 | `/listening/levels?level=HSK1`（TEST） | 不混入 3.0 卷，`totalCount > 0` |
-| 36 | TEST `/listening/levels/HSK1/intro` | 不再 500 |
+| 34 | 2.0 四模块全链路（等级→卷→板块→答题→报告） | 除 §6.1 列明的破坏性变更（`structureId` 删、`/papers` 删、`/levels` 数组→对象、字段改名、状态小写、进度收敛）外，**与改造前逐字段一致** |
+| 35 | `/listening/levels?level=1`（TEST） | 不混入 3.0 卷，`totalCount > 0` |
+| 36 | TEST `/listening/levels/1/intro` | 不再 500 |
 | 37 | `/writing/papers/{HSK7-9 卷}/parts` | 不再 500。⚠️ TEST 的 `level='7'` 走不到 `parseInt('7-9')` 分支，**须单测覆盖 `'7-9'`**（差异 E11） |
 | 38 | 存量 `writing_attempt`（TEST 217） | 仍可打开续练（生产 284 条待生产对齐后回归，SDD 附录 D D.3） |
 | 39 | 口语 3.0 L4/L5/L6 的 `listen_retell`、L7 的三个新题型 | **都能取到题**（B-19 回归判据） |
+| 39a | 2.0 `/speaking/levels?level=3&version=HSK2.0` | `level=3`、`levelName=HSKK 高级`、`paperCount=11`；**不含** `levelCode` / `databaseLevel` |
+| 39b | 2.0 `/speaking/levels` 不传 `level` | 缺省落到 `1`（`level_config.level=1`，`levelName=HSKK 初级`） |
+| 39c | 3.0 `/speaking/levels?level=7` | 与听力/阅读同构（`level=7`），说明同一套解析在两种编码间不出错 |
 | 40 | 源码 `grep -r structure_id` | 零命中；`practice_part_setting` / `practice_paper_structure` 已 drop |
 
 ---
@@ -2269,3 +2554,7 @@ ALTER TABLE practice_module_part_config
 | 11 | `layout` 值域是否要收敛到跨模块统一枚举 | **不收敛，原样透传**（沿用 CSCA 既有约定）。7 个值已经是交互形态，换算只会多一层漏配 | 前端 + 后端 |
 | 12 | 混 `layouts` 的板块（TEST 2 个 / 生产 48 个）如何处理 | 前端逐题渲染，不做板块级归一。若产品要求「一个板块一种交互」，那是**内容问题**（该板块题填错了 `layout`），回内容侧修，不改接口 | 产品 + 运营 |
 | 13 | 老值域 `passageGroup` / `clozeGroup` 的语义（差异 E7） | 它们是**题面形态**不是答题形式（篇章组 / 完形组）。生产对齐时由 TEST 值覆盖；未被覆盖的 30 行若仍是这两个值，需人工判成 `choice` / `choiceGrid` | 运营 |
+| 14 | **三跳后「全部等级列表」从哪里来** | P0：等级 chip 由前端按版本矩阵渲染；要显示各级能力描述就逐级调 `/intro`（6–7 个并发，可缓存 1 天）。若产品要求一次拿全，再加 `GET /{mod}/levels/all?version=`（只返 `level`/`levelName`/`abilityDescription×3`/`totalQuestionCount`，不含 `parts`），**不塞进 `/levels`**（否则又回到「单等级概览 vs 全等级列表」分叉） | 产品 + 前端 |
+| 15 | **口语 2.0 的 `level` 编码** | 定数字串 `"1"`/`"2"`/`"3"`（= HSKK 初/中/高），与 `level_config.level` 一致；卷侧的 `Beginner/Intermediate/Advanced` 由 `PracticeLevelCode` 换算（§4.0.6）。`levelName` 按「模块 + 版本」取，2.0 显示「HSKK 初级」、3.0 的 `"3"` 显示「HSK 3」 | 产品 + 前端 |
+| 16 | **`draft` / `report` / `stats` 三块的命名** | 现定义为 `{draft:{id,answeredCount,currentQuestionId}, report:{id,hasReport,status}, stats:{口语四项}}`。若前端更习惯把 `correctCount`/`wrongCount` 也放进 `report`，可整体调整——但**必须三块一起定**，不要一半平铺一半嵌套 | 前端 |
+| 17 | **作答链路（B5–B10）的 `status` 是否也统一小写** | **本期不动**：`writing_attempt.status` / 报告状态仍是 `IN_PROGRESS` / `PENDING` / `READY`（DB 原值）。本次统一范围只到「目录三接口」（`/levels`、`/intro`、`/parts`）。P1 若统一，需要一次 DB 枚举迁移 + 前端全量替换，不建议与目录改造同批 | 后端 + 前端 |

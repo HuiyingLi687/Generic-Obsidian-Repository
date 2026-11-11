@@ -81,7 +81,7 @@ practice-service
 
 ### 2.3 四条设计原则
 
-1. **版本上下文只作用在目录层。** 作答链路拿 `(paperId, section_mapping, section)`，版本已被三者唯一确定 → `attempt/answer/submit/report` 不加 `version`。改动面从 40+ 端点收敛到 16 个目录端点。
+1. **版本上下文只作用在目录层。** 作答链路拿 `(paperId, section_mapping, section)`，版本已被三者唯一确定 → `attempt/answer/submit/report` 不加 `version`。改动面从 40+ 端点收敛到 16 个既有目录端点（13 改造 + 3 删除，另新增翻译目录 3 个）。
 2. **版本与等级编码收口成两个值对象。** 现状是 4 个模块各写一遍 `"HSK" + level` 与裸 `parseInt`，`HSK7-9` 必踩坑。全局只允许 `PracticeVersion` / `PracticeLevelCode` 解析等级。
 3. **翻译走「目录独立 + 作答复用」。** 目录 `/translation/**` 独立，写链路薄封装后委托既有 `Writing*Service`，不复制表、不复制评分。
 4. **目录只下发「有题的节点」。** 题数为 0 的等级 / 卷 / 板块在服务端消失，前端拿到的必是可用数据。
@@ -658,24 +658,43 @@ ALTER TABLE exam_paper
 | 大小写 | **敏感**，`hsk3.0` → 400 |
 | 特殊值 | 无（不提供 `ALL` / `LATEST`） |
 
-**等级入参命名**：请求侧（query / path / body）统一叫 **`level`**，弃用 `levelCode`；**响应字段仍叫 `levelCode`**，不改前端已有解析逻辑。路径变量名随之改为 `/levels/{level}/intro`（URL 实际取值不变）。
+**等级入参命名**：请求侧（query / path / body）统一叫 **`level`**，**取数字串**（`"1"`–`"6"`、`"7"`= HSK7-9 整级），弃用 `levelCode`；响应侧同样用 `level`（回显同一数字串）+ **`levelName`**（本地化显示名）。`levelCode` / `databaseLevel` 全部废弃。路径改为 `/levels/{level}/intro`，**取值从 `HSK1` 变成 `1`**（URL 形态变化，属破坏性变更）。
 
-#### 3.3.2 存量 16 端点改造
+> `"7"` 落到 DB 时是 `exam_paper.level IN ('7','7-9')` 候选集（R3）——TEST 存 `'7'`、PROD 存 `'7-9'`，接口层只认 `"7"`，换算收口在 `PracticeLevelCode`。
+
+#### 3.3.2 存量 16 端点改造（13 改造 + 3 删除）
 
 | # | 方法 | 路径 | 现状 | 改造 |
 |---|---|---|---|---|
-| 1 | GET | `/listening/levels` | 无 `version`、无 `exam_type` 过滤 | 加 `version`、补 `exam_type=1`、走资格判定 |
-| 2 | GET | `/listening/levels/{level}/intro` | `selectOne` 不带 version → 两版本同等级共存时抛 `TooManyResults` | `selectOne` 带 `version` + `deleted=0` |
-| 3 | GET | `/listening/papers/{paperId}/parts` | 配置查询无 version | 同 2；板块来源改配置表 + 题量现算 |
-| 4 | GET | `/reading/levels` | `VERSION` 常量 | 常量改参数 |
-| 5 | GET | `/reading/levels/{code}/intro` | 常量 + 裸 `parseInt` → `HSK7-9` 必 404 | 改 `PracticeLevelCode` |
-| 6 | GET | `/reading/papers` | 常量 + `eq(level, "7")` 匹配不到 PROD 的 `"7-9"` | `level IN (dbLevels)` |
-| 7 | GET | `/reading/papers/{paperId}/parts` | 无版本校验 | 卷 `version` 与入参不符 → 404 |
+| 1 | GET | `/listening/levels` | 无 `version`、无 `exam_type` 过滤 | 加 `version`、补 `exam_type=1`、走资格判定；**补 `levelName`** |
+| 2 | GET | `/listening/levels/{level}/intro` | `selectOne` 不带 version → 两版本同等级共存时抛 `TooManyResults` | `selectOne` 带 `version` + `deleted=0`；补 `level`/`levelName` |
+| 3 | GET | `/listening/papers/{paperId}/parts` | 配置查询无 version | 同 2；板块来源改配置表 + 题量现算；进度收敛为 `draft`/`report`/`stats` |
+| 4 | GET | `/reading/levels` | `VERSION` 常量；**返全部等级数组** | 常量改参数；**改单等级概览 + 内嵌 `papers[]`** |
+| 5 | GET | `/reading/levels/{code}/intro` | 常量 + 裸 `parseInt` → `HSK7-9` 必 404 | 改 `PracticeLevelCode`；`sections` → `parts`、三语、`durationMinutes` |
+| ~~6~~ | ~~GET~~ | ~~`/reading/papers`~~ | 常量 + `eq(level, "7")` 匹配不到 PROD 的 `"7-9"` | **删除**，并入 4 的 `papers[]`（`level IN (dbLevels)` 的口径随迁） |
+| 7 | GET | `/reading/papers/{paperId}/parts` | 无版本校验 | 卷 `version` 与入参不符 → 404；外层改对象包裹 |
 | 8 | GET | `/reading/preferences` | 表无 version 列 | **P0 不改**（见 §3.3.6） |
 | 9 | PUT | `/reading/preferences/level` | 同上，`HSK7-9` 会 404 | P0 仅 2.0 可写；P1 加 version 列 |
-| 10–12 | GET | `/writing/levels`、`/levels/{code}/intro`、`/papers` | 常量；`parseLevel` 正则只到 `HSK[1-6]`；`introSections` 的 switch 只到 6 | 常量改参数；补 `7` 分支（图表描述 1 + 话题作文 1） |
-| 13 | GET | `/writing/papers/{paperId}/parts` | `Integer.parseInt(paper.getLevel())` → `"7-9"` 抛 500 | 改 `PracticeLevelCode.parseDbLevel` |
-| 14–16 | GET | `/speaking/levels`、`/papers`、`/papers/{paperId}/parts` | 常量 + `SEC_SPEAK` 单映射 | 常量改参数；**2.0 / 3.0 都读 `speaking_exam_paper`**（R5），卷 `/parts` 的来源改 `practice_module_part_config` |
+| 10 | GET | `/writing/levels` | 常量；`introSections` 的 switch 只到 6 | 常量改参数；**改单等级概览 + 内嵌 `papers[]`**；补 `7` 分支 |
+| 11 | GET | `/writing/levels/{code}/intro` | 常量；`parseLevel` 正则只到 `HSK[1-6]` | 数字串校验；`sections` → `parts`、三语 |
+| ~~12~~ | ~~GET~~ | ~~`/writing/papers`~~ | 常量 | **删除**，并入 10 的 `papers[]` |
+| 13 | GET | `/writing/papers/{paperId}/parts` | `Integer.parseInt(paper.getLevel())` → `"7-9"` 抛 500 | 改 `PracticeLevelCode.parseDbLevel`；进度收敛 |
+| 14 | GET | `/speaking/levels` | 常量 + `SEC_SPEAK` 单映射；**返数组** | 常量改参数；**改单等级概览 + 内嵌 `papers[]`**；2.0 的 `level` 为 `"1"`–`"3"` |
+| 14b | GET | `/speaking/levels/{level}/intro` | 文档此前未登记（实现已有） | 补登记；`sections` → `parts`、三语 |
+| ~~15~~ | ~~GET~~ | ~~`/speaking/papers`~~ | 常量 | **删除**，并入 14 的 `papers[]` |
+| 16 | GET | `/speaking/papers/{paperId}/parts` | 常量 + `SEC_SPEAK` 单映射 | **2.0 / 3.0 都读 `speaking_exam_paper`**（R5）；来源改 `practice_module_part_config`；口语计数进 `stats` |
+
+**统一后的目录模型：三跳（照听力）**
+
+| 跳 | 端点 | 返回 |
+|---|---|---|
+| ① | `GET /{mod}/levels?version=&level=` | 单对象 `{level, levelName, paperCount, papers[]}` |
+| ② | `GET /{mod}/levels/{level}/intro?version=` | 单对象 `{level, levelName, abilityDescription×3, totalQuestionCount, durationMinutes, parts[]}` |
+| ③ | `GET /{mod}/papers/{paperId}/parts?version=` | 单对象 `{paperId, paperCode, parts[]}` |
+
+五个模块（听/读/写/说/译）**共用同一套结构**：板块数组统一叫 `parts`；时长统一 `durationMinutes`；卷状态统一小写 `not_started`/`in_progress`/`completed`；`/parts` 的进度统一为「4 个通用字段 + `draft`/`report`/`stats` 三个扩展块」。四个 `/papers` 端点退场。
+
+> 代价：不再有「一次拿全部等级 + 各等级能力描述」的接口。等级 chip 由前端按版本矩阵渲染，需要能力描述时逐级调 `/intro`；若产品坚持一次拿全，另加 `/{mod}/levels/all`（不塞进 `/levels`，避免语义再分叉）。
 
 > 统一约定：`version` 必须**同时**作为 `practice_module_level_config.version` 与 `exam_paper.version` 的条件，漏一处会出现「等级列表是 2.0、卷列表是 3.0」。
 
@@ -686,9 +705,9 @@ ALTER TABLE exam_paper
 
 | #   | 路径                                               | 说明                            |
 | --- | ------------------------------------------------ | ----------------------------- |
-| T1  | `GET /translation/levels?version=HSK3.0`         | 2.0 → `[]`                    |
-| T2  | `GET /translation/levels/{level}/intro`      | 单对象，`sections[]` 来自板块配置       |
-| T3  | `GET /translation/papers?level=7&version=HSK3.0` | 卷清单，过滤 `totalQuestionCount=0` |
+| T1  | `GET /translation/levels?version=HSK3.0&level=7`  | 单等级概览 + `papers[]`；2.0 → `paperCount=0` + `papers=[]` |
+| T2  | `GET /translation/levels/{level}/intro`      | 单对象，`parts[]` 来自板块配置       |
+| ~~T3~~ | ~~`GET /translation/papers`~~ | **删除**，卷清单并入 T1 的 `papers[]` |
 | T4  | `GET /translation/papers/{paperId}/parts`        | 板块列表，**必须下发 `layouts`**    |
 
 `layouts` = `["input"]`（笔译）/ `["record"]`（口译），正是两张卡渲染不同的根因——来自 `question.layout`，不是 `type_code` 字典。
@@ -796,7 +815,7 @@ POST /translation/attempts/start {paperId, section}
 ```
 清空已选 level / 卷列表 / 滚动位置 / 本地「上次练习」→ GET /hsk/modules?version=<new>
 ```
-> 不要复用旧 `level` 打新版本 `/papers`：2.0 的 `HSK1` 在 3.0 下虽存在但卷集合不同；`HSK7-9` 在 2.0 下直接 404。
+> 不要复用旧 `level` 打新版本接口：2.0 的 `1` 在 3.0 下虽存在但卷集合不同；`7` 在 2.0 下返回空 `papers[]`（不 404，前端据 `paperCount=0` 显示空态）。
 
 ---
 
@@ -875,12 +894,14 @@ POST /translation/attempts/start {paperId, section}
 1. 不传 `version` → `layout=GRID_2`、**4 卡且不含翻译卡**（字典 v2 无 `SEC_TRANSLATION` 项）。
 2. `version=HSK3.0` → `layout=LIST`、5 卡、翻译在第 4 位；响应里**不含** `icon` / `theme` / `badge` / `entryLevelCode` 键。
 3. `hsk3.0`（小写）/ `HSK4.0` → 400，不得静默降级。
-4. `/reading/levels?version=HSK3.0` → 7 个等级含 `HSK7-9`；2.0 → 6 个不含。
-5. `/reading/papers?level=HSK7-9&version=HSK3.0` 在 **PROD** 能查到卷（验证 R3 候选集）。🔴 最易漏。
+4. `/reading/levels?version=HSK3.0&level=7` → **单对象**：`level="7"`、`levelName="HSK 7-9"`、`paperCount>0`；2.0 下传 `level=7` → `paperCount=0` + `papers=[]`（不 404）。
+4b. 5 个模块的 `/levels` 一律返对象（含 `papers[]`），**不再是数组**；4 个 `/papers` 端点已删、调用 404。
+4c. 任一 `/papers/{id}/parts` → `data` 为 `{paperId, paperCode, parts[]}`，且每个 part 都有 `draft`/`report`/`stats` 三个键（无值为 `null`）。
+5. `/reading/levels?level=7&version=HSK3.0` 的 `papers[]` 在 **PROD** 能查到卷（验证 R3 候选集）。🔴 最易漏。
 
 **翻译独立**
-6. 2.0 调 `/translation/levels` → `[]`，不 404。
-7. 3.0 → 1 个等级，`totalQuestionCount=4`。
+6. 2.0 调 `/translation/levels` → `paperCount=0` + `papers=[]`，不 404。
+7. 3.0 → `paperCount=1`，`papers[0].totalCount=4`。
 8. `/translation/papers/{id}/parts` → 2 个板块：笔译 `TEXT`、口译 `RECORD`。
 9. 拿写作卷的 section 打翻译 → 400；拿翻译卷的 section 打写作 → 仍 404（写作侧不放宽）。
 10. 笔译交卷 → 报告 `UNAVAILABLE`、`score=null`（P0 预期）。
@@ -888,8 +909,8 @@ POST /translation/attempts/start {paperId, section}
 
 **存量回归**
 12. 2.0 四模块全链路（等级→卷→板块→答题→报告）与改造前逐字段一致。
-13. `/listening/levels?level=HSK1` 不再混入 3.0 卷（TEST 本身已有 3.0 卷，可直接验）。
-14. TEST `/listening/levels/HSK1/intro` 不再 500。
+13. `/listening/levels?level=1` 不再混入 3.0 卷（TEST 本身已有 3.0 卷，可直接验）。
+14. TEST `/listening/levels/1/intro` 不再 500。
 15. `/writing/papers/{HSK7-9 卷}/parts` 不再 500。⚠️ TEST 的 `level='7'` 走不到 `parseInt('7-9')` 分支，**必须用单测/构造数据覆盖 `'7-9'`**（差异 E11 只能这样验）。
 16. 存量 `writing_attempt`（TEST 217）仍可打开续练；生产 284 条在生产对齐后回归（附录 D D.3）。
 
@@ -1022,7 +1043,7 @@ POST /translation/attempts/start {paperId, section}
 |---|---|---|---|
 | **P0-a** | 修三条存量缺陷（附录 A：B-01/B-02/B-03） | — | TEST 听力 intro 不 500；PROD 听力列表不混版；HSK7-9 写作可开练 |
 | **P0-b** | 四个支撑类：`PracticeVersion` / `PracticeLevelCode` / `PracticeModuleCatalog`（**模块元数据从 `sys_dict` 读，不再写死常量**）/ `PracticeLayout`（`layout` 值域 + 主客观判定，**不做值换算**） | — | 单测覆盖 `HSK7-9`、`'7-9'`、非法版本、7 个 `layout` 值 |
-| **P0-c** | 16 个目录端点加 `version` | P0-b | 2.0 全链路零回归 |
+| **P0-c** | 16 个存量目录端点：加 `version` + **统一为三跳结构**（`/levels` 单对象内嵌 `papers[]`、删 4 个 `/papers`、`/parts` 对象包裹） | P0-b | 2.0 全链路零回归；4 个 `/papers` 调用 404 |
 | **P0-c2** | **`practice_module_part_config` 收尾**：TEST 已建表迁数据（132 行）+ 已补 `enabled` 列 → 补唯一键（`answer_mode` 不入库、答题形式读 `question.layout`；开关读 `enabled` 而非 `deleted`）→ 清 `SEC_SPEAKING` 残留配置 | P0-b | 表含 `uk_module_part`；132 行 `enabled` 全 1；`layouts` 取值全部落在 7 个规范值内；关板块后目录不出现 |
 | **P0-c3** | 板块开关接口 `PATCH /hsk/module-config/parts/{id}` | P0-c2 | 关板块后目录不出现，新练习不下发其题目，历史记录不受影响 |
 | **P0-d** | 聚合接口 `GET /hsk/modules`，模块卡改由字典驱动 | P0-c；**TEST 字典数据已就绪**（`hsk_practice_module_v2` 4 项 / `_v3` 5 项） | 2.0 四卡 / 3.0 五卡，卡片顺序与三语名取自字典；改字典 `sort_order` 后顺序即时生效 |
