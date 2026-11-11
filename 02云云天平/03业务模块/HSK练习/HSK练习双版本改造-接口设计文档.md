@@ -495,7 +495,7 @@
 | 2 | **U2 在「该等级一张可用卷都没有」时退回 `standard_question_count`** | 3.0 全 15 卷在 PROD 尚未放开，纯现算会让备考说明整页空白。U3 不做此降级——卷内题量为 0 就是 404 |
 | 3 | **写作 / 翻译 / 口语的进度仍经 `practice_part_setting` 中转** | 这三张作答表（`writing_attempt` / `speaking_attempt` / `writing_report` / `speaking_report`）目前仍以 `structure_id` 关联。接口层已不暴露该 ID，等 P0-j 删列时改为三元组直查 |
 
-> 🔴 **待办（本次未做，需你确认）**：旧 15 条 `/{mod}/levels`、`/{mod}/levels/{level}/intro`、`/{mod}/papers/{paperId}/parts` **仍然注册着**，与新 U1–U3 并存（§6.1 第 5/9/12 条要求它们 404）。它们读的是已 drop 的 `parts_config`，实际返回空板块，属于「留着会误导、删掉要前端同批」。CR 那次的做法是把旧方法整块注释保留，这里同理，等你点头再摘。
+> ✅ **旧 15 条模块内目录端点已摘除（2026-11-11）**：`/{mod}/levels`、`/{mod}/levels/{level}/intro`、`/{mod}/papers`、`/{mod}/papers/{paperId}/parts`（listening 3 + reading/writing/speaking 各 4）现全部 **404**，与新 U1–U3 不再并存（§6.1 第 5/9/12 条达成）。做法沿用 CR 那次：`ListeningCatalogController` / `ReadingCatalogController` / `WritingCatalogController` / `SpeakingCatalogController` 内**整块注释保留**、未删代码，imports 与 service 字段原样不动，去掉行首 `// ` 即可回滚；四个类现为零映射的壳，待统一目录稳定后整体删除。**前端必须已切到 U1–U3**，否则这 15 条路径直接 404。
 
 > ⚠️ **目录与作答的板块来源不同，会出现「U3 看得到、却开不了练」**：U3 的板块来自 `part_config` + `question` 现算，而 B5（翻译开练）仍要求 `practice_part_setting` 有对应行。实测 3.0 翻译卷 `2104188199979532289` 的 `section=2`（口译，2 题）在 `question` 里存在、U3 会下发，但 `practice_part_setting` 只有 `section_code='1'` → B5 传 `section=2` **404**。要开口译需运营补 1 行 `part_setting`（`section_code='2'`、`type_code='translation_oral'`），已登记为 D16 同批动作。
 
@@ -2587,7 +2587,8 @@ ALTER TABLE practice_module_part_config
 | `hsk/translation/service/impl/TranslationPracticeServiceImplTest.java`（新增 12 例） | 板块缺失 404、委托参数为 `SEC_TRANSLATION`、`level` 去前缀、`feedbackStatus` 空值补 `PENDING`、section 不符 404、题目映射（题型/布局/判卷方式/`instruction→stem`）、写作练习不可从翻译入口保存、交卷透传、报告非翻译 404、`UNAVAILABLE` 丢分数与明细、`READY` 保留 |
 | `hsk/translation/support/TranslationPartResolverTest.java`（新增 7 例） | 板块缺失/参数空/板块无题/写作 attempt 越权/未知 attempt 全部 404，正常翻译 attempt 放行 |
 | `hsk/speaking/mapper/SpeakingSourcePaperMapper`（改） | 新增 `selectByIdForReport`（只判 `deleted=0`，与 `selectActiveById` 并存） |
-| `hsk/catalog/controller/PracticeCatalogController.java`（新增） | **U1–U3 统一目录端点**：`GET /hsk/practice/levels`、`/levels/{level}/intro`、`/papers/{paperId}/parts`；`module` 一律走 query（缺失/非法 → 400）。⚠️ 原 15 条模块内目录端点**尚未摘除**（仍在，未 404），见 §4.0.6 末尾「待办」 |
+| `hsk/catalog/controller/PracticeCatalogController.java`（新增） | **U1–U3 统一目录端点**：`GET /hsk/practice/levels`、`/levels/{level}/intro`、`/papers/{paperId}/parts`；`module` 一律走 query（缺失/非法 → 400 `模块编码不合法（PRACTICE_MODULE_INVALID）：xxx`）。✅ 原 15 条模块内目录端点已整块注释摘除（2026-11-11），见 §4.0.6 末尾 |
+| 4 个旧目录控制器（改：整块注释） | `ListeningCatalogController`（3 条）、`ReadingCatalogController` / `WritingCatalogController` / `SpeakingCatalogController`（各 4 条）全部 `@GetMapping` 注释停用 → 回落 404；类保留为零映射壳，类注释标注「待统一目录稳定后整体删除」 |
 | `hsk/catalog/service/impl/PracticeCatalogServiceImpl.java`（新增） | 三跳装配：卷 / 题量 / 进度按模块分表取；`paperId` 先 `exam_paper` 再 `speaking_exam_paper`；`version` 不符 / 卷下架 / 该模块在该卷无板块 → 404；等级未配置或模块关闭 → 200 空对象 |
 | `hsk/catalog/support/PracticePartAssembler.java`（新增） | §7.1 板块装配：`level_config` 短路 → `part_config` 三分拨（骨架 / closedSections / 丢弃）→ 题量现算过滤 → 兜底 `第N部分`；`assembleForIntro` 在全等级无卷时退回 `standard_question_count` |
 | `hsk/catalog/support/PracticeCatalogModule.java`（新增） | `module` ↔ `section_mapping` 唯一映射 + `partCode` 形态（口语 `PART_N`） |

@@ -1093,9 +1093,12 @@ POST /translation/attempts/start {paperId, section}
 > `PracticeCatalogModule`（`module ↔ section_mapping`）、`PracticeLevelCode`（`version` 白名单 + `level` 值域 + `'7'→('7','7-9')` + 2.0 口语文字档位）、
 > `PracticeModulePartConfig` 实体/Mapper（此前该表代码零引用）。
 >
-> 两处**未完成，需单独决策**：
-> ① 旧 15 条 `/{mod}/levels`、`/{mod}/levels/{level}/intro`、`/{mod}/papers/{paperId}/parts` **仍在注册**（读的是已 drop 的 `parts_config`，实际返回空板块），摘除要前端同批，暂未动；
-> ② **P0-e 的 `PracticeCatalogBatchLoader` 重写未做**——新 U1–U3 走的是自己的装配器，老 loader 仍从 `structure + part_setting` 取数，两条读路径并存（这正是「目录看得到、开练读不到」的根源，见接口文档 §4.0.6 末尾）。
+> 一处**未完成，需单独决策**：
+> ① **P0-e 的 `PracticeCatalogBatchLoader` 重写未做**——新 U1–U3 走的是自己的装配器，老 loader 仍从 `structure + part_setting` 取数，两条读路径并存（这正是「目录看得到、开练读不到」的根源，见接口文档 §4.0.6 末尾）。
+>
+> ✅ **旧 15 条模块内目录端点已摘除（2026-11-11 同批）**：`ListeningCatalogController`（3 条）、`ReadingCatalogController` / `WritingCatalogController` / `SpeakingCatalogController`（各 4 条）的 `@GetMapping` 全部**整块注释**，现全部回落 404；类保留为零映射壳，imports 与 service 字段原样未动（去掉行首 `// ` 即可回滚），待统一目录稳定后整体删除。即 §6.1 第 5/9/12 条达成。
+>
+> ⚠️ 这意味着**前端必须已切到 U1–U3**，否则旧 15 条路径直接 404（此前它们虽然返回空板块，至少不是 404）。
 
 ---
 
