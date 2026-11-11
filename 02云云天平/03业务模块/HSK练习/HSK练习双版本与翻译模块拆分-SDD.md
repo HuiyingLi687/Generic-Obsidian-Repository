@@ -697,7 +697,8 @@ ALTER TABLE exam_paper
 
 🔴 **CR 的 `data` 统一「通用报告块 + 模块扩展块」（决策 20，2026-11-11）**：通用学习报告页**五个模块**（听/读/写/说/译）**共用一页**（正确率 / 答题时间 `HH:MM:SS` / 答对情况 `3/5` / 答题卡逐题对错 + 「只看错题」），因此不再保留四套 `data` 形状：
 
-- **通用块（字段名五模块一致）**：`module` / `reportId` / `paperId` / `section` / `reportStatus` / `submittedTime` / `generatedTime` / `durationSeconds` / `totalQuestions` / `answeredCount` / `correctCount` / `wrongCount` / `accuracyRate` / `answerCard[]`（逐题 `{order, correct}`，`correct` 三态：`true` 绿 / `false` 红 / `null` 置灰；「只看错题」前端按 `correct === false` 自滤）
+- **通用块（字段名五模块一致）**：`module` / `reportId` / `recordId`（听/读 = `practice_record.id`，写/译/说 = `null`）/ `paperId` / `section` / `reportStatus` / `submittedTime` / `generatedTime` / `durationSeconds` / `totalQuestions` / `answeredCount` / `correctCount` / `wrongCount` / `accuracyRate` / `answerCard[]`（逐题 `{order, correct}`，`correct` 三态：`true` 绿 / `false` 红 / `null` 置灰；「只看错题」前端按 `correct === false` 自滤）
+- **`answerCard[]` 构造**：拿 `practice_record.id` 查 **`practice_record.question_ids`**（交卷时固化的题目 ID 数组）放进数组——数组顺序即 `order`（下标 +1，与题目下发顺序一致），每题 `correct` 取交卷快照的 `is_correct`（HSK 不判分，以交卷前端传值为准），**不现查题库**（题库改版后历史报告仍可复现）
 - **模块扩展块**：`reading`（`recordId` / `items[]`）/ `writing`（评估反馈全字段）/ `speaking`（评分状态全字段）/ `translation`（**形状同 `writing`**，翻译复用写作链路）——只挂 `module` 对应那一个，其余恒 `null`
 - **翻译并入 CR**（2026-11-11）：原「先拿 reportId 再查 B10」两跳作废，B10 `GET /translation/reports/{reportId}` 保留按 ID 查详情；`module=translation&section=1|2`，2.0 的卷查不到 `SEC_TRANSLATION` 板块 → **404**（不是 `data=null`，决策 9 翻译仅 3.0 有数据）
 - **字段名归一是破坏性的**：阅读 `totalQuestionCount` → `totalQuestions`；口语 `status` → `reportStatus`；写/说原平铺字段收进扩展块（接口文档 §6.1 #14）

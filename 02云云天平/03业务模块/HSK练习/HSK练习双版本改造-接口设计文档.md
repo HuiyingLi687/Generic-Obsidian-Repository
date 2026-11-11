@@ -1919,6 +1919,7 @@ Authorization: Bearer xxx
   "data": {
     "module": "listening",
     "reportId": 7710,
+    "recordId": 88100,
     "paperId": 2104193520701620225,
     "section": 1,
 
@@ -1957,13 +1958,14 @@ Authorization: Bearer xxx
 |---|---|---|---|
 | `module` | String | — | 回显 query 的 `module`，前端分形状/埋点用 |
 | `reportId` / `paperId` / `section` | Long / Long / Integer | — | 定位三键，与入参一致 |
+| `recordId` | Long | — | 听 / 读 = `practice_record.id`（答题主键）；**`answerCard` 就按该 ID 查 `practice_record.question_ids` 构造**；写 / 译 / 说 = `null`（作答单据 ID 在各自扩展块的 `attemptId`） |
 | `reportStatus` | String | — | `PENDING` / `READY` / `FAILED`。⚠️ 口语原字段名是 `status`，统一改 `reportStatus`（§6.1 #14） |
 | `submittedTime` / `generatedTime` | Long | — | 交卷 / 报告生成时间（毫秒）；未生成时 `generatedTime = null` |
 | `durationSeconds` | Integer | **答题时间** `05:42:30` | 本次作答累计有效时长（秒），前端格式化 `HH:MM:SS` |
 | `totalQuestions` | Integer | **答对情况** `3/5` 分母 | 板块总题数。⚠️ 阅读原字段名 `totalQuestionCount`，统一改 `totalQuestions`（§6.1 #14） |
 | `answeredCount` / `correctCount` / `wrongCount` | Integer | **答对情况** `3/5` 分子 | 答题数 / 答对 / 答错；`correctCount + wrongCount = answeredCount` |
 | `accuracyRate` | BigDecimal | **正确率** `25%` | 0–100 两位小数，= `correctCount / totalQuestions × 100`（分母用总题数，未答视作错） |
-| `answerCard[]` | Array | **答题卡**（绿/红 chip + 只看错题） | 逐题对错，按题号升序：`order` 从 1 起、与题目接口下发顺序一致；`correct` = `true` 绿 / `false` 红 / `null` 未判分（置灰）。**「只看错题」由前端按 `correct === false` 过滤，服务端不过滤** |
+| `answerCard[]` | Array | **答题卡**（绿/红 chip + 只看错题） | 逐题对错，按题号升序：`order` 从 1 起、与题目接口下发顺序一致；`correct` = `true` 绿 / `false` 红 / `null` 未判分（置灰）。**「只看错题」由前端按 `correct === false` 过滤，服务端不过滤**。🔴 **构造方式**：服务端拿 `recordId`（= `practice_record.id`）查 **`practice_record.question_ids`**（交卷时固化的题目 ID 数组）放进数组——数组顺序即 `order`（下标 +1），每题 `correct` 取交卷快照的 `is_correct`，**不现查题库**（题库改版后历史报告仍可复现，与 `question_ids` 用法约定一致） |
 | `reading` / `writing` / `speaking` / `translation` | Object | — | 模块扩展块，**只挂 `module` 对应的那一个**，其余三个恒 `null` |
 
 **模块扩展块**
@@ -1974,13 +1976,13 @@ Authorization: Bearer xxx
 | `writing` | `module=writing` | `attemptId` / `evaluationStatus` / `feedbackStatus` / `feedbackLanguage` / `completedCount` / `totalCount` / `progressPercent` / `score` / `maxScore` / `scorePercent` / `etag` / `updatedTime` / `aiUnlocked`（原 C3 全部字段） |
 | `speaking` | `module=speaking` | `attemptId` / `scoredCount` / `unansweredCount` / `failedCount` / `aiUnlocked` / `failureCode` / `readyAt`（原 C4 全部字段） |
 | `translation` | `module=translation` | **字段同 `writing` 扩展块**（翻译复用写作链路，报告本就是 `WritingReportServiceImpl` 产物）：`attemptId` / `evaluationStatus` / `feedbackStatus` / `feedbackLanguage` / `progressPercent` / `score` / `maxScore` / `scorePercent` / `etag` / `updatedTime` / `aiUnlocked`。⚠️ P0 无评分策略（D5）→ `feedbackStatus` 恒 `UNAVAILABLE`、`score` 全 `null` |
-| （听力） | `module=listening` | 无扩展块（三键 + 通用块已覆盖原 C1 全部字段） |
+| （听力） | `module=listening` | 无扩展块（原 C1 全部字段 = 三键 + `recordId`（已提到通用块）+ 通用块） |
 
 **各模块填充规则（算不出 → `null`，前端隐藏/置灰对应卡片）**
 
 | `module` | 填充口径 |
 |---|---|
-| `listening` / `reading` | 全量填充。`answerCard` 按 `practice_record.question_ids` 逐题取 `is_correct`（HSK 不判分，`is_correct` 以交卷时前端传值为准） |
+| `listening` / `reading` | 全量填充。**`answerCard` 构造：拿 `practice_record.id`（响应里的 `recordId`）查 `practice_record.question_ids` 放进数组**——数组顺序即 `order`（下标 +1，与题目下发顺序一致）；每题 `correct` 取交卷快照的 `is_correct`（HSK 不判分，以交卷时前端传值为准），**不现查题库** |
 | `writing` | `durationSeconds` / `totalQuestions` 恒有；`correctCount` / `wrongCount` / `accuracyRate` / `answerCard[].correct` 仅当板块含客观题（写作报告 `objective*` 统计非空）时填充，纯主观写作 → 全 `null`，报告页只留答题时间 + `writing` 扩展块的评估反馈卡 |
 | `speaking` | `durationSeconds` / `totalQuestions` 恒有；对错字段随 AI 判分：`scoredCount = 0` 或未判分 → 全 `null` |
 | `translation` | `durationSeconds`（取报告 `accumulatedActiveSeconds`）/ `totalQuestions` 恒有；P0 无评分策略（D5）→ 对错字段全 `null`（`answerCard[]` 返回题目序号但 `correct` 全 `null`，前端整列置灰），报告页只留答题时间 + `translation` 扩展块。⚠️ 翻译仅 3.0 有数据（决策 9）：2.0 的卷查不到 `SEC_TRANSLATION` 板块 → **404**，不是 `data=null` |
