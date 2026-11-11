@@ -1100,6 +1100,11 @@ POST /translation/attempts/start {paperId, section}
 >
 > ⚠️ 这意味着**前端必须已切到 U1–U3**，否则旧 15 条路径直接 404（此前它们虽然返回空板块，至少不是 404）。
 
+> ✅ **P0-d 已完成（2026-11-11）**：`GET /hsk/modules` 落地，模块卡**由字典驱动**——卡片顺序、三语名、`sectionMapping`、`moduleCode` 全部来自 `sys_dict` / `sys_dict_item`，代码里零常量（改 `sort_order` 即时生效）。`layout` 取 `sys_dict.remark`（`GRID_2` / `LIST`）。
+> 实现要点与四处**与文档字面的偏差**（不抛 401 改可选登录、`disabledReason` 扩为三值、降级粒度是「批次」、`header` 服务端拼）已写进接口文档 §4.5 末尾「实现现状」。
+> 🔴 **上线前提**：`gateway.white-list` 必须加 `/api/practice/hsk/modules`（TEST / PROD 两份 yml 已改），否则免登录调用在网关就被 401。
+> 🔴 **生产仍需灌字典（E16）**：未灌时接口正常返回 200 但 `modules=[]`，首页空白——这是数据问题不是代码问题。
+
 ---
 
 ## 附录 A：存量缺陷（本次顺带修）
