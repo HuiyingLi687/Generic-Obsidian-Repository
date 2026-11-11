@@ -378,15 +378,21 @@ GROUP BY paper_id, section_mapping, section;
 
 **口语是唯一走另一张内容表的模块**：②③④ 换成 `speaking_exam_paper`（`enabled_prac = 1`）+ `speaking_exam_paper_question`（`enabled_prac = 1`）的计数，板块骨架仍来自 `practice_module_part_config`（`section_mapping = 'SEC_SPEAK'`，`section` 为 1/2/3）。
 
-🔴 **取题必须由配置驱动，不能再靠硬编码题型白名单**：现在 `SpeakingSourceQuestionMapper.xml` 用 `PartCodeCase` 把 8 个题型硬编码映射到 `PART_1/2/3`，而新配置里已有 6 个 `type_code` 不在其中（3.0 L4/L5/L6 的 `listen_retell`、L7 的 `applied_read_speak` / `listen_material_answer` / `viewpoint_express`），`selectByPart` 的 `question_type_mapping IN (...)` 白名单同样漏掉它们 → **这些板块目前取不到任何题**（缺陷 B-19）。改造后取题条件改为：
+🔴 **取题必须由配置驱动，不能再靠硬编码题型白名单**：现在 `SpeakingSourceQuestionMapper.xml` 用 `PartCodeCase` 把 8 个题型硬编码映射到 `PART_1/2/3`，而新配置里已有 6 个 `type_code` 不在其中（3.0 L4/L5/L6 的 `listen_retell`、L7 的 `applied_read_speak` / `listen_material_answer` / `viewpoint_express`），`selectByPart` 的 `question_type_mapping IN (...)` 白名单同样漏掉它们 → **这些板块目前取不到任何题**（缺陷 B-19）。
+
+✅ **2026-11-11 已从根本上解除**：`speaking_exam_paper_question` **新增 `section` 列**（`varchar(50)`，数字 `1`/`2`/`3`；`0` = `opening_music` / `confirm_name` / `confirm_nationality` / `number_confirmation` 这 4 类前导流程题，每卷各 1 条、不属任何板块）。实测 TEST：**37 张有题的卷 `section` 集合都是 `{1,2,3}`**，与 `practice_part_setting` 的 `PART_1/PART_2/PART_3` 逐卷一一对应（38 张卷共 114 行 `PART_N`，多出的 1 张有配置无题）。
+
+故取题改成按 `section` 直接过滤，**不再按业务题型做白名单**——新增题型只要落在某个部分里就能取到：
 
 ```sql
 WHERE paper_id = ? AND deleted = 0 AND enabled_prac = 1 AND number > 0
-  AND question_type_mapping = (SELECT type_code FROM practice_module_part_config
-                               WHERE version=? AND level=? AND section_mapping='SEC_SPEAK' AND section=?)
+  AND section = ?           -- 板块号，数字；PART_ 与业务 type_code 都不再参与取题
+  AND question_type_mapping NOT IN ('instructions', 'outline')  -- 流程说明 / 提纲不是作答项
 ```
 
-一个板块一个 `type_code`，新增题型只需加配置行，不改代码。
+⚠️ **最后一行不能省**：`section` 内夹着辅助行——TEST 实测 `instructions` 在 1/2/3 部分分别 37/37/19 行，`outline` 25/19 行（`outline` 是看图说话的提纲提示，属题面素材）。前导 4 类（`section='0'`）被 `section=?` 天然排除。排除清单固定为这两个词，**不是业务题型白名单**，所以新题型不受影响。
+
+同理，`PartCodeCase`（`PART_1/2/3` 硬编码映射）整段可以删掉。
 
 #### 3.2.5 `practice_record` 改造
 
@@ -444,9 +450,9 @@ ALTER TABLE practice_record MODIFY COLUMN question_ids json NULL
 | 旧 | 新 |
 |---|---|
 | `POST /listening/records/start {paperId, structureId}` | `{paperId, section}` |
-| `GET /listening/parts/{structureId}/reports/latest` | `GET /papers/{paperId}/parts/{section}/reports/latest`（**CR 统一端点**，不带模块前缀） |
+| `GET /listening/parts/{structureId}/reports/latest` | `GET /papers/{paperId}/parts/{section}/reports/latest?module=listening`（**CR 统一端点**，不带模块前缀） |
 | `POST /reading/records/start {paperId, structureId}` | `{paperId, section}` |
-| `GET /reading/parts/{structureId}/reports/latest` | 同上（CR） |
+| `GET /reading/parts/{structureId}/reports/latest` | 同上（CR，`?module=reading`） |
 
 前端改拿目录响应里的 `partCode`（= `section`）+ 卷 `id`。**目录响应不再下发 `structureId`**——它随结构表一起消失，不留 deprecated 字段，避免前端继续依赖。
 
@@ -559,7 +565,7 @@ CREATE INDEX idx_speaking_attempt_part ON speaking_attempt
 | `PracticeRecord` / `PracticeReport` / `PracticeQuestionOptionPool` 实体 | 删 `structureId` 字段 |
 | `CscaStructureIds` + 3 处 CSCA 调用 | 改用 `SEC_CSCA` + 科目码（§3.2.5） |
 | 各 Controller / DTO 的 `structureId` 入参出参 | 改 `paperId + section`（§3.2.5 接口表） |
-| `ListeningReportController` / `ReadingReportController` | latest 端点摘除，并入 **CR** `GET /papers/{paperId}/parts/{section}/reports/latest`（`paperId` 反查模块后委托原查询逻辑，见接口设计文档 §9.2 `PracticeReportController`） |
+| `ListeningReportController` / `ReadingReportController` | latest 端点摘除，并入 **CR** `GET /papers/{paperId}/parts/{section}/reports/latest?module=`（`module` 必填并决定模块，`paperId` 只判卷域；委托原查询逻辑，见接口设计文档 §4.3 `PracticeReportController`） |
 
 **`practice_question_option_pool`（P2）**：加两列回填后按题目关联，退场前置三件事——① 补 `reading_cloze` 缺失记录（TEST 90 / PROD 90 全无）；② `pool_code` 去掉 `structureId`，改 `{section_mapping}_{paperId}_{section}_{sha256(option_content)}`；③ 答题快照 `optionPoolCode` 改现算（现在由 `ReadingSnapshotSupport` 读表写入）。它不阻塞结构表 drop，因为结构表先走完 P0。
 
@@ -685,7 +691,7 @@ ALTER TABLE exam_paper
 | ~~15~~ | ~~GET~~ | ~~`/speaking/papers`~~ | 常量 | **删除**，并入 U1 的 `papers[]` |
 | 16 | GET | `/speaking/papers/{paperId}/parts` → **U3** | 常量 + `SEC_SPEAK` 单映射 | **2.0 / 3.0 都读 `speaking_exam_paper`**（R5）；来源改 `practice_module_part_config`；口语计数进 `stats` |
 
-报告侧同批合并：原 C1–C4 四条 `/{mod}/papers/{paperId}/parts/{section}/reports/latest` → **CR `GET /papers/{paperId}/parts/{section}/reports/latest`**（不带模块前缀，响应带 `module` 判别字段；`data` 形状按模块不同——听/读=题量正确率，写/译=评估反馈，说=录音评分）。
+报告侧同批合并：原 C1–C4 四条 `/{mod}/papers/{paperId}/parts/{section}/reports/latest` → **CR `GET /papers/{paperId}/parts/{section}/reports/latest?module=`**（不带模块前缀，模块走 query（`listening`/`reading`/`writing`/`speaking`），响应回显 `module` 判别字段；`section` 各模块统一数字；`data` 形状按模块不同——听/读=题量正确率，写/译=评估反馈，说=录音评分）。
 
 **统一后的目录模型：三跳（U1–U3）**
 
@@ -900,7 +906,7 @@ POST /translation/attempts/start {paperId, section}
 4. U1 `module=reading&version=HSK3.0&level=7` → **单对象**：`level="7"`、`levelName="HSK7-9"`、`paperCount>0`；2.0 下传 `level=7` → `paperCount=0` + `papers=[]`（不 404）。
 4b. U1 一律返单对象（含 `papers[]`），**不再是数组**；旧 5 条 `/{mod}/levels` 与 4 条 `/{mod}/papers` 调用 **404**。
 4c. 任一 U3 `/hsk/practice/papers/{id}/parts` → `data` 为 `{module, paperId, paperCode, parts[]}`，且每个 part 都有 `draft`/`report`/`stats` 三个键（无值为 `null`），**无 `layouts` 键**。
-4d. CR `GET /papers/{paperId}/parts/{section}/reports/latest` → 响应带 `module` 判别字段；旧 `/{mod}/papers/.../reports/latest`（带模块前缀）与更旧的 `/parts/{structureId}/reports/latest` 均 **404**。
+4d. CR `GET /papers/{paperId}/parts/{section}/reports/latest?module=` → 响应带 `module` 判别字段；缺 `module` → **400**；旧 `/{mod}/papers/.../reports/latest`（带模块前缀）与更旧的 `/parts/{structureId}/reports/latest` 均 **404**。
 5. U1 `module=reading&level=7&version=HSK3.0` 的 `papers[]` 在 **PROD** 能查到卷（验证 R3 候选集）。🔴 最易漏。
 
 **翻译独立**
