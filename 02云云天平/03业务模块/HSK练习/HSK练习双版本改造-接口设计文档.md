@@ -538,7 +538,6 @@ Authorization: Bearer xxx
       "levelId": 3001,
       "level": 7,
       "levelName": "HSK 7-9",
-      "abilityDesc": "能就广泛话题进行深入交流",
       "totalQuestionCount": 40,
       "suggestDurationMinutes": 60,
       "sections": [
@@ -553,15 +552,14 @@ Authorization: Bearer xxx
 
 **返回字段说明**
 
-| 字段 | 类型 | 改动标记 | 说明 |
-|---|---|---|---|
-| `levelId` | Long | 【无变更】 | `practice_module_level_config.id` |
-| `level` | Integer | 【无变更】 | 数值等级；`HSK7-9` 恒为 `7` |
-| `levelCode` | String | 【修改】 | **`HSK" + level` 拼接缺陷已修**（B-05），`7` 输出 `HSK7-9` 而非 `HSK7` |
-| `levelName` | String | 【无变更】 | 按 `Accept-Language` 本地化 |
-| `abilityDesc` | String | 【无变更】 | 单语（沿用 `Accept-Language`） |
-| `totalQuestionCount` / `suggestDurationMinutes` | Integer | 【无变更】 | |
-| `sections[]` | Array | 【修改】 | 字段见 §4.0.3；旧字段 `questionType` → `typeCode`、`questionTypeName` → `typeName` |
+| 字段                                              | 类型      | 改动标记  | 说明                                                                         |
+| ----------------------------------------------- | ------- | ----- | -------------------------------------------------------------------------- |
+| `levelId`                                       | Long    | 【无变更】 | `practice_module_level_config.id`                                          |
+| `level`                                         | Integer | 【无变更】 | 数值等级；`HSK7-9` 恒为 `7`                                                       |
+| `levelName`                                     | String  | 【无变更】 | 按 `Accept-Language` 本地化                                                    |
+| `abilityDesc`                                   | String  | 【无变更】 | 单语（沿用 `Accept-Language`）                                                   |
+| `totalQuestionCount` / `suggestDurationMinutes` | Integer | 【无变更】 |                                                                            |
+| `sections[]`                                    | Array   | 【修改】  | 字段见 §4.0.3；旧字段 `questionType` → `typeCode`、`questionTypeName` → `typeName` |
 
 **服务端内部执行顺序**
 
