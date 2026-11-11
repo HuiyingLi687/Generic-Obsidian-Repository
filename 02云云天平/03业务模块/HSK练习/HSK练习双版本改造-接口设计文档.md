@@ -467,6 +467,40 @@
 
 ---
 
+**实现现状（2026-11-11，U1–U3 已落地）**
+
+| 层 | 落点 | 说明 |
+|---|---|---|
+| 控制器 | `hsk/catalog/controller/PracticeCatalogController` | `GET /hsk/practice/levels`、`/levels/{level}/intro`、`/papers/{paperId}/parts`；三跳的 `module` 均为 query，缺失/非法 → **400 `PRACTICE_MODULE_INVALID`** |
+| 装配 | `hsk/catalog/support/PracticePartAssembler` | 严格按 §7.1：`level_config` 短路 → `part_config` **不带 `enabled` 条件**查全量后内存三分拨（骨架 / `closedSections` / 丢弃）→ 题量现算过滤 → 兜底命名「第N部分」 |
+| 等级 | `hsk/catalog/support/PracticeLevelCode` | `version` 白名单（大小写敏感）、`level` 值域 `"1"`–`"7"`、`"7" → ('7','7-9')`、2.0 口语 `Beginner/Intermediate/Advanced ↔ 1/2/3`。**全仓等级换算只此一处** |
+| 模块 | `hsk/catalog/support/PracticeCatalogModule` | `module ↔ section_mapping`，`partCode`：口语 `PART_N`、其余 `"N"` |
+| 表 | `PracticeModulePartConfig` + Mapper（新增） | 此前代码对该表**零引用**，本次首次接入 |
+
+**已实测（TEST）**
+
+| 场景 | 结果 |
+|---|---|
+| 2.0 卷 `2071849571936096257` 的 U3 `module=listening` / `module=reading` | 各 4 个板块，`typeCode` 完全不同（`listening_judge…` vs `reading_judge…`），证明 `module` 分流生效 |
+| 2.0 L1 `module=writing` | `level_config.enabled=0` → `parts=[]`，U1 `paperCount=0`（不 404） |
+| 3.0 卷 `2104188199979532289` 的 U3 `module=translation` | **2 个板块**（`translation_written` / `translation_oral`）——按 `section` 列统计，不再受 `PartCodeCase` 白名单限制 |
+| 2.0 口语 L1（`Beginner`） | 3 个板块，题量 15 / 10 / 2；`section='0'` 的前导流程题被排除 |
+| 2.0 U1 `module=translation` | `paperCount=0`、`papers=[]`（该版本无翻译卷） |
+
+**三处与文档字面的偏差（已知，非缺陷）**
+
+| # | 偏差 | 原因 / 影响 |
+|---|---|---|
+| 1 | **口语板块级 `durationMinutes` 暂不下发** | 需要按 `speaking_exam_paper_question.audio_time` / `waitting_time` 逐板块推算，P0 不做；该字段本就是可选，前端不依赖 |
+| 2 | **U2 在「该等级一张可用卷都没有」时退回 `standard_question_count`** | 3.0 全 15 卷在 PROD 尚未放开，纯现算会让备考说明整页空白。U3 不做此降级——卷内题量为 0 就是 404 |
+| 3 | **写作 / 翻译 / 口语的进度仍经 `practice_part_setting` 中转** | 这三张作答表（`writing_attempt` / `speaking_attempt` / `writing_report` / `speaking_report`）目前仍以 `structure_id` 关联。接口层已不暴露该 ID，等 P0-j 删列时改为三元组直查 |
+
+> 🔴 **待办（本次未做，需你确认）**：旧 15 条 `/{mod}/levels`、`/{mod}/levels/{level}/intro`、`/{mod}/papers/{paperId}/parts` **仍然注册着**，与新 U1–U3 并存（§6.1 第 5/9/12 条要求它们 404）。它们读的是已 drop 的 `parts_config`，实际返回空板块，属于「留着会误导、删掉要前端同批」。CR 那次的做法是把旧方法整块注释保留，这里同理，等你点头再摘。
+
+> ⚠️ **目录与作答的板块来源不同，会出现「U3 看得到、却开不了练」**：U3 的板块来自 `part_config` + `question` 现算，而 B5（翻译开练）仍要求 `practice_part_setting` 有对应行。实测 3.0 翻译卷 `2104188199979532289` 的 `section=2`（口译，2 题）在 `question` 里存在、U3 会下发，但 `practice_part_setting` 只有 `section_code='1'` → B5 传 `section=2` **404**。要开口译需运营补 1 行 `part_setting`（`section_code='2'`、`type_code='translation_oral'`），已登记为 D16 同批动作。
+
+---
+
 ### 4.1 目录端点（原 A 组：全部并入 U1–U3，本节保留各模块响应示例）
 
 > **2026-11-11 起目录路径统一**（§3、决策 16）：以下 A1–A16 各节的旧路径**全部删除**，改调
@@ -2553,6 +2587,20 @@ ALTER TABLE practice_module_part_config
 | `hsk/translation/service/impl/TranslationPracticeServiceImplTest.java`（新增 12 例） | 板块缺失 404、委托参数为 `SEC_TRANSLATION`、`level` 去前缀、`feedbackStatus` 空值补 `PENDING`、section 不符 404、题目映射（题型/布局/判卷方式/`instruction→stem`）、写作练习不可从翻译入口保存、交卷透传、报告非翻译 404、`UNAVAILABLE` 丢分数与明细、`READY` 保留 |
 | `hsk/translation/support/TranslationPartResolverTest.java`（新增 7 例） | 板块缺失/参数空/板块无题/写作 attempt 越权/未知 attempt 全部 404，正常翻译 attempt 放行 |
 | `hsk/speaking/mapper/SpeakingSourcePaperMapper`（改） | 新增 `selectByIdForReport`（只判 `deleted=0`，与 `selectActiveById` 并存） |
+| `hsk/catalog/controller/PracticeCatalogController.java`（新增） | **U1–U3 统一目录端点**：`GET /hsk/practice/levels`、`/levels/{level}/intro`、`/papers/{paperId}/parts`；`module` 一律走 query（缺失/非法 → 400）。⚠️ 原 15 条模块内目录端点**尚未摘除**（仍在，未 404），见 §4.0.6 末尾「待办」 |
+| `hsk/catalog/service/impl/PracticeCatalogServiceImpl.java`（新增） | 三跳装配：卷 / 题量 / 进度按模块分表取；`paperId` 先 `exam_paper` 再 `speaking_exam_paper`；`version` 不符 / 卷下架 / 该模块在该卷无板块 → 404；等级未配置或模块关闭 → 200 空对象 |
+| `hsk/catalog/support/PracticePartAssembler.java`（新增） | §7.1 板块装配：`level_config` 短路 → `part_config` 三分拨（骨架 / closedSections / 丢弃）→ 题量现算过滤 → 兜底 `第N部分`；`assembleForIntro` 在全等级无卷时退回 `standard_question_count` |
+| `hsk/catalog/support/PracticeCatalogModule.java`（新增） | `module` ↔ `section_mapping` 唯一映射 + `partCode` 形态（口语 `PART_N`） |
+| `hsk/catalog/support/PracticeLevelCode.java`（新增） | `version` 白名单（大小写敏感）、`level` 数字串值域、`'7' → ('7','7-9')` 候选集、2.0 口语 `Beginner/Intermediate/Advanced ↔ 1/2/3`；**等级换算只允许出现在这里** |
+| `hsk/catalog/entity/PracticeModulePartConfig.java` + `mapper/PracticeModulePartConfigMapper.java`（新增） | 板块行式表实体（此前代码零引用）；查询**不带 `enabled` 条件**，由装配器内存分拨 |
+| `hsk/catalog/dto/`（新增 9 个） | `PracticeCatalogPart` / `PracticeCatalogPartProgress` / `PracticeCatalogDraft` / `PracticeCatalogReport` / `PracticeCatalogStats` / `PracticePaperBrief` / `PracticeLevelOverviewResponse` / `PracticeLevelIntroResponse` / `PracticePaperPartsResponse` / `PracticePaperProgressRow` |
+| `common/mapper/PracticeRecordMapper#selectPaperProgressByMapping`（新增） | U1 卷级进度：按 `section_mapping` 过滤后按卷汇总（旧 `selectAnsweredCountByPaper` 不区分模块，2.0 综合卷会把听读混算） |
+| `speaking/mapper/SpeakingSourceQuestionMapper#selectCountsBySections`（新增） | 口语题量改按 `section` 列统计，绕开 `PartCodeCase` 的 8 个题型白名单（B-19） |
+| `speaking/mapper/SpeakingSourcePaperMapper#selectByVersionAndLevels`（新增） | U1 按等级候选集取卷（`'7'` 同时覆盖 `'7'` / `'7-9'`；2.0 口语传文字档位） |
+| `speaking/mapper/SpeakingAttemptMapper#selectSubmittedByStructures`（新增） | U1 口语卷已答题数（`speaking_report` 没有 `answered_count`） |
+| `hsk/catalog/support/PracticePartAssemblerTest.java`（新增 10 例） | 开关分流 / 题量过滤 / closed 不被兜底放出 / deleted 行 / 兜底命名 / 口语 partCode / 排序 / intro 退标准题量 / U3 不退 |
+| `hsk/catalog/support/PracticeLevelCodeTest.java`（新增 11 例） | `version` 大小写敏感、`level` 值域、`'7'` 候选集、2.0 口语文字档位、反向换算、`partCode` |
+| `hsk/catalog/service/impl/PracticeCatalogServiceImplTest.java`（新增 15 例） | 参数校验 400、空目录 200、卷/版本/板块 404、题量 0 卷剔除、进度填充、口语走独立卷域 |
 
 
 

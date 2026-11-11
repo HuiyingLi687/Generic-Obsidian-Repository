@@ -1088,6 +1088,15 @@ POST /translation/attempts/start {paperId, section}
 >
 > 顺序：**P0-a → P0-b → P0-c2 → P0-c → P0-c3 → P0-e → P0-f → P0-h → P0-i → P0-j**（P0-g 已移出，见上）。
 
+> ✅ **2026-11-11 进度更新（P0-c 部分完成）**：`PracticeCatalogController`（U1–U3）已落地，配套新增
+> `PracticePartAssembler`（§7.1 装配：`level_config` 短路 → `part_config` **不带 `enabled` 条件**三分拨 → 题量现算 → 兜底「第N部分」）、
+> `PracticeCatalogModule`（`module ↔ section_mapping`）、`PracticeLevelCode`（`version` 白名单 + `level` 值域 + `'7'→('7','7-9')` + 2.0 口语文字档位）、
+> `PracticeModulePartConfig` 实体/Mapper（此前该表代码零引用）。
+>
+> 两处**未完成，需单独决策**：
+> ① 旧 15 条 `/{mod}/levels`、`/{mod}/levels/{level}/intro`、`/{mod}/papers/{paperId}/parts` **仍在注册**（读的是已 drop 的 `parts_config`，实际返回空板块），摘除要前端同批，暂未动；
+> ② **P0-e 的 `PracticeCatalogBatchLoader` 重写未做**——新 U1–U3 走的是自己的装配器，老 loader 仍从 `structure + part_setting` 取数，两条读路径并存（这正是「目录看得到、开练读不到」的根源，见接口文档 §4.0.6 末尾）。
+
 ---
 
 ## 附录 A：存量缺陷（本次顺带修）
