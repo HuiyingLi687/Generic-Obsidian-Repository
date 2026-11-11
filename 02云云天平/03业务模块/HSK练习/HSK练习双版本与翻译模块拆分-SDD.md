@@ -665,7 +665,7 @@ ALTER TABLE exam_paper
 | 大小写 | **敏感**，`hsk3.0` → 400 |
 | 特殊值 | 无（不提供 `ALL` / `LATEST`） |
 
-**等级入参命名**：请求侧（query / path / body）统一叫 **`level`**，**取数字串**（`"1"`–`"6"`、`"7"`= HSK7-9 整级），弃用 `levelCode`；响应侧同样用 `level`（回显同一数字串）+ **`levelName`**（显示名，**取 `practice_module_level_config.level_name` / `_en` / `_vi` 三列，按 `Accept-Language` 三选一，空值回落中文**，不拼接不换算，见 E17）。`levelCode` / `databaseLevel` 全部废弃。路径并入统一端点 **U2** `GET /hsk/practice/levels/{level}/intro?module=`，**取值从 `HSK1` 变成 `1`**（URL 形态变化，属破坏性变更）。
+**等级入参命名**：请求侧（query / path / body）统一叫 **`level`**，**取数字串**（`"1"`–`"6"`、`"7"`= HSK7-9 整级），弃用 `levelCode`；响应侧同样用 `level`（回显同一数字串）+ **`levelName`**（显示名，**取 `practice_module_level_config.level_name` / `_en` / `_vi` 三列，按 `Accept-Language` 三选一，空值回落中文**，不拼接不换算，见 E17）。`levelCode` / `databaseLevel` 全部废弃。路径并入统一端点 **U2** `GET /hsk/levels/{level}/intro?module=`，**取值从 `HSK1` 变成 `1`**（URL 形态变化，属破坏性变更）。
 
 > `"7"` 落到 DB 时是 `exam_paper.level IN ('7','7-9')` 候选集（R3）——TEST 存 `'7'`、PROD 存 `'7-9'`，接口层只认 `"7"`，换算收口在 `PracticeLevelCode`。
 
@@ -699,13 +699,13 @@ ALTER TABLE exam_paper
 
 | 跳 | 统一端点 | 返回 |
 |---|---|---|
-| ① **U1** | `GET /hsk/practice/levels?module=&version=&level=` | 单对象 `{module, level, levelName, paperCount, papers[]}` |
-| ② **U2** | `GET /hsk/practice/levels/{level}/intro?module=&version=` | 单对象 `{module, level, levelName, abilityDescription×3, totalQuestionCount, durationMinutes, parts[]}` |
-| ③ **U3** | `GET /hsk/practice/papers/{paperId}/parts` | 单对象 `{module, paperId, paperCode, parts[]}`（**无 `module` 参数**，按 `paperId` 反查） |
+| ① **U1** | `GET /hsk/levels?module=&version=&level=` | 单对象 `{module, level, levelName, paperCount, papers[]}` |
+| ② **U2** | `GET /hsk/levels/{level}/intro?module=&version=` | 单对象 `{module, level, levelName, abilityDescription×3, totalQuestionCount, durationMinutes, parts[]}` |
+| ③ **U3** | `GET /hsk/papers/{paperId}/parts` | 单对象 `{module, paperId, paperCode, parts[]}`（**无 `module` 参数**，按 `paperId` 反查） |
 
 五个模块（听/读/写/说/译）**共用同一套路径与结构**：`module` 是 query 参数（`listening` / `reading` / `writing` / `speaking` / `translation`）；板块数组统一叫 `parts`；时长统一 `durationMinutes`；卷状态统一小写 `not_started`/`in_progress`/`completed`；U3 的进度统一为「4 个通用字段 + `draft`/`report`/`stats` 三个扩展块」。U1–U3 与 CR 的响应统一带 `module` 字段，前端不需要自己记「这份响应属于哪个模块」。四个 `/papers` 端点退场。
 
-> 代价：不再有「一次拿全部等级 + 各等级能力描述」的接口。等级 chip 由前端按版本矩阵渲染，需要能力描述时逐级调 U2；若产品坚持一次拿全，另加 `GET /hsk/practice/levels/all?module=&version=`（只返 `level`/`levelName`/`abilityDescription×3`/`totalQuestionCount`，不含 `parts`，不塞进 U1，避免语义再分叉）。
+> 代价：不再有「一次拿全部等级 + 各等级能力描述」的接口。等级 chip 由前端按版本矩阵渲染，需要能力描述时逐级调 U2；若产品坚持一次拿全，另加 `GET /hsk/levels/all?module=&version=`（只返 `level`/`levelName`/`abilityDescription×3`/`totalQuestionCount`，不含 `parts`，不塞进 U1，避免语义再分叉）。
 
 > 统一约定：`version` 必须**同时**作为 `practice_module_level_config.version` 与 `exam_paper.version` 的条件，漏一处会出现「等级列表是 2.0、卷列表是 3.0」。
 
@@ -716,10 +716,10 @@ ALTER TABLE exam_paper
 
 | # | 旧路径（已 404） | 去向 |
 | --- | --- | --- |
-| ~~T1~~ | ~~`GET /translation/levels`~~ | **并入 U1**：`GET /hsk/practice/levels?module=translation&version=&level=`；2.0 → `paperCount=0` + `papers=[]` |
-| ~~T2~~ | ~~`GET /translation/levels/{level}/intro`~~ | **并入 U2**：`GET /hsk/practice/levels/{level}/intro?module=translation&version=`；`parts[]` 来自板块配置 |
+| ~~T1~~ | ~~`GET /translation/levels`~~ | **并入 U1**：`GET /hsk/levels?module=translation&version=&level=`；2.0 → `paperCount=0` + `papers=[]` |
+| ~~T2~~ | ~~`GET /translation/levels/{level}/intro`~~ | **并入 U2**：`GET /hsk/levels/{level}/intro?module=translation&version=`；`parts[]` 来自板块配置 |
 | ~~T3~~ | ~~`GET /translation/papers`~~ | **删除**，卷清单并入 U1 的 `papers[]` |
-| ~~T4~~ | ~~`GET /translation/papers/{paperId}/parts`~~ | **并入 U3**：`GET /hsk/practice/papers/{paperId}/parts`；2 个板块 `translation_written` / `translation_oral` |
+| ~~T4~~ | ~~`GET /translation/papers/{paperId}/parts`~~ | **并入 U3**：`GET /hsk/papers/{paperId}/parts`；2 个板块 `translation_written` / `translation_oral` |
 
 ⚠️ 板块层**不下发 `layouts`**（2026-11-11 拍板）：笔译 / 口译两张卡的作答形态进题后按题目接口逐题下发的 `layout` 渲染（`input` / `record`）——来自 `question.layout`，不是 `type_code` 字典。
 
@@ -921,7 +921,7 @@ POST /translation/attempts/start {paperId, section}
 3. `hsk3.0`（小写）/ `HSK4.0` → 400，不得静默降级。
 4. U1 `module=reading&version=HSK3.0&level=7` → **单对象**：`level="7"`、`levelName="HSK7-9"`、`paperCount>0`；2.0 下传 `level=7` → `paperCount=0` + `papers=[]`（不 404）。
 4b. U1 一律返单对象（含 `papers[]`），**不再是数组**；旧 5 条 `/{mod}/levels` 与 4 条 `/{mod}/papers` 调用 **404**。
-4c. 任一 U3 `/hsk/practice/papers/{id}/parts` → `data` 为 `{module, paperId, paperCode, parts[]}`，且每个 part 都有 `draft`/`report`/`stats` 三个键（无值为 `null`），**无 `layouts` 键**。
+4c. 任一 U3 `/hsk/papers/{id}/parts` → `data` 为 `{module, paperId, paperCode, parts[]}`，且每个 part 都有 `draft`/`report`/`stats` 三个键（无值为 `null`），**无 `layouts` 键**。
 4d. CR `GET /papers/{paperId}/reports/latest?module=&section=` → 响应带 `module` 判别字段；缺 `module` 或缺 `section` → **400**；旧 `/{mod}/papers/.../reports/latest`（带模块前缀）与更旧的 `/parts/{structureId}/reports/latest` 均 **404**。
 5. U1 `module=reading&level=7&version=HSK3.0` 的 `papers[]` 在 **PROD** 能查到卷（验证 R3 候选集）。🔴 最易漏。
 

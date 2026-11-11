@@ -38,8 +38,9 @@
 | 13  | 模块卡数据源                                                                                    | `/hsk/modules` 的模块卡**取自字典表**（`hsk_practice_module_v2` / `_v3`），不做进程内常量。字段一列一义：`item_text`=中文名、`item_value`=`sectionMapping`、`description`=`moduleCode`、`sort_order`=顺序、`item_properties` 只放 `moduleCode`/`nameEn`/`nameVi` 的 JSON；`layout` 存 `sys_dict.remark`。`icon`/`theme`/`badge`/`entryLevelCode` **不入库、不下发**，前端按 `moduleCode` 内置                                                                                                                    |
 | 14  | **目录接口统一为三跳**                                                                             | 5 个模块同一套响应结构：`levels`（单对象 + `papers[]`）→ `levels/{level}/intro` → `papers/{paperId}/parts?module=`（对象包裹）。**4 个 `/papers` 端点删除**；板块数组统一 `parts`、时长统一 `durationMinutes`、卷状态统一小写。2026-11-11 起连路径也统一（决策 16）                                                                                                                                                                                                                                                   |
 | 15  | **`/parts` 进度字段**                                                                         | 4 个通用字段（`status`/`doneCount`/`correctCount`/`wrongCount`）+ 3 个扩展块（`draft`/`report`/`stats`）。**不再平铺** `draftRecordId` / `draftAttemptId` / `latestReportId` / `feedbackStatus` 等模块专属字段                                                                                                                                                                                                                                                                     |
-| 16  | **目录端点合并为 U1–U3**（2026-11-11）                                                             | 5 个模块 × 3 跳 = 15 个目录端点 → **3 个统一端点**：`GET /hsk/practice/levels?module=&version=&level=`、`GET /hsk/practice/levels/{level}/intro?module=`、`GET /hsk/practice/papers/{paperId}/parts?module=&version=`。`module` 由路径段 `/{mod}` 全部改为 query 参数；`paperId` 只判卷域（`exam_paper` 与 `speaking_exam_paper` 零交集）。响应统一加 `module` 字段。旧 15 条路径全部 404。**U3 的 `module` 为必填**（决策 16b）                                                                                         |
-| 16b | **U3 补 `module` query**（2026-11-11 修订决策 16）                                               | 「按 `paperId` 反查模块」**不成立**（与决策 17b 同源）：HSK 2.0 是综合卷，136 张非口语卷中 **135 张同时含 `SEC_LISTEN` + `SEC_READ`**，同一 `paperId` 下听/读/写板块并存 —— `module` 推不出，`parts[]` 还会把三个模块的板块混成一个列表。故改为 `GET /hsk/practice/papers/{paperId}/parts?module=&version=`，**`module` 必填**（`listening` / `reading` / `writing` / `speaking` / `translation`），只返回该模块的板块。原 A3/A7/A13/A16/B4 本就是模块内查询，合并时不得丢掉这层过滤                                                                               |
+| 16  | **目录端点合并为 U1–U3**（2026-11-11）                                                             | 5 个模块 × 3 跳 = 15 个目录端点 → **3 个统一端点**：`GET /hsk/levels?module=&version=&level=`、`GET /hsk/levels/{level}/intro?module=`、`GET /hsk/papers/{paperId}/parts?module=&version=`。`module` 由路径段 `/{mod}` 全部改为 query 参数；`paperId` 只判卷域（`exam_paper` 与 `speaking_exam_paper` 零交集）。响应统一加 `module` 字段。旧 15 条路径全部 404。**U3 的 `module` 为必填**（决策 16b）                                                                                         |
+| 16b | **U3 补 `module` query**（2026-11-11 修订决策 16）                                               | 「按 `paperId` 反查模块」**不成立**（与决策 17b 同源）：HSK 2.0 是综合卷，136 张非口语卷中 **135 张同时含 `SEC_LISTEN` + `SEC_READ`**，同一 `paperId` 下听/读/写板块并存 —— `module` 推不出，`parts[]` 还会把三个模块的板块混成一个列表。故改为 `GET /hsk/papers/{paperId}/parts?module=&version=`，**`module` 必填**（`listening` / `reading` / `writing` / `speaking` / `translation`），只返回该模块的板块。原 A3/A7/A13/A16/B4 本就是模块内查询，合并时不得丢掉这层过滤                                                                               |
+| 16c | **类级前缀去掉 `practice` 段**（2026-11-11 三次修订决策 16/16b） | `@RequestMapping("/hsk/practice")` → **`@RequestMapping("/hsk")`**：网关路由本身已是 `Path=/api/practice/**` + `StripPrefix=2`（`gateway/application-{test,prod}.yml`），`practice` 那一段由网关提供，服务内再写一次会让**外部**路径变成 `/api/practice/hsk/practice/levels`（同名单词重复）。改后对外最终形态：`/api/practice/hsk/levels`、`/api/practice/hsk/levels/{level}/intro`、`/api/practice/hsk/papers/{paperId}/parts`。**只变路径字符串，入参与响应结构一字未动**；前端把地址里的 `/hsk/practice/` 换成 `/hsk/` 即可 |
 | 17  | **报告端点合并为 CR**（2026-11-11）                                                                | 原 C1–C4 四个 `/{mod}/papers/{paperId}/parts/{section}/reports/latest` → **1 个统一端点**。`data` 形状按模块不同（听/读=题量正确率，写=评估反馈，说=录音评分），响应加 `module` 判别字段                                                                                                                                                                                                                                                                                                               |
 | 17b | **CR 路径补 `sectionMapping` 段**（2026-11-11 修订决策 17；**路径形态已被 17c 取代，结论保留**）                  | 决策 17 原定的「按 `paperId` 反查模块」**不成立**：HSK 2.0 是综合卷，实测 136 张非口语卷中 **135 张同时含 `SEC_LISTEN` + `SEC_READ`**（92 张还含 `SEC_WRITE`），同一 `paperId` 下听力第 1 部分与阅读第 1 部分并存；`practice_part_setting` 1201 行仅 **608** 个唯一 `(paper_id, section_code)`。故必须补一层模块信息（17b 走路径段 `sectionMapping`，17c 改为 query `module`）：**`paperId` 只判卷域**（`exam_paper` / `speaking_exam_paper`），**模块由 `sectionMapping` 决定**。定位键 `(paper_id, section_mapping, section_code)` 实测 **1201/1201 严格唯一**  |
 | 17c | **CR 改为 `module` query，`section` 统一数字**（2026-11-11 二次修订决策 17b；**路径形态已被 17d 取代，其余结论保留**）   | 与 U1–U3 对齐：`sectionMapping` 不再走路径段，改 query **`module`（必填，`listening`/`reading`/`writing`/`speaking`）**，路径定为 `GET /papers/{paperId}/parts/{section}/reports/latest?module=&version=`（该路径形态已作废，见 17d）。同时**弃用 `PART_` 前缀兼容**——口语内容表 `speaking_exam_paper_question` 已新增 `section` 列（数字 `1/2/3`，`0` = 开场音乐/确认姓名等前导流程题，不属于任何部分），与决策 3「口语也是 `1/2/3`」一致；`practice_part_setting` 里口语历史行仍是 `PART_N`（该表本期 drop），两种形态在 SQL 侧归一匹配，**Java 侧不再拼前缀**。`module` 缺省/非法 → 400 |
@@ -127,9 +128,9 @@
 
 | #   | Method | Path                                                         | 用途           | 接口类型 | 说明                                                            |
 | --- | ------ | ------------------------------------------------------------ | ------------ | ---- | --------------------------------------------------------------- |
-| U1  | GET    | `/hsk/practice/levels`                                       | 统一目录·等级概览 + 卷列表 | 合并新增   | `module`（必填）+ `version` + `level`。**替代原 5 个模块各自的 `/levels`**（A1/A4/A10/A14/B1） |
-| U2  | GET    | `/hsk/practice/levels/{level}/intro`                         | 统一目录·等级备考说明 | 合并新增   | `module`（必填）+ `version`。**替代原 5 个 `/intro`**（A2/A5/A11/A14b/B2） |
-| U3  | GET    | `/hsk/practice/papers/{paperId}/parts?module=&version=`       | 统一目录·卷板块列表 | 合并新增   | **`module` 必填**（决策 16b），只返回该模块的板块；`paperId` 只判卷域。**替代原 5 个 `/parts`**（A3/A7/A13/A16/B4） |
+| U1  | GET    | `/hsk/levels`                                       | 统一目录·等级概览 + 卷列表 | 合并新增   | `module`（必填）+ `version` + `level`。**替代原 5 个模块各自的 `/levels`**（A1/A4/A10/A14/B1） |
+| U2  | GET    | `/hsk/levels/{level}/intro`                         | 统一目录·等级备考说明 | 合并新增   | `module`（必填）+ `version`。**替代原 5 个 `/intro`**（A2/A5/A11/A14b/B2） |
+| U3  | GET    | `/hsk/papers/{paperId}/parts?module=&version=`       | 统一目录·卷板块列表 | 合并新增   | **`module` 必填**（决策 16b），只返回该模块的板块；`paperId` 只判卷域。**替代原 5 个 `/parts`**（A3/A7/A13/A16/B4） |
 | CR  | GET    | `/papers/{paperId}/reports/latest?module=&section=&version=` | 统一板块最近报告 | 合并新增   | **`module` 必填**（`listening`/`reading`/`writing`/`speaking`，决策 17c/17d），决定模块与 `data` 形状并在响应回显；**`section` 必填**，各模块统一数字。**替代原 C1–C4**；`data` 形状按模块不同（§4.3） |
 | B5  | POST   | `/translation/attempts/start`                                | 开始翻译练习       | 新增   | 委托 `WritingAttemptService#start`                                |
 | B6  | GET    | `/translation/attempts/{attemptId}`                          | 练习详情         | 新增   | 委托 `#get`                                                       |
@@ -147,7 +148,7 @@
 |---|---|
 | A1 `GET /listening/levels`、A4 `/reading/levels`、A10 `/writing/levels`、A14 `/speaking/levels`、B1 `/translation/levels` | **U1**，模块编码进 `module` 参数（`listening` / `reading` / `writing` / `speaking` / `translation`） |
 | A2 `/listening/levels/{level}/intro`、A5 / A11 / A14b / B2 同构 | **U2** |
-| A3 `/listening/papers/{paperId}/parts`、A7 / A13 / A16 / B4 同构 | **U3** `GET /hsk/practice/papers/{paperId}/parts?module=`（`module` 必填，决策 16b） |
+| A3 `/listening/papers/{paperId}/parts`、A7 / A13 / A16 / B4 同构 | **U3** `GET /hsk/papers/{paperId}/parts?module=`（`module` 必填，决策 16b） |
 | C1–C4 `/{mod}/papers/{paperId}/parts/{section}/reports/latest` | **CR** `GET /papers/{paperId}/reports/latest?module=&section=`（模块与板块号都由 query 决定，不再靠 `paperId` 反查，决策 17b / 17c / 17d） |
 | ~~A6~~ `/reading/papers`、~~A12~~ `/writing/papers`、~~A15~~ `/speaking/papers`、~~B3~~ `/translation/papers` | **删除**（卷列表并入 U1 的 `papers[]`） |
 | ~~A8~~ `/reading/preferences`、~~A9~~ `/reading/preferences/level`（写作 / 口语同款共 6 端点） | **删除**（偏好机制下线，2026-11-11） |
@@ -160,7 +161,7 @@
 | 合并新增 | 4   | U1 / U2 / U3 / CR（新路径，旧路径全部 404） |
 | 新增   | 7   | B5–B10（翻译作答链路）+ E1（首页聚合）         |
 
-> **目录接口从「四跳」变「三跳」，且五个模块共用同一组路径**：模块卡（E1）→ `U1 /hsk/practice/levels?module=&version=&level=`（等级概览 + 卷列表）→ `U2 /hsk/practice/levels/{level}/intro?module=&version=` → `U3 /hsk/practice/papers/{paperId}/parts?module=` → 答题。**三跳都要带 `module`**（U3 必填，决策 16b）。响应结构五模块同构（§4.0.6），差异只在 `module` 值与口语 `stats` / 翻译双板块这些**响应内**差异。
+> **目录接口从「四跳」变「三跳」，且五个模块共用同一组路径**：模块卡（E1）→ `U1 /hsk/levels?module=&version=&level=`（等级概览 + 卷列表）→ `U2 /hsk/levels/{level}/intro?module=&version=` → `U3 /hsk/papers/{paperId}/parts?module=` → 答题。**三跳都要带 `module`**（U3 必填，决策 16b）。响应结构五模块同构（§4.0.6），差异只在 `module` 值与口语 `stats` / 翻译双板块这些**响应内**差异。
 
 ---
 
@@ -371,9 +372,9 @@
 
 | # | 端点 | 返回 | 用途 |
 |---|---|---|---|
-| 1 | `GET /hsk/practice/levels?module=&version=&level=` | **单对象** `{ module, level, levelName, paperCount, papers[] }` | 等级概览 + 该等级全部卷的作答进度 |
-| 2 | `GET /hsk/practice/levels/{level}/intro?module=&version=` | **单对象** `{ module, level, levelName, abilityDescription×3, totalQuestionCount, durationMinutes, parts[] }` | 该等级备考说明 |
-| 3 | `GET /hsk/practice/papers/{paperId}/parts?module=&version=` | **单对象** `{ module, paperId, paperCode, parts[] }` | 卷内该模块的板块 + 进度。**`module` 必填**（决策 16b） |
+| 1 | `GET /hsk/levels?module=&version=&level=` | **单对象** `{ module, level, levelName, paperCount, papers[] }` | 等级概览 + 该等级全部卷的作答进度 |
+| 2 | `GET /hsk/levels/{level}/intro?module=&version=` | **单对象** `{ module, level, levelName, abilityDescription×3, totalQuestionCount, durationMinutes, parts[] }` | 该等级备考说明 |
+| 3 | `GET /hsk/papers/{paperId}/parts?module=&version=` | **单对象** `{ module, paperId, paperCode, parts[] }` | 卷内该模块的板块 + 进度。**`module` 必填**（决策 16b） |
 
 `module` 取值：`listening` / `reading` / `writing` / `speaking` / `translation`（与 `/hsk/modules` 卡片的 `moduleCode` 一致）。
 
@@ -463,7 +464,7 @@
 1. 等级 chip 由前端按版本矩阵渲染（`HSK2.0`：听/读 `1`–`6`、写 `3`–`6`、口 `1`–`3`（HSKK 初/中/高）；`HSK3.0`：听/读 `1`–`7`、写 `2`–`7`、口 `3`–`7`）
 2. 需要显示每级能力描述时，逐级调端点 2（6–7 个并发请求，可本地缓存 1 天）
 
-> 若产品坚持「一次请求拿全部等级」，再加 `GET /hsk/practice/levels/all?module=&version=`（只返 `{level, levelName, abilityDescription×3, totalQuestionCount}`，不含 `parts`），**不塞进端点 1**——否则「单等级概览」与「全等级列表」两个语义又会分叉回旧问题。见 §10 第 14 条。
+> 若产品坚持「一次请求拿全部等级」，再加 `GET /hsk/levels/all?module=&version=`（只返 `{level, levelName, abilityDescription×3, totalQuestionCount}`，不含 `parts`），**不塞进端点 1**——否则「单等级概览」与「全等级列表」两个语义又会分叉回旧问题。见 §10 第 14 条。
 
 ---
 
@@ -471,7 +472,7 @@
 
 | 层 | 落点 | 说明 |
 |---|---|---|
-| 控制器 | `hsk/catalog/controller/PracticeCatalogController` | `GET /hsk/practice/levels`、`/levels/{level}/intro`、`/papers/{paperId}/parts`；三跳的 `module` 均为 query，缺失/非法 → **400 `PRACTICE_MODULE_INVALID`** |
+| 控制器 | `hsk/catalog/controller/PracticeCatalogController` | `GET /hsk/levels`、`/levels/{level}/intro`、`/papers/{paperId}/parts`；三跳的 `module` 均为 query，缺失/非法 → **400 `PRACTICE_MODULE_INVALID`** |
 | 装配 | `hsk/catalog/support/PracticePartAssembler` | 严格按 §7.1：`level_config` 短路 → `part_config` **不带 `enabled` 条件**查全量后内存三分拨（骨架 / `closedSections` / 丢弃）→ 题量现算过滤 → 兜底命名「第N部分」 |
 | 等级 | `hsk/catalog/support/PracticeLevelCode` | `version` 白名单（大小写敏感）、`level` 值域 `"1"`–`"7"`、`"7" → ('7','7-9')`、2.0 口语 `Beginner/Intermediate/Advanced ↔ 1/2/3`。**全仓等级换算只此一处** |
 | 模块 | `hsk/catalog/support/PracticeCatalogModule` | `module ↔ section_mapping`，`partCode`：口语 `PART_N`、其余 `"N"` |
@@ -504,9 +505,9 @@
 ### 4.1 目录端点（原 A 组：全部并入 U1–U3，本节保留各模块响应示例）
 
 > **2026-11-11 起目录路径统一**（§3、决策 16）：以下 A1–A16 各节的旧路径**全部删除**，改调
-> `GET /hsk/practice/levels?module={mod}&version=&level=`（U1）、
-> `GET /hsk/practice/levels/{level}/intro?module={mod}&version=`（U2）、
-> `GET /hsk/practice/papers/{paperId}/parts?module={mod}&version=`（U3）。
+> `GET /hsk/levels?module={mod}&version=&level=`（U1）、
+> `GET /hsk/levels/{level}/intro?module={mod}&version=`（U2）、
+> `GET /hsk/papers/{paperId}/parts?module={mod}&version=`（U3）。
 > 各节保留的内容是**该模块在统一端点下的响应差异**（JSON 示例照旧有效，外层多一个 `module` 字段）；入参、字段、状态机以 §4.0.6 为准。
 
 #### A1 ~~GET /listening/levels~~ 【并入 U1：module=listening】
@@ -525,7 +526,7 @@
 **请求示例**
 
 ```http
-GET /api/practice/hsk/practice/levels?module=listening&version=HSK2.0&level=1
+GET /api/practice/hsk/levels?module=listening&version=HSK2.0&level=1
 Authorization: Bearer xxx
 X-Client-Type: APP
 ```
@@ -589,7 +590,7 @@ X-Client-Type: APP
 **请求示例**
 
 ```http
-GET /api/practice/hsk/practice/levels/1/intro?module=listening&version=HSK2.0
+GET /api/practice/hsk/levels/1/intro?module=listening&version=HSK2.0
 Authorization: Bearer xxx
 ```
 
@@ -653,7 +654,7 @@ Authorization: Bearer xxx
 **请求示例**
 
 ```http
-GET /api/practice/hsk/practice/papers/2104193520701620225/parts?version=HSK2.0
+GET /api/practice/hsk/papers/2104193520701620225/parts?version=HSK2.0
 Authorization: Bearer xxx
 ```
 
@@ -729,7 +730,7 @@ Authorization: Bearer xxx
 **请求示例**
 
 ```http
-GET /api/practice/hsk/practice/levels?module=reading&version=HSK3.0&level=7
+GET /api/practice/hsk/levels?module=reading&version=HSK3.0&level=7
 Authorization: Bearer xxx
 ```
 
@@ -793,7 +794,7 @@ Authorization: Bearer xxx
 **请求示例**
 
 ```http
-GET /api/practice/hsk/practice/levels/7/intro?module=reading&version=HSK3.0
+GET /api/practice/hsk/levels/7/intro?module=reading&version=HSK3.0
 Authorization: Bearer xxx
 ```
 
@@ -850,8 +851,8 @@ Authorization: Bearer xxx
 | 项 | 结论 |
 |---|---|
 | 端点 | **删除**（不保留兼容，不返 410） |
-| 原因 | 与统一目录对齐：卷列表由 U1 `GET /hsk/practice/levels?module=reading&version=&level=` 的 `papers[]` 一并返回（§4.0.6 规定 2），避免「等级」与「卷」两个接口各自维护一套过滤条件 |
-| 前端动作 | 原 `GET /reading/papers?level=7&version=HSK3.0` → U1 `GET /hsk/practice/levels?module=reading&level=7&version=HSK3.0`；从 `data.papers` 取值 |
+| 原因 | 与统一目录对齐：卷列表由 U1 `GET /hsk/levels?module=reading&version=&level=` 的 `papers[]` 一并返回（§4.0.6 规定 2），避免「等级」与「卷」两个接口各自维护一套过滤条件 |
+| 前端动作 | 原 `GET /reading/papers?level=7&version=HSK3.0` → U1 `GET /hsk/levels?module=reading&level=7&version=HSK3.0`；从 `data.papers` 取值 |
 | 字段变化 | `paperName` 删（与 `paperCode` 同值）、`totalQuestionCount` → `totalCount`、`completedQuestionCount` → `completedCount`、`status` 改小写 |
 
 **本接口已不存在，调用必然 404**（路由删除后，网关会返回 `{"code":500}` + HTTP 200 的 `NoResourceFoundException`，排查见 §5 注）。
@@ -873,7 +874,7 @@ Authorization: Bearer xxx
 **请求示例**
 
 ```http
-GET /api/practice/hsk/practice/papers/2104193520701620226/parts?version=HSK3.0
+GET /api/practice/hsk/papers/2104193520701620226/parts?version=HSK3.0
 Authorization: Bearer xxx
 ```
 
@@ -958,7 +959,7 @@ Authorization: Bearer xxx
 **请求示例**
 
 ```http
-GET /api/practice/hsk/practice/levels?module=writing&version=HSK3.0&level=7
+GET /api/practice/hsk/levels?module=writing&version=HSK3.0&level=7
 Authorization: Bearer xxx
 ```
 
@@ -1062,8 +1063,8 @@ Authorization: Bearer xxx
 | 项 | 结论 |
 |---|---|
 | 端点 | **删除** |
-| 原因 | 卷列表由 U1 `GET /hsk/practice/levels?module=writing&version=&level=` 的 `papers[]` 一并返回（§4.0.6 规定 2） |
-| 前端动作 | `GET /writing/papers?level=7&version=HSK3.0` → U1 `GET /hsk/practice/levels?module=writing&level=7&version=HSK3.0`，取 `data.papers` |
+| 原因 | 卷列表由 U1 `GET /hsk/levels?module=writing&version=&level=` 的 `papers[]` 一并返回（§4.0.6 规定 2） |
+| 前端动作 | `GET /writing/papers?level=7&version=HSK3.0` → U1 `GET /hsk/levels?module=writing&level=7&version=HSK3.0`，取 `data.papers` |
 | 字段变化 | `paperName` 删、`totalQuestionCount` → `totalCount`、`completedQuestionCount` → `completedCount`、`status` 改小写 |
 
 ---
@@ -1139,7 +1140,7 @@ Authorization: Bearer xxx
 **请求示例**
 
 ```http
-GET /api/practice/hsk/practice/levels?module=speaking&version=HSK2.0&level=3
+GET /api/practice/hsk/levels?module=speaking&version=HSK2.0&level=3
 Authorization: Bearer xxx
 ```
 
@@ -1244,8 +1245,8 @@ Authorization: Bearer xxx
 | 项 | 结论 |
 |---|---|
 | 端点 | **删除** |
-| 原因 | 卷列表由 U1 `GET /hsk/practice/levels?module=speaking&version=&level=` 的 `papers[]` 一并返回（§4.0.6 规定 2） |
-| 前端动作 | `GET /speaking/papers?level=7&version=HSK3.0` → U1 `GET /hsk/practice/levels?module=speaking&level=7&version=HSK3.0`，取 `data.papers` |
+| 原因 | 卷列表由 U1 `GET /hsk/levels?module=speaking&version=&level=` 的 `papers[]` 一并返回（§4.0.6 规定 2） |
+| 前端动作 | `GET /speaking/papers?level=7&version=HSK3.0` → U1 `GET /hsk/levels?module=speaking&level=7&version=HSK3.0`，取 `data.papers` |
 | 字段变化 | `levelCode` 删（等级在 `data.level` 上一层）、`paperName` 删、`totalQuestionCount` → `totalCount`、`recordedCount`/`scoredCount` 移到 `parts[].stats`、`status` 改小写 |
 
 ---
@@ -1342,7 +1343,7 @@ Authorization: Bearer xxx
 **请求示例**
 
 ```http
-GET /api/practice/hsk/practice/levels?module=translation&version=HSK3.0&level=7
+GET /api/practice/hsk/levels?module=translation&version=HSK3.0&level=7
 Authorization: Bearer xxx
 ```
 
@@ -1436,8 +1437,8 @@ Authorization: Bearer xxx
 | 项 | 结论 |
 |---|---|
 | 端点 | **删除** |
-| 原因 | 卷列表由 U1 `GET /hsk/practice/levels?module=translation&version=&level=` 的 `papers[]` 一并返回（§4.0.6 规定 2） |
-| 前端动作 | `GET /translation/papers?level=7&version=HSK3.0` → U1 `GET /hsk/practice/levels?module=translation&level=7&version=HSK3.0`，取 `data.papers` |
+| 原因 | 卷列表由 U1 `GET /hsk/levels?module=translation&version=&level=` 的 `papers[]` 一并返回（§4.0.6 规定 2） |
+| 前端动作 | `GET /translation/papers?level=7&version=HSK3.0` → U1 `GET /hsk/levels?module=translation&level=7&version=HSK3.0`，取 `data.papers` |
 | 字段变化 | `paperName` 删、`totalQuestionCount` → `totalCount`、`completedQuestionCount` → `completedCount`、`status` 改小写 |
 
 ---
@@ -2270,13 +2271,13 @@ available = 存在 enabled=1 的 level_config 行
 | 3 | 报告 latest 路径变更 + **合并为 CR** | 4 个模块 | `/{module}/parts/{structureId}/reports/latest` → **统一 `GET /papers/{paperId}/reports/latest?module=&section=`**（不带模块前缀，模块与板块号都走 query）。**`module` 必填**（`listening`/`reading`/`writing`/`speaking`）——仅凭 `paperId` + `section` 在综合卷上无法唯一定位板块；`section` 一律传数字（口语也是 `1/2/3`，不传 `PART_1`），`module` 在响应里回显。原 4 条带模块前缀的新路径**也不存在** |
 | 4 | 所有目录接口必须传 `version` | 全部 | 首页切换版本时清理本地缓存的 `level` / 卷列表 / 滚动位置 |
 | **5** | **4 个 `/papers` 端点删除** | 阅读 / 写作 / 口语 / 翻译 | 卷列表改从 **U1** `data.papers` 取。**接口 404，没有兼容层** |
-| **6** | **`/levels` 从数组改单对象 + 路径统一** | 全部 5 个模块 | 原 `data: [ {level…} ]` → `data: { module, level, levelName, paperCount, papers[] }`；路径改 **U1 `/hsk/practice/levels?module=&version=&level=`**，原 5 条 `/{mod}/levels` 全部 404。**不再一次返回全部等级**，等级 chip 由前端按版本矩阵渲染（§4.0.6） |
+| **6** | **`/levels` 从数组改单对象 + 路径统一** | 全部 5 个模块 | 原 `data: [ {level…} ]` → `data: { module, level, levelName, paperCount, papers[] }`；路径改 **U1 `/hsk/levels?module=&version=&level=`**，原 5 条 `/{mod}/levels` 全部 404。**不再一次返回全部等级**，等级 chip 由前端按版本矩阵渲染（§4.0.6） |
 | **7** | **`sections[]` → `parts[]`；`suggestDurationMinutes` → `durationMinutes`** | 阅读 / 写作 / 口语 / 翻译 | 字段改名，值不变 |
 | **8** | **卷状态枚举统一小写** | 阅读 / 写作 / 口语 / 翻译 | `NOT_STARTED` → `not_started` 等。全局替换后再全局搜一遍大写残留 |
-| **9** | **`/parts` 外层加对象包裹、路径统一、进度字段收敛** | 全部 5 个模块 | 路径改 **U3 `/hsk/practice/papers/{paperId}/parts?module=&version=`**（**`module` 必填**，决策 16b；响应带 `module`）；原 5 条 `/{mod}/papers/{id}/parts` 404；`data: [part…]` → `data: { module, paperId, paperCode, parts: [...] }`；`draftRecordId`/`draftAttemptId` → `draft.id`；`hasReport`/`latestRecordId`/`latestReportId`/`feedbackStatus`/`reportStatus` → `report.*`；口语 4 个计数 → `stats.*` |
+| **9** | **`/parts` 外层加对象包裹、路径统一、进度字段收敛** | 全部 5 个模块 | 路径改 **U3 `/hsk/papers/{paperId}/parts?module=&version=`**（**`module` 必填**，决策 16b；响应带 `module`）；原 5 条 `/{mod}/papers/{id}/parts` 404；`data: [part…]` → `data: { module, paperId, paperCode, parts: [...] }`；`draftRecordId`/`draftAttemptId` → `draft.id`；`hasReport`/`latestRecordId`/`latestReportId`/`feedbackStatus`/`reportStatus` → `report.*`；口语 4 个计数 → `stats.*` |
 | **10** | **数值等级字段删除** | 阅读 / 写作 / 口语 / 翻译 | `level`（数值）/ `levelCode` / `databaseLevel` / `levelId` 全部不再下发，只用 `level`（**数字串**）+ `levelName`（显示名） |
 | **11** | **偏好接口下线** | 阅读 / 写作 / 口语 | `GET /{mod}/preferences`、`PUT /{mod}/preferences/level` 共 6 个端点 **404**。如需「上次练到哪」，前端 `localStorage` 自存，或等后续由 `practice_record` 推导 |
-| **12** | **`/intro` 路径统一为 U2** | 全部 5 个模块 | `GET /hsk/practice/levels/{level}/intro?module=&version=`，原 5 条 `/{mod}/levels/{level}/intro` 全部 404；响应带 `module` |
+| **12** | **`/intro` 路径统一为 U2** | 全部 5 个模块 | `GET /hsk/levels/{level}/intro?module=&version=`，原 5 条 `/{mod}/levels/{level}/intro` 全部 404；响应带 `module` |
 | **13** | **板块层不再下发 `layouts`** | 全部 5 个模块的 U2 / U3 | `parts[]` 里**没有 `layouts` 键**；作答交互一律等题目接口逐题下发 `layout`（§4.0.5）。翻译两张卡的作答组件也改为进题后按 `layout` 渲染 |
 
 > 第 5–13 条是**本轮新增的破坏性变更**，与 1–4 一起构成「前端必须同批上线」的完整清单。**没有灰度通道**：任一条漏改都会导致白屏或空列表。
@@ -2430,7 +2431,7 @@ POST /translation/attempts/{attemptId}/submissions
 |---|---|---|
 | 11 | 2.0 调 `/translation/levels` | 200，`paperCount=0` + `papers=[]`，**不 404** |
 | 12 | 3.0 调 `/translation/levels?level=7` | `paperCount=1`；`papers[0].paperCode='HSK7-9_1'`、`totalCount=4` |
-| 13 | U3 `?module=translation`（`/hsk/practice/papers/{id}/parts?module=translation`） | `data.parts` 2 个板块：`translation_written` / `translation_oral`；**无 `layouts`**，作答交互进题后按 `layout` 判 |
+| 13 | U3 `?module=translation`（`/hsk/papers/{id}/parts?module=translation`） | `data.parts` 2 个板块：`translation_written` / `translation_oral`；**无 `layouts`**，作答交互进题后按 `layout` 判 |
 | 13a | `/translation/papers`（已删） | 404 |
 | 14 | 拿写作卷的 section 打翻译 start | 400 `SECTION_MAPPING_MISMATCH` |
 | 15 | 拿翻译卷的 section 打写作 start | 404（写作侧不放宽） |
@@ -2587,7 +2588,7 @@ ALTER TABLE practice_module_part_config
 | `hsk/translation/service/impl/TranslationPracticeServiceImplTest.java`（新增 12 例） | 板块缺失 404、委托参数为 `SEC_TRANSLATION`、`level` 去前缀、`feedbackStatus` 空值补 `PENDING`、section 不符 404、题目映射（题型/布局/判卷方式/`instruction→stem`）、写作练习不可从翻译入口保存、交卷透传、报告非翻译 404、`UNAVAILABLE` 丢分数与明细、`READY` 保留 |
 | `hsk/translation/support/TranslationPartResolverTest.java`（新增 7 例） | 板块缺失/参数空/板块无题/写作 attempt 越权/未知 attempt 全部 404，正常翻译 attempt 放行 |
 | `hsk/speaking/mapper/SpeakingSourcePaperMapper`（改） | 新增 `selectByIdForReport`（只判 `deleted=0`，与 `selectActiveById` 并存） |
-| `hsk/catalog/controller/PracticeCatalogController.java`（新增） | **U1–U3 统一目录端点**：`GET /hsk/practice/levels`、`/levels/{level}/intro`、`/papers/{paperId}/parts`；`module` 一律走 query（缺失/非法 → 400 `模块编码不合法（PRACTICE_MODULE_INVALID）：xxx`）。✅ 原 15 条模块内目录端点已整块注释摘除（2026-11-11），见 §4.0.6 末尾 |
+| `hsk/catalog/controller/PracticeCatalogController.java`（新增） | **U1–U3 统一目录端点**：`GET /hsk/levels`、`/levels/{level}/intro`、`/papers/{paperId}/parts`；`module` 一律走 query（缺失/非法 → 400 `模块编码不合法（PRACTICE_MODULE_INVALID）：xxx`）。✅ 原 15 条模块内目录端点已整块注释摘除（2026-11-11），见 §4.0.6 末尾 |
 | 4 个旧目录控制器（改：整块注释） | `ListeningCatalogController`（3 条）、`ReadingCatalogController` / `WritingCatalogController` / `SpeakingCatalogController`（各 4 条）全部 `@GetMapping` 注释停用 → 回落 404；类保留为零映射壳，类注释标注「待统一目录稳定后整体删除」 |
 | `hsk/catalog/service/impl/PracticeCatalogServiceImpl.java`（新增） | 三跳装配：卷 / 题量 / 进度按模块分表取；`paperId` 先 `exam_paper` 再 `speaking_exam_paper`；`version` 不符 / 卷下架 / 该模块在该卷无板块 → 404；等级未配置或模块关闭 → 200 空对象 |
 | `hsk/catalog/support/PracticePartAssembler.java`（新增） | §7.1 板块装配：`level_config` 短路 → `part_config` 三分拨（骨架 / closedSections / 丢弃）→ 题量现算过滤 → 兜底 `第N部分`；`assembleForIntro` 在全等级无卷时退回 `standard_question_count` |
@@ -2648,7 +2649,7 @@ ALTER TABLE practice_module_part_config
 | 11 | `layout` 值域是否要收敛到跨模块统一枚举 | **不收敛，原样透传**（沿用 CSCA 既有约定）。7 个值已经是交互形态，换算只会多一层漏配 | 前端 + 后端 |
 | 12 | 混形态的板块（TEST 2 个 / 生产 48 个）如何处理 | 板块层不下发 `layouts`（2026-11-11 起），前端逐题渲染，不做板块级归一。若产品要求「一个板块一种交互」，那是**内容问题**（该板块题填错了 `layout`），回内容侧修，不改接口 | 产品 + 运营 |
 | 13 | 老值域 `passageGroup` / `clozeGroup` 的语义（差异 E7） | 它们是**题面形态**不是答题形式（篇章组 / 完形组）。生产对齐时由 TEST 值覆盖；未被覆盖的 30 行若仍是这两个值，需人工判成 `choice` / `choiceGrid` | 运营 |
-| 14 | **三跳后「全部等级列表」从哪里来** | P0：等级 chip 由前端按版本矩阵渲染；要显示各级能力描述就逐级调 U2（6–7 个并发，可缓存 1 天）。若产品要求一次拿全，再加 `GET /hsk/practice/levels/all?module=&version=`（只返 `level`/`levelName`/`abilityDescription×3`/`totalQuestionCount`，不含 `parts`），**不塞进 U1**（否则又回到「单等级概览 vs 全等级列表」分叉） | 产品 + 前端 |
+| 14 | **三跳后「全部等级列表」从哪里来** | P0：等级 chip 由前端按版本矩阵渲染；要显示各级能力描述就逐级调 U2（6–7 个并发，可缓存 1 天）。若产品要求一次拿全，再加 `GET /hsk/levels/all?module=&version=`（只返 `level`/`levelName`/`abilityDescription×3`/`totalQuestionCount`，不含 `parts`），**不塞进 U1**（否则又回到「单等级概览 vs 全等级列表」分叉） | 产品 + 前端 |
 | 15 | **口语 2.0 的 `level` 编码** | 定数字串 `"1"`/`"2"`/`"3"`（= HSKK 初/中/高），与 `level_config.level` 一致；卷侧的 `Beginner/Intermediate/Advanced` 由 `PracticeLevelCode` 换算（§4.0.6）。`levelName` 按「模块 + 版本」取，2.0 显示「HSKK 初级」、3.0 的 `"3"` 显示「HSK3」—— **两版本在库里各存各的 `level_name` 行（2026-11-11 已落库），代码不做换算** | 产品 + 前端 |
 | 16 | **`draft` / `report` / `stats` 三块的命名** | 现定义为 `{draft:{id,answeredCount,currentQuestionId}, report:{id,hasReport,status}, stats:{口语四项}}`。若前端更习惯把 `correctCount`/`wrongCount` 也放进 `report`，可整体调整——但**必须三块一起定**，不要一半平铺一半嵌套 | 前端 |
 | 17 | **作答链路（B5–B10）的 `status` 是否也统一小写** | **本期不动**：`writing_attempt.status` / 报告状态仍是 `IN_PROGRESS` / `PENDING` / `READY`（DB 原值）。本次统一范围只到「目录三接口」（`/levels`、`/intro`、`/parts`）。P1 若统一，需要一次 DB 枚举迁移 + 前端全量替换，不建议与目录改造同批 | 后端 + 前端 |
