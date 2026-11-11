@@ -28,7 +28,7 @@
 | 4 | `partCode` 取值 | **保持不变**：口语 `PART_{section}`（如 `PART_1`），其余模块 `{section}`（如 `"1"`）。服务端由 `section` 派生，不再查表 |
 | 5 | 板块字段来源 | `parts[]` 全部字段直取 `practice_module_part_config` 同名列，三语同发；**不下发 `answerMode`**（答题形式由**题目接口逐题下发 `layout`** 判定，见 §4.0.5） |
 | 5b | 答题形式真源 | **`question.layout`**，原样透传、不做枚举换算。`typeCode` 只表业务语义（题型名 / 评分策略），**不能反推答题形式**（PROD 实测同一 `type_id_mapping` 对 4 种 layout） |
-| 6 | 报告 latest 路径 | 旧 `/parts/{structureId}/reports/latest` **直接删除**，换 `/papers/{paperId}/parts/{section}/reports/latest`，不保留兼容 |
+| 6 | 报告 latest 路径 | 旧 `/parts/{structureId}/reports/latest` **直接删除**，换统一端点 **CR `GET /papers/{paperId}/parts/{section}/reports/latest`**（不带模块前缀，按 `paperId` 反查模块，决策 17），不保留兼容 |
 | 7 | 上下架口径 | 练习侧只读 `enabled_prac = 1`；`enabled`（板块）/ `exam_paper.enabled_prac`（卷）/ `question.enabled_prac`（题）三级独立，详见 SDD §3.4 |
 | 8 | 板块开关 | `practice_module_part_config.enabled`：`1` 开放 / `0` 关闭。`deleted` 回到纯逻辑删除，不作开关 |
 | 9 | 翻译版本门槛 | 翻译仅 `HSK3.0` 有数据。2.0 调目录接口返回**空数组 / 空对象**，不报 404 |
@@ -36,8 +36,12 @@
 | 11 | 环境基线 | **以 TEST 为准**。生产差异只在 §9.1 登记，不改字段契约、不写进接口行为 |
 | 12 | 等级入参命名 | 请求与响应一律用 **`level`**（query / path / body），**取数字串**（`"1"`–`"6"`、`"7"`=HSK7-9 整级）；显示名另给 `levelName`。`levelCode` / `databaseLevel` 全部废弃 |
 | 13 | 模块卡数据源 | `/hsk/modules` 的模块卡**取自字典表**（`hsk_practice_module_v2` / `_v3`），不做进程内常量。字段一列一义：`item_text`=中文名、`item_value`=`sectionMapping`、`description`=`moduleCode`、`sort_order`=顺序、`item_properties` 只放 `moduleCode`/`nameEn`/`nameVi` 的 JSON；`layout` 存 `sys_dict.remark`。`icon`/`theme`/`badge`/`entryLevelCode` **不入库、不下发**，前端按 `moduleCode` 内置 |
-| 14 | **目录接口统一为三跳** | 5 个模块同一套 3 端点：`/{mod}/levels`（单对象 + `papers[]`）→ `/{mod}/levels/{level}/intro` → `/{mod}/papers/{paperId}/parts`（对象包裹）。**4 个 `/papers` 端点删除**；板块数组统一 `parts`、时长统一 `durationMinutes`、卷状态统一小写 |
+| 14 | **目录接口统一为三跳** | 5 个模块同一套响应结构：`levels`（单对象 + `papers[]`）→ `levels/{level}/intro` → `papers/{paperId}/parts`（对象包裹）。**4 个 `/papers` 端点删除**；板块数组统一 `parts`、时长统一 `durationMinutes`、卷状态统一小写。2026-11-11 起连路径也统一（决策 16） |
 | 15 | **`/parts` 进度字段** | 4 个通用字段（`status`/`doneCount`/`correctCount`/`wrongCount`）+ 3 个扩展块（`draft`/`report`/`stats`）。**不再平铺** `draftRecordId` / `draftAttemptId` / `latestReportId` / `feedbackStatus` 等模块专属字段 |
+| 16 | **目录端点合并为 U1–U3**（2026-11-11） | 5 个模块 × 3 跳 = 15 个目录端点 → **3 个统一端点**：`GET /hsk/practice/levels?module=&version=&level=`、`GET /hsk/practice/levels/{level}/intro?module=`、`GET /hsk/practice/papers/{paperId}/parts`。`module` 是路径段 `/{mod}` 的 query 化；U3 的 `paperId` 全局唯一可反查模块（`exam_paper` 与 `speaking_exam_paper` 域隔离）。响应统一加 `module` 字段。旧 15 条路径全部 404 |
+| 17 | **报告端点合并为 CR**（2026-11-11） | 原 C1–C4 四个 `/{mod}/papers/{paperId}/parts/{section}/reports/latest` → **1 个** `GET /papers/{paperId}/parts/{section}/reports/latest`。同样按 `paperId` 反查模块；`data` 形状按模块不同（听/读=题量正确率，写/译=评估反馈，说=录音评分），响应加 `module` 判别字段 |
+| 18 | **`layouts` 只在题目接口下发**（2026-11-11） | 板块层（`/intro`、`/parts` 的 `parts[]`）**不再下发 `layouts`**；答题形式只由题目接口逐题下发 `layout`。板块卡片层只需要 `typeCode`（显示题型名） |
+| 19 | **运营端板块配置端点（D 组）本期不规划**（2026-11-11） | `GET/PATCH /hsk/module-config/parts` 两个端点从本期移除；运营临时直接改库 `practice_module_part_config`（只能改 `enabled` / `sort_order`，规则照 §4.0.4：不能删行）。接口化 P1 再议 |
 
 ---
 
@@ -201,8 +205,7 @@
   "typeNameEn": "Picture Judgment",
   "typeNameVi": "Nhận định hình ảnh",
   "questionCount": 10,
-  "sortOrder": 1,
-  "layouts": ["judge"]
+  "sortOrder": 1
 }
 ```
 
@@ -220,7 +223,7 @@
 | `typeNameVi` | String | 【新增】 | `type_name_vi`，非空 |
 | `questionCount` | Integer | 【修改】 | 口径由「配置的标准题量」改为「`question` 现算的实际题量（已排除 `enabled_prac=0` 的单题）」。**`questionCount = 0` 的板块不下发** |
 | `sortOrder` | Integer | 【修改】 | `sort_order`。阅读/写作/口语的 `/parts` 原本没有该字段，本次统一补上 |
-| `layouts` | Array\<String\> | 【新增】 | 该板块内**实际题目**的 `question.layout` 去重集合，按出现顺序。**答题形式看这个**（§4.0.5）。正常只有一个元素；`["input","record"]` 表示该板块混了两种交互 |
+| ~~`layouts`~~ | ~~Array\<String\>~~ | 【删除，2026-11-11】 | **板块层不再下发 `layouts`**——答题形式只在**题目接口逐题下发 `layout`**（§4.0.5）。板块卡片层只需要 `typeCode`（显示题型名）与 `questionCount` |
 
 > **不再下发 `answerMode`**。`answerMode` 是「`typeCode` → 一套自定义枚举」的二次映射，而 `question.layout` 已经是落库的答题形式，直接透传即可——**少一层映射就少一处漏配**（写作 `WritingLayoutType` 的 switch 白名单漏了 3.0 的 `chart_analysis` / `topic_essay` 就是现成教训，B-04）。
 > **三语实测填充率 132/132**，前端可放心直接取，不需要回退。
@@ -563,7 +566,7 @@ Authorization: Bearer xxx
     "parts": [
       { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
         "typeCode": "listening_judge", "typeName": "看图判断题", "typeNameEn": "Picture Judgment",
-        "typeNameVi": "Nhận định hình ảnh", "questionCount": 5, "sortOrder": 1, "layouts": ["judge"] }
+        "typeNameVi": "Nhận định hình ảnh", "questionCount": 5, "sortOrder": 1 }
     ]
   }
 }
@@ -577,7 +580,7 @@ Authorization: Bearer xxx
 | `abilityDescription` × 3 | String | 【无变更】 | 三语能力描述，来自 `practice_module_level_config` |
 | `totalQuestionCount` | Integer | 【无变更】 | 模块标准总题量 |
 | `durationMinutes` | Integer | 【无变更】 | 建议时长（分钟） |
-| `parts[]` | Array | 【修改】 | **来源从 `parts_config` JSON 改为 `practice_module_part_config` 行式表**；字段见 §4.0.3，其中 `partCode` / `section` / `typeCode` / `partNameEn` / `partNameVi` / `typeNameVi` / `layouts` 为新增 |
+| `parts[]` | Array | 【修改】 | **来源从 `parts_config` JSON 改为 `practice_module_part_config` 行式表**；字段见 §4.0.3，其中 `partCode` / `section` / `typeCode` / `partNameEn` / `partNameVi` / `typeNameVi` 为新增 |
 
 **服务端内部执行顺序**
 
@@ -622,14 +625,14 @@ Authorization: Bearer xxx
     "parts": [
       { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
         "typeCode": "listening_judge", "typeName": "看图判断题", "typeNameEn": "Picture Judgment",
-        "typeNameVi": "Nhận định hình ảnh", "questionCount": 5, "sortOrder": 1, "layouts": ["judge"],
+        "typeNameVi": "Nhận định hình ảnh", "questionCount": 5, "sortOrder": 1,
         "status": "completed", "doneCount": 5, "correctCount": 4, "wrongCount": 1,
         "draft": null,
         "report": { "id": 88100, "hasReport": true, "status": "READY" },
         "stats": null },
       { "partCode": "2", "section": 2, "partName": "第二部分", "partNameEn": "Part 2", "partNameVi": "Phần 2",
         "typeCode": "listening_pic_choice", "typeName": "看图选择题", "typeNameEn": "Picture Choice",
-        "typeNameVi": "Lựa chọn hình ảnh", "questionCount": 5, "sortOrder": 2, "layouts": ["choice"],
+        "typeNameVi": "Lựa chọn hình ảnh", "questionCount": 5, "sortOrder": 2,
         "status": "in_progress", "doneCount": 2, "correctCount": null, "wrongCount": null,
         "draft": { "id": 88123, "answeredCount": 2, "currentQuestionId": 90012 },
         "report": null,
@@ -645,7 +648,7 @@ Authorization: Bearer xxx
 |---|---|---|---|
 | `paperId` / `paperCode` | — | 【无变更】 | 外层对象本次**从裸数组改成对象包裹**（§4.0.6 规定 1） |
 | `parts[].structureId` | Long | 【删除】 | 改 `section` |
-| `parts[]` 基础字段 | — | 见 §4.0.3 | `partCode` / `section` / 三语名 / `typeCode` / `questionCount` / `sortOrder` / `layouts` |
+| `parts[]` 基础字段 | — | 见 §4.0.3 | `partCode` / `section` / 三语名 / `typeCode` / `questionCount` / `sortOrder` |
 | `parts[].status` | String | 【无变更】 | `not_started` / `in_progress` / `completed` |
 | `parts[].doneCount` | Integer | 【无变更】 | 已答题数 |
 | `parts[].correctCount` | Integer | 【无变更】 | 正确数，仅已提交板块有值，否则 `null` |
@@ -767,7 +770,7 @@ Authorization: Bearer xxx
     "parts": [
       { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
         "typeCode": "reading_detail_choice", "typeName": "细节选择题", "typeNameEn": "Detail Multiple Choice",
-        "typeNameVi": "Lựa chọn chi tiết", "questionCount": 10, "sortOrder": 1, "layouts": ["choice"] }
+        "typeNameVi": "Lựa chọn chi tiết", "questionCount": 10, "sortOrder": 1 }
     ]
   }
 }
@@ -842,7 +845,7 @@ Authorization: Bearer xxx
     "parts": [
       { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
         "typeCode": "reading_detail_choice", "typeName": "细节选择题", "typeNameEn": "Detail Multiple Choice",
-        "typeNameVi": "Lựa chọn chi tiết", "questionCount": 10, "sortOrder": 1, "layouts": ["choice"],
+        "typeNameVi": "Lựa chọn chi tiết", "questionCount": 10, "sortOrder": 1,
         "status": "completed", "doneCount": 10, "correctCount": 8, "wrongCount": 2,
         "draft": null,
         "report": { "id": 88100, "hasReport": true, "status": "READY" },
@@ -985,10 +988,10 @@ Authorization: Bearer xxx
     "parts": [
       { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
         "typeCode": "chart_analysis", "typeName": "图表描述", "typeNameEn": "Chart Description",
-        "typeNameVi": "Mô tả biểu đồ", "questionCount": 1, "sortOrder": 1, "layouts": ["input"] },
+        "typeNameVi": "Mô tả biểu đồ", "questionCount": 1, "sortOrder": 1 },
       { "partCode": "2", "section": 2, "partName": "第二部分", "partNameEn": "Part 2", "partNameVi": "Phần 2",
         "typeCode": "topic_essay", "typeName": "话题作文", "typeNameEn": "Topic Essay",
-        "typeNameVi": "Bài luận chủ đề", "questionCount": 1, "sortOrder": 2, "layouts": ["input"] }
+        "typeNameVi": "Bài luận chủ đề", "questionCount": 1, "sortOrder": 2 }
     ]
   }
 }
@@ -1043,7 +1046,7 @@ Authorization: Bearer xxx
     "parts": [
       { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
         "typeCode": "chart_analysis", "typeName": "图表描述", "typeNameEn": "Chart Description",
-        "typeNameVi": "Mô tả biểu đồ", "questionCount": 1, "sortOrder": 1, "layouts": ["input"],
+        "typeNameVi": "Mô tả biểu đồ", "questionCount": 1, "sortOrder": 1,
         "status": "in_progress", "doneCount": 1, "correctCount": null, "wrongCount": null,
         "draft": { "id": 5512, "answeredCount": 1, "currentQuestionId": 91001 },
         "report": { "id": 7712, "hasReport": true, "status": "READY" },
@@ -1171,7 +1174,7 @@ Authorization: Bearer xxx
     "parts": [
       { "partCode": "PART_1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
         "typeCode": "applied_read_speak", "typeName": "应用读说", "typeNameEn": "Apply and read aloud",
-        "typeNameVi": "Đọc và nói ứng dụng", "questionCount": 1, "sortOrder": 1, "layouts": ["record"],
+        "typeNameVi": "Đọc và nói ứng dụng", "questionCount": 1, "sortOrder": 1,
         "durationMinutes": 5 }
     ]
   }
@@ -1225,7 +1228,7 @@ Authorization: Bearer xxx
     "parts": [
       { "partCode": "PART_3", "section": 3, "partName": "第三部分", "partNameEn": "Part 3", "partNameVi": "Phần 3",
         "typeCode": "viewpoint_express", "typeName": "观点表达", "typeNameEn": "Expressing Viewpoints",
-        "typeNameVi": "Thể hiện quan điểm", "questionCount": 1, "sortOrder": 3, "layouts": ["record"],
+        "typeNameVi": "Thể hiện quan điểm", "questionCount": 1, "sortOrder": 3,
         "durationMinutes": 5,
         "status": "in_progress", "doneCount": 1, "correctCount": null, "wrongCount": null,
         "draft": { "id": 6620, "answeredCount": 1, "currentQuestionId": 92001 },
@@ -1369,10 +1372,10 @@ Authorization: Bearer xxx
     "parts": [
       { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
         "typeCode": "translation_written", "typeName": "笔译", "typeNameEn": "Written Translation",
-        "typeNameVi": "Biên dịch viết", "questionCount": 2, "sortOrder": 1, "layouts": ["input"] },
+        "typeNameVi": "Biên dịch viết", "questionCount": 2, "sortOrder": 1 },
       { "partCode": "2", "section": 2, "partName": "第二部分", "partNameEn": "Part 2", "partNameVi": "Phần 2",
         "typeCode": "translation_oral", "typeName": "口译", "typeNameEn": "Oral Interpretation",
-        "typeNameVi": "Phiên dịch nói", "questionCount": 2, "sortOrder": 2, "layouts": ["record"] }
+        "typeNameVi": "Phiên dịch nói", "questionCount": 2, "sortOrder": 2 }
     ]
   }
 }
@@ -1417,12 +1420,12 @@ Authorization: Bearer xxx
     "parts": [
       { "partCode": "1", "section": 1, "partName": "第一部分", "partNameEn": "Part 1", "partNameVi": "Phần 1",
         "typeCode": "translation_written", "typeName": "笔译", "typeNameEn": "Written Translation",
-        "typeNameVi": "Biên dịch viết", "questionCount": 2, "sortOrder": 1, "layouts": ["input"],
+        "typeNameVi": "Biên dịch viết", "questionCount": 2, "sortOrder": 1,
         "status": "not_started", "doneCount": 0, "correctCount": null, "wrongCount": null,
         "draft": null, "report": null, "stats": null },
       { "partCode": "2", "section": 2, "partName": "第二部分", "partNameEn": "Part 2", "partNameVi": "Phần 2",
         "typeCode": "translation_oral", "typeName": "口译", "typeNameEn": "Oral Interpretation",
-        "typeNameVi": "Phiên dịch nói", "questionCount": 2, "sortOrder": 2, "layouts": ["record"],
+        "typeNameVi": "Phiên dịch nói", "questionCount": 2, "sortOrder": 2,
         "status": "not_started", "doneCount": 0, "correctCount": null, "wrongCount": null,
         "draft": null, "report": null, "stats": null }
     ]
@@ -1430,14 +1433,14 @@ Authorization: Bearer xxx
 }
 ```
 
-**返回字段说明**：与 A13 完全同构（`WritingPartResponse` 复用）+ §4.0.6 的对象包裹。**前端按 `layouts` 渲染两张卡**（答题形式看 `layouts`，不看 `typeCode`，§4.0.5）：
+**返回字段说明**：与 A13 完全同构（`WritingPartResponse` 复用）+ §4.0.6 的对象包裹。**板块层不下发 `layouts`**（2026-11-11 起，见 §4.0.3）——两张卡的作答交互**进题后按题目接口逐题下发的 `layout` 渲染**：
 
-| `layouts` | `typeCode` | 卡片 | 作答交互 |
+| `typeCode` | 卡片 | 进题后题目 `layout` | 作答交互 |
 |---|---|---|---|
-| `["input"]` | `translation_written` | 笔译 | 文本输入 |
-| `["record"]` | `translation_oral` | 口译 | 录音上传 |
+| `translation_written` | 笔译 | `input` | 文本输入 |
+| `translation_oral` | 口译 | `record` | 录音上传 |
 
-> `typeCode` 用来显示题型名（「笔译」/「口译」），`layouts` 用来决定渲染哪个作答组件。两者在翻译这 4 题上恰好一一对应，但**判断分支要写在 `layouts` 上**——`typeCode` 是可扩展的（以后加题型不必改前端渲染分支）。
+> `typeCode` 用来显示题型名（「笔译」/「口译」）与选卡片入口；**作答组件的选型一律等题目接口的 `layout`**，不在板块层预判。翻译这 4 题上 `typeCode` 与 `layout` 恰好一一对应，但那是巧合不是契约——判断分支必须写在题目 `layout` 上。
 
 **服务端内部执行顺序**
 
@@ -2266,14 +2269,14 @@ available = 存在 enabled=1 的 level_config 行
 
 | 场景 | 规则 |
 |---|---|
-| **答题形式** | **只看 `layout`**（题目接口）与 `layouts`（板块接口），原样值不换算。`typeCode` 只用于显示题型名与选择评分策略 |
-| 翻译两张卡 | 按 `parts[].layouts` 区分：`["input"]` → 文本输入；`["record"]` → 录音 |
+| **答题形式** | **只看题目接口逐题下发的 `layout`**，原样值不换算。板块层不下发 `layouts`（2026-11-11 起，§4.0.3）；`typeCode` 只用于显示题型名 |
+| 翻译两张卡 | 卡片层按 `typeCode` 显示题型名与入口；**作答组件进题后按 `layout` 渲染**：`input` → 文本输入；`record` → 录音 |
 | 三语切换 | `parts[]` / `abilityDescription` ×3 / `header` / **`levelName`**（`practice_module_level_config.level_name` ×3，§4.0.6）均三语，服务端按 `Accept-Language` 选一 |
 | 模块卡片置灰 | `available=false` 时置灰 + Toast 提示，**不要隐藏卡片**（保持 5 卡/4 卡布局稳定），`disabledReason` 映射文案 |
 | 版本切换 | 清空已选 `level`、卷列表、滚动位置、本地「上次练习」。**不要复用旧 `level` 打新版本接口**：2.0 的 `HSK1` 在 3.0 下虽存在但卷集合不同；`HSK7-9` 在 2.0 下返回空结果 |
 | 等级切换 | 三跳下「等级 chip」与「卷列表」在同一屏：点 chip 只重拉 `/{mod}/levels?level=`，**不要重拉整页** |
 | `questionCount = 0` | 该板块不会下发，前端不需要处理空板块 |
-| `layouts` 有多个值 | 说明该板块混了两种交互（TEST 有 2 个板块、PROD 有 48 个）。前端按题渲染即可，**不要在板块层强制选一种** |
+| 混形态的板块 | 同一板块内题目可能有多种 `layout`（TEST 有 2 个这样的板块、PROD 48 个）。前端**按题渲染**即可，不要在板块层预判交互形态 |
 | 口语 `stats` | 只有口语的 `parts[].stats` 非 `null`，展示「已录音 x / 已评分 y / 失败 z」 |
 
 ---
@@ -2379,11 +2382,11 @@ POST /translation/attempts/{attemptId}/submissions
 | 9a | 阅读/写作/口语/翻译的 `/levels` 与 `/intro` | **不存在** `levelCode` / `databaseLevel` / `levelId`；**不存在** `sections`、`suggestDurationMinutes` |
 | 9b | 三个带「完成」语义的卷状态 | 5 个模块全部是小写 `not_started` / `in_progress` / `completed`，**没有**大写残留 |
 | 10 | `parts[]` 三语 | `partNameEn` / `partNameVi` / `typeNameEn` / `typeNameVi` 全部非空 |
-| 10a | 任一 parts 接口 | 每个板块都有 `layouts`，且非空数组 |
+| 10a | 任一 parts 接口 | **不存在** `layouts` 字段（2026-11-11 起板块层不下发）；板块卡片字段见 §4.0.3 |
 | 10b | 阅读 / 翻译取题接口 | 每道题都有 `layout`，值在 7 个规范值内；**阅读系本次新补字段** |
 | 10c | 写作取题接口 | `layout` 直取 `question.layout`，**与 `type_id_mapping` 无耦合**：造一条 `type_id_mapping='chart_analysis'` + `layout='input'` 的题，能正常返回（B-04 回归） |
 | 10d | 生产对齐后（差异 E6，本期不验） | `SEC_READ` / `SEC_WRITE` 的 `layout` 非空率回到 **100%**（现为 0% / 0%）；本期只验 TEST 的 100% |
-| 10e | 混 `layouts` 的板块 | `layouts` 返回 2 个元素；前端逐题渲染不出错（TEST 有 2 个这样的板块） |
+| 10e | 混形态的板块 | 逐题 `layout` 可能不同；前端按题渲染不出错（TEST 有 2 个这样的板块） |
 
 ### 翻译独立
 
@@ -2391,7 +2394,7 @@ POST /translation/attempts/{attemptId}/submissions
 |---|---|---|
 | 11 | 2.0 调 `/translation/levels` | 200，`paperCount=0` + `papers=[]`，**不 404** |
 | 12 | 3.0 调 `/translation/levels?level=7` | `paperCount=1`；`papers[0].paperCode='HSK7-9_1'`、`totalCount=4` |
-| 13 | `/translation/papers/{id}/parts` | `data.parts` 2 个板块：`translation_written`（`layouts=["input"]`）/ `translation_oral`（`layouts=["record"]`） |
+| 13 | U3 `module=translation`（或 `/hsk/practice/papers/{id}/parts`） | `data.parts` 2 个板块：`translation_written` / `translation_oral`；**无 `layouts`**，作答交互进题后按 `layout` 判 |
 | 13a | `/translation/papers`（已删） | 404 |
 | 14 | 拿写作卷的 section 打翻译 start | 400 `SECTION_MAPPING_MISMATCH` |
 | 15 | 拿翻译卷的 section 打写作 start | 404（写作侧不放宽） |
@@ -2572,7 +2575,7 @@ ALTER TABLE practice_module_part_config
 | 9 | 生产 `layout` 对齐口径（差异 E6，本期不执行） | 已登记：**只能按 `question.id` 从 TEST 复制**（可覆盖 6439/6469），**禁止按值映射**（`textChoice` 一对多）；剩 30 行生产独有题人工判定（§4.0.5） | DBA + 运营 |
 | 10 | 口语要不要补 `layout` 列 | P0 不补，口语恒 `record`，前端按模块写死。若要做「朗读 / 自由说话」差异化录音 UI，再给 `speaking_exam_paper_question` 加列（P1） | 产品 |
 | 11 | `layout` 值域是否要收敛到跨模块统一枚举 | **不收敛，原样透传**（沿用 CSCA 既有约定）。7 个值已经是交互形态，换算只会多一层漏配 | 前端 + 后端 |
-| 12 | 混 `layouts` 的板块（TEST 2 个 / 生产 48 个）如何处理 | 前端逐题渲染，不做板块级归一。若产品要求「一个板块一种交互」，那是**内容问题**（该板块题填错了 `layout`），回内容侧修，不改接口 | 产品 + 运营 |
+| 12 | 混形态的板块（TEST 2 个 / 生产 48 个）如何处理 | 板块层不下发 `layouts`（2026-11-11 起），前端逐题渲染，不做板块级归一。若产品要求「一个板块一种交互」，那是**内容问题**（该板块题填错了 `layout`），回内容侧修，不改接口 | 产品 + 运营 |
 | 13 | 老值域 `passageGroup` / `clozeGroup` 的语义（差异 E7） | 它们是**题面形态**不是答题形式（篇章组 / 完形组）。生产对齐时由 TEST 值覆盖；未被覆盖的 30 行若仍是这两个值，需人工判成 `choice` / `choiceGrid` | 运营 |
 | 14 | **三跳后「全部等级列表」从哪里来** | P0：等级 chip 由前端按版本矩阵渲染；要显示各级能力描述就逐级调 `/intro`（6–7 个并发，可缓存 1 天）。若产品要求一次拿全，再加 `GET /{mod}/levels/all?version=`（只返 `level`/`levelName`/`abilityDescription×3`/`totalQuestionCount`，不含 `parts`），**不塞进 `/levels`**（否则又回到「单等级概览 vs 全等级列表」分叉） | 产品 + 前端 |
 | 15 | **口语 2.0 的 `level` 编码** | 定数字串 `"1"`/`"2"`/`"3"`（= HSKK 初/中/高），与 `level_config.level` 一致；卷侧的 `Beginner/Intermediate/Advanced` 由 `PracticeLevelCode` 换算（§4.0.6）。`levelName` 按「模块 + 版本」取，2.0 显示「HSKK 初级」、3.0 的 `"3"` 显示「HSK3」—— **两版本在库里各存各的 `level_name` 行（2026-11-11 已落库），代码不做换算** | 产品 + 前端 |
