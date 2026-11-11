@@ -56,9 +56,8 @@ practice-service
    ├─► MySQL xuexitest
    │     ├─ 题库（只读）：exam_paper（enabled_prac 卷级上下架）/ question（题级）/ question_group
    │     ├─ 口语内容：speaking_exam_paper / _question（2.0 与 3.0 共用）
-   │     ├─ 模块配置：practice_module_level_config（模块开关 / 能力描述 / 时长）
+   │     ├─ 模块配置：practice_module_level_config（模块开关 / 能力描述 / 时长 / 等级显示名 level_name）
    │     ├─ 板块配置：practice_module_part_config（板块名三语 / 题型 / 板块开关）
-   │     ├─ 等级字典：hsk_level_config
    │     └─ 作答：practice_record / practice_answer / practice_report
    │              writing_* / speaking_*（翻译复用写作链路）
    ├─► ai-service        口语评测（翻译评分 P2）
@@ -183,7 +182,7 @@ speaking_exam_paper（2.0 + 3.0 口语）
 | `speaking_exam_paper` / `_question` | 38 / 837 | ✅ TEST 已改 | **2.0 与 3.0 口语内容都在这两张表**（R5）；两表各有 `enabled_prac` |
 | `practice_module_level_config` | 49 | ✅ 保留，删 `parts_config` 列（TEST 已删）、**加 `level_name` 列（TEST 已有，2026-11-11）** | 模块级配置；`level_name`（`HSK1`…`HSK7-9`，口语 2.0 = `HSKK 初级/中级/高级`）是接口 `levelName` **唯一真源**，行粒度「版本 × 等级 × 模块」 |
 | **`practice_module_part_config`** | **132** | ✅ TEST 已建 + **已补 `enabled` 列**；仍缺唯一键 | 板块级配置；**开关用 `enabled`（0关/1开），`deleted` 回到纯逻辑删除**（§3.2.2） |
-| `hsk_level_config` | 13 | ✅ 零改 | 等级三语名称。⚠️ 它的 `level_name` 是**语言化名**（`一级` / `Level 1` / `Cấp 1`，另有 `_en` / `_vi`），**不是**接口 `levelName`——接口读的是 `practice_module_level_config.level_name`（`HSK1` / `HSK7-9`）。两个同名列**同名不同义，不可互换** |
+| `hsk_level_config` | 13 | ⛔ **练习侧不使用**（HSK **考试侧**表，归 exam-service 的 `HskLevelConfig`） | 用户口径（2026-11-11）：练习侧**不碰**这张表。`practice-service` 里那份 `PracticeLevelConfig` + `PracticeLevelConfigMapper` 是跨域复制的只读映射，只为取 `levelName`（`一级` / `Level 1` / `Cấp 1`），现由 `practice_module_level_config.level_name` 取代 → **两个文件应删**，阅读 / 写作 Catalog 里那两次 `levelMapper.selectOne` 一并去掉。⚠️ 两个 `level_name` 同名不同义，不可互换 |
 | `practice_paper_setting` | 206 / 116 | ❌ **P0 drop** | 卷级上下架由 `exam_paper.enabled_prac` 完整替代（§3.2.7） |
 | `practice_paper_structure` | 1290 | ❌ **P0 drop** | 无独有信息：板块来自 `question` 去重 + `part_config` 取名（§3.2.6） |
 | `practice_part_setting` | 1294 | ❌ **P0 drop** | 与 structure 1:1，题型编码已进 `part_config`；作答模式改由字典映射 |
@@ -1171,7 +1170,7 @@ POST /translation/attempts/start {paperId, section}
 | **E3** | `practice_module_level_config.parts_config` 列 | **已 drop** | **仍在**（6/21 行有值，20 个板块元素） | 无（代码不再读该列） | 生产可直接 drop；drop 前留导出备份 |
 | **E4** | `practice_module_level_config` 行数 | 2.0 **21** + 3.0 **28** = 49 | 2.0 **21** + 3.0 **0** = 21 | 无（按 TEST 走） | 3.0 的 28 行模块配置 + 对应板块明细行需补（D4 / D15） |
 | **E5** | `practice_module_part_config` 唯一键 | 仍只有 `PRIMARY`（B-18） | — | 无 | 两边都待补 `uk_module_part`（P0-c2） |
-| **E17** | `practice_module_level_config.level_name` 列（**接口 `levelName` 唯一真源**） | **已有**：`varchar(20) NOT NULL DEFAULT ''`，位于 `level` 之后；49 行 0 空值，`level → level_name` 严格 1:1（`HSK1`…`HSK6` / `HSK7-9`；口语 2.0 三行已改 `HSKK 初级/中级/高级`，2026-11-11） | **未核验**（该列 2026-11-11 才在 TEST 新增，生产大概率没有） | **有**：缺列则 `levelName` 一律 `null`，前端等级 chip 无文案（`/levels`、`/intro` 都受影响） | 🔴 补列时**不能只 `ADD COLUMN ... DEFAULT ''` 了事**：必须同批刷值，2.0/3.0 全等级 `HSK1`…`HSK7-9`，口语 2.0 三行单独刷 `HSKK 初级/中级/高级`（`tmp/_speak_level_name_PROD.sql`）。⚠️ 生产 3.0 模块配置 0 行（E4），3.0 的 28 行要先补行才有 `level_name` 可填；⚠️ 别与 `hsk_level_config.level_name`（`一级` / `Level 1` / `Cấp 1`）混为一谈，**同名不同义** |
+| **E17** | `practice_module_level_config.level_name` 列（**接口 `levelName` 唯一真源**） | **已有**：`varchar(20) NOT NULL DEFAULT ''`，位于 `level` 之后；49 行 0 空值，`level → level_name` 严格 1:1（`HSK1`…`HSK6` / `HSK7-9`；口语 2.0 三行已改 `HSKK 初级/中级/高级`，2026-11-11） | **未核验**（该列 2026-11-11 才在 TEST 新增，生产大概率没有） | **有**：缺列则 `levelName` 一律 `null`，前端等级 chip 无文案（`/levels`、`/intro` 都受影响） | 🔴 补列时**不能只 `ADD COLUMN ... DEFAULT ''` 了事**：必须同批刷值，2.0/3.0 全等级 `HSK1`…`HSK7-9`，口语 2.0 三行单独刷 `HSKK 初级/中级/高级`（`tmp/_speak_level_name_PROD.sql`）。⚠️ 生产 3.0 模块配置 0 行（E4），3.0 的 28 行要先补行才有 `level_name` 可填；⚠️ 别与 `hsk_level_config.level_name`（`一级` / `Level 1` / `Cấp 1`）混为一谈——那是**HSK 考试侧**表（exam-service），练习侧**不读**；两个 `level_name` 同名不同义 |
 
 ### D.2 数据类差异（同表不同值，会影响生产行为）
 

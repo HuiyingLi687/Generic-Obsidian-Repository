@@ -384,7 +384,7 @@
 | 1 | **响应一律是对象，不再是裸数组** | 阅读/写作/口语/翻译的 `/levels`、`/papers`、`/parts` 原本都返 `data: [...]`，全部改为对象包裹 |
 | 2 | **`/{module}/papers` 删除** | 阅读/写作/口语/翻译的卷列表并入端点 1 的 `papers[]`；听力本就无此接口（A6/A12/A15/B3 标【删除】） |
 | 3 | **`level` 是数字串**（`"1"`–`"7"`），请求与响应同值同域。`"7"` 代表 **HSK7-9 整级**；DB 里 `'7'`(TEST) / `'7-9'`(PROD) 两种存法都靠候选集 `IN ('7','7-9')` 兜住 | 原阅读返数值 `7`、口语返 `databaseLevel`、听力回显 `"1"`——统一成「**数字串 `level` + `levelName` 显示名**」；`levelCode` / `databaseLevel` / 数值 `level` 一律不再下发 |
-| 4 | **新增 `levelName`**（显示名，**唯一真源 = `practice_module_level_config.level_name`**，原样透传，**不随 `Accept-Language` 变化**） | 听力原本只有 `level`，本次补 `levelName`；其余模块的 `levelName` **改读新列**（原读 `hsk_level_config.level_name`，装的是「一级 / Level 1 / Cấp 1」，见下方同名不同义警告） |
+| 4 | **新增 `levelName`**（显示名，**唯一真源 = `practice_module_level_config.level_name`**，原样透传，**不随 `Accept-Language` 变化**） | 听力原本只有 `level`，本次补 `levelName`；其余模块的 `levelName` **改读新列**（原读 `hsk_level_config.level_name`——**那是 HSK 考试侧的表，练习侧本次彻底不再依赖**，见下方同名不同义警告） |
 | 5 | **板块数组统一叫 `parts`** | 阅读/写作/口语/翻译原叫 `sections` |
 | 6 | **时长统一叫 `durationMinutes`** | 原 `suggestDurationMinutes`，本次改名 |
 | 7 | **卷对象统一 5 字段**：`{ paperId, paperCode, status, completedCount, totalCount }` | 原阅读/写作/翻译用 `totalQuestionCount` / `completedQuestionCount` / `paperName`，口语还有 `recordedCount` / `scoredCount`；全部收敛（口语的评分统计移到板块页 `stats`） |
@@ -416,7 +416,7 @@
 |---|---|
 | 真源 | `practice_module_level_config.level_name`（`varchar(20) NOT NULL DEFAULT ''`，49 行全覆盖）—— **原样透传，不拼接、不换算、不本地化** |
 | 全量取值 | `HSK1` / `HSK2` / `HSK3` / `HSK4` / `HSK5` / `HSK6` / `HSK7-9`；口语 2.0 三个等级例外为 `HSKK 初级` / `HSKK 中级` / `HSKK 高级` |
-| 反面 | **禁止再写 `"HSK" + level`**（这是原 `levelCode` 的拼法，`7` 会拼成 `HSK7`，B-02）；也**禁止回落到 `hsk_level_config.level_name`** |
+| 反面 | **禁止再写 `"HSK" + level`**（这是原 `levelCode` 的拼法，`7` 会拼成 `HSK7`，B-02）；也**禁止回落到 `hsk_level_config.level_name`**（考试侧表，练习侧不读） |
 | 校验口径（实测） | TEST：49 行 0 空值，`level → level_name` 严格 1:1（7 个值）；长度上限 6/7 字符，远低于 `varchar(20)` |
 
 > ⚠️ **两个 `level_name` 同名不同义，不能混**：
@@ -424,9 +424,9 @@
 > | 表 | 列的语义 | 值 | 谁在用 |
 > |---|---|---|---|
 > | `practice_module_level_config.level_name` | **等级短名 / 接口显示名** | `HSK1`、`HSK7-9`、`HSKK 初级` | 本接口的 `levelName`（**唯一**） |
-> | `hsk_level_config.level_name` | **语言化等级名**（另有 `_en` / `_vi`） | `一级` / `Level 1` / `Cấp 1` | 等级详情、多语言展示；**不得**作为接口 `levelName` |
+> | `hsk_level_config.level_name` | **语言化等级名**（另有 `_en` / `_vi`）。该表属 **HSK 考试侧**（exam-service） | `一级` / `Level 1` / `Cấp 1` | **无 —— 练习侧不使用**（2026-11-11 口径：这是考试用的表，练习侧不碰）。绝不可当接口 `levelName` |
 >
-> 实体上必须分开：`PracticeModuleLevelConfig.levelName`（新） vs `PracticeLevelConfig.levelName`（旧，读 `hsk_level_config`）。
+> 代码侧收口：只留 `PracticeModuleLevelConfig.levelName` 一个入口；`practice-service` 里那份映射 `hsk_level_config` 的 `PracticeLevelConfig` + `PracticeLevelConfigMapper` **应整文件删除**，阅读 / 写作 Catalog 里那两次 `levelMapper.selectOne` 一并去掉（§9.2）。
 
 
 **卷状态枚举统一为小写**
@@ -707,7 +707,7 @@ Authorization: Bearer xxx
 | 字段 | 类型 | 改动标记 | 说明 |
 |---|---|---|---|
 | `level` | String | 【修改】 | 原「数值 `7` + `levelCode`」双字段，**统一为数字串** `"7"`（`levelCode` 删除）；显示名另给 `levelName`（§4.0.6 规定 3） |
-| `levelName` | String | 【修改】 | 原读 `hsk_level_config.level_name`（`一级`），**改读 `practice_module_level_config.level_name`**（`HSK1` / `HSK7-9`），原样透传 |
+| `levelName` | String | 【修改】 | 原读 `hsk_level_config.level_name`（`一级`，**HSK 考试侧表，练习侧不再使用**），**改读 `practice_module_level_config.level_name`**（`HSK1` / `HSK7-9`），原样透传 |
 | `paperCount` | Integer | 【新增】 | 该等级可练卷数（`totalCount=0` 的卷不计） |
 | `papers[]` | Array | 【新增】 | 原先由 A6 单独返回，现内嵌；**A6 已删除** |
 | `papers[].paperId` / `paperCode` | — | 【无变更】 | `paperCode` 取 `source`；原 `paperName` 与之同值，删除 |
@@ -2537,7 +2537,8 @@ ALTER TABLE practice_module_part_config
 | `writing/controller/WritingReportController.java` | 同上 |
 | `speaking/controller/SpeakingReportController.java` | 同上 |
 | `core/entity/PracticeModuleLevelConfig.java` | 补 `@TableField("level_name") private String levelName`（新列，位于 `level` 之后）；**同时删 `partsConfig` 字段**（TEST 已 drop 该列，留着必 `Unknown column`） |
-| 4 个 Catalog 的 `levelResponse`（听/读/写/说） | `levelName` 改取 `config.getLevelName()`；**删 `"HSK" + level` 拼接**与对 `PracticeLevelConfig`（`hsk_level_config`）的那次查询（§4.0.6 真源表） |
+| `reading` / `writing` 的 `levelResponse` | `levelName` 改取 `config.getLevelName()`；**删 `"HSK" + level` 拼接**与 `levelMapper.selectOne`（读 `hsk_level_config` 那次）一并去掉。听力 / 口语本就未读该表 |
+| `core/entity/PracticeLevelConfig.java` / `core/mapper/PracticeLevelConfigMapper.java` | **整文件删除** —— 练习侧不再映射 `hsk_level_config`（该表归 HSK 考试侧 exam-service） |
 | `core/entity/PracticePaperStructure.java` / `PracticePartSetting.java` / `PracticePaperSetting.java` | **整文件删除** |
 | `core/mapper/PracticePaperStructureMapper.java` / `PracticePartSettingMapper.java` / `PracticePaperSettingMapper.java` | **整文件删除** |
 
@@ -2580,4 +2581,4 @@ ALTER TABLE practice_module_part_config
 | 15 | **口语 2.0 的 `level` 编码** | 定数字串 `"1"`/`"2"`/`"3"`（= HSKK 初/中/高），与 `level_config.level` 一致；卷侧的 `Beginner/Intermediate/Advanced` 由 `PracticeLevelCode` 换算（§4.0.6）。`levelName` 按「模块 + 版本」取，2.0 显示「HSKK 初级」、3.0 的 `"3"` 显示「HSK3」—— **两版本在库里各存各的 `level_name` 行（2026-11-11 已落库），代码不做换算** | 产品 + 前端 |
 | 16 | **`draft` / `report` / `stats` 三块的命名** | 现定义为 `{draft:{id,answeredCount,currentQuestionId}, report:{id,hasReport,status}, stats:{口语四项}}`。若前端更习惯把 `correctCount`/`wrongCount` 也放进 `report`，可整体调整——但**必须三块一起定**，不要一半平铺一半嵌套 | 前端 |
 | 17 | **作答链路（B5–B10）的 `status` 是否也统一小写** | **本期不动**：`writing_attempt.status` / 报告状态仍是 `IN_PROGRESS` / `PENDING` / `READY`（DB 原值）。本次统一范围只到「目录三接口」（`/levels`、`/intro`、`/parts`）。P1 若统一，需要一次 DB 枚举迁移 + 前端全量替换，不建议与目录改造同批 | 后端 + 前端 |
-| 18 | **`levelName` 要不要多语言** | 现为**单语**：`practice_module_level_config` 只有 `level_name` 一列（无 `_en` / `_vi`），切 `Accept-Language` 不变。若产品要英/越语等级名，两条路：① 该表补 `level_name_en` / `level_name_vi`（P1，与 `hsk_level_config` 的命名对齐）；② 前端按 `level` 自己映射。**本期按单语上线**，不改 | 产品 + 前端 |
+| 18 | **`levelName` 要不要多语言** | 现为**单语**：`practice_module_level_config` 只有 `level_name` 一列（无 `_en` / `_vi`），切 `Accept-Language` 不变。若产品要英/越语等级名，两条路：① 该表补 `level_name_en` / `level_name_vi`（P1，命名风格照考试侧 `hsk_level_config` 的 `_en` / `_vi`，**只借命名、不引依赖**）；② 前端按 `level` 自己映射。**本期按单语上线**，不改 | 产品 + 前端 |
