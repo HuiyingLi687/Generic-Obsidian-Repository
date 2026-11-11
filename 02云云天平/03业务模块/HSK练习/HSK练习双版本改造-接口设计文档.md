@@ -72,7 +72,7 @@
 | `speaking_exam_paper` | 【新增】同上两列 |
 | `speaking_exam_paper_question` | 【新增】同上两列 |
 | `practice_module_part_config` | 【新增】`enabled tinyint NOT NULL DEFAULT 1`（板块开关），位置在 `sort_order` 之后、`deleted` 之前。**仍缺唯一键** `uk_module_part (version, level, section_mapping, section)` |
-| `practice_module_level_config` | 【删除】`parts_config` 列（板块配置已拉平成行式表）；【新增】`level_name varchar(20) NOT NULL DEFAULT ''`（位于 `level` 之后）= **接口 `levelName` 唯一真源**，见 §4.0.6 |
+| `practice_module_level_config` | 【删除】`parts_config` 列（板块配置已拉平成行式表）；【新增】`level_name` / `level_name_en` / `level_name_vi` 三列（`varchar(20) NOT NULL DEFAULT ''`，位于 `level` 之后）= **接口 `levelName` 唯一真源（三语）**，见 §4.0.6 |
 | `practice_paper_setting` | 【删除】整表 drop（卷级上下架由 `exam_paper.enabled_prac` 替代） |
 | `practice_paper_structure` | 【删除】整表 drop |
 | `practice_part_setting` | 【删除】整表 drop |
@@ -384,7 +384,7 @@
 | 1 | **响应一律是对象，不再是裸数组** | 阅读/写作/口语/翻译的 `/levels`、`/papers`、`/parts` 原本都返 `data: [...]`，全部改为对象包裹 |
 | 2 | **`/{module}/papers` 删除** | 阅读/写作/口语/翻译的卷列表并入端点 1 的 `papers[]`；听力本就无此接口（A6/A12/A15/B3 标【删除】） |
 | 3 | **`level` 是数字串**（`"1"`–`"7"`），请求与响应同值同域。`"7"` 代表 **HSK7-9 整级**；DB 里 `'7'`(TEST) / `'7-9'`(PROD) 两种存法都靠候选集 `IN ('7','7-9')` 兜住 | 原阅读返数值 `7`、口语返 `databaseLevel`、听力回显 `"1"`——统一成「**数字串 `level` + `levelName` 显示名**」；`levelCode` / `databaseLevel` / 数值 `level` 一律不再下发 |
-| 4 | **新增 `levelName`**（显示名，**唯一真源 = `practice_module_level_config.level_name`**，原样透传，**不随 `Accept-Language` 变化**） | 听力原本只有 `level`，本次补 `levelName`；其余模块的 `levelName` **改读新列**（原读 `hsk_level_config.level_name`——**那是 HSK 考试侧的表，练习侧本次彻底不再依赖**，见下方同名不同义警告） |
+| 4 | **新增 `levelName`**（显示名，**唯一真源 = `practice_module_level_config.level_name` / `_en` / `_vi` 三列**，按 `Accept-Language` 三选一，空值回落中文） | 听力原本只有 `level`，本次补 `levelName`；其余模块的 `levelName` **改读新列**（原读 `hsk_level_config.level_name`——**那是 HSK 考试侧的表，练习侧本次彻底不再依赖**，见下方同名不同义警告） |
 | 5 | **板块数组统一叫 `parts`** | 阅读/写作/口语/翻译原叫 `sections` |
 | 6 | **时长统一叫 `durationMinutes`** | 原 `suggestDurationMinutes`，本次改名 |
 | 7 | **卷对象统一 5 字段**：`{ paperId, paperCode, status, completedCount, totalCount }` | 原阅读/写作/翻译用 `totalQuestionCount` / `completedQuestionCount` / `paperName`，口语还有 `recordedCount` / `scoredCount`；全部收敛（口语的评分统计移到板块页 `stats`） |
@@ -400,33 +400,36 @@
 
 > ⚠️ **口语卷的 `level` 是唯一与「数字串」不一致的地方**（`Beginner` / `Intermediate` / `Advanced`），接口对外仍用数字串，靠一张换算表兜住（**只能落在 `PracticeLevelCode` 一个地方**，禁止各接口自行拼接）。**`levelName` 不参与换算**，直接读库里那一行的 `level_name`：
 
-| 版本 | 接口 `level` | `level_config.level` | 卷 `level` | `practice_module_level_config.level_name`（= 下发 `levelName`） |
-|---|---|---|---|---|
-| HSK2.0 口语 | `"1"` | 1 | `Beginner` | `HSKK 初级` |
-| HSK2.0 口语 | `"2"` | 2 | `Intermediate` | `HSKK 中级` |
-| HSK2.0 口语 | `"3"` | 3 | `Advanced` | `HSKK 高级` |
-| HSK3.0 口语 | `"3"`–`"6"` | 3–6 | `'3'…'6'` | `HSK3` – `HSK6` |
-| HSK3.0 口语 | `"7"` | 7 | `'7-9'` | `HSK7-9` |
+| 版本 | 接口 `level` | `level_config.level` | 卷 `level` | `level_name`（zh） | `level_name_en` | `level_name_vi` |
+|---|---|---|---|---|---|---|
+| HSK2.0 口语 | `"1"` | 1 | `Beginner` | `HSKK 初级` | `HSKK Beginner` | `HSKK Sơ cấp` |
+| HSK2.0 口语 | `"2"` | 2 | `Intermediate` | `HSKK 中级` | `HSKK Intermediate` | `HSKK Trung cấp` |
+| HSK2.0 口语 | `"3"` | 3 | `Advanced` | `HSKK 高级` | `HSKK Advanced` | `HSKK Cao cấp` |
+| HSK3.0 口语 | `"3"`–`"6"` | 3–6 | `'3'…'6'` | `HSK3` – `HSK6` | 同 zh | 同 zh |
+| HSK3.0 口语 | `"7"` | 7 | `'7-9'` | `HSK7-9` | 同 zh | 同 zh |
+
+> 英文译名对齐 `speaking_exam_paper.level` 2.0 的既有档位（`Beginner` / `Intermediate` / `Advanced`），不是新造词；越南语用 Sơ cấp / Trung cấp / Cao cấp（初/中/高级的标准对应）。`HSK1`…`HSK7-9` 是专有名词，三语同写法（2026-11-11 TEST 已回填 49/49 行）。
 
 > 即：**同一个 `"3"` 在 2.0 口语是「HSKK 高级」、在 3.0 口语是「HSK3」** —— 但这不是靠代码判断版本，而是**这两行本来就在库里各存各的**（`level_name` 行的粒度是「版本 × 等级 × 模块」，2026-11-11 TEST 已按此改完口语 2.0 三行）。
 
-**`levelName` 的真源与取值（2026-11-11 定）**
+**`levelName` 的真源与取值（2026-11-11 定，同日升级为三语）**
 
 | 项 | 规定 |
 |---|---|
-| 真源 | `practice_module_level_config.level_name`（`varchar(20) NOT NULL DEFAULT ''`，49 行全覆盖）—— **原样透传，不拼接、不换算、不本地化** |
-| 全量取值 | `HSK1` / `HSK2` / `HSK3` / `HSK4` / `HSK5` / `HSK6` / `HSK7-9`；口语 2.0 三个等级例外为 `HSKK 初级` / `HSKK 中级` / `HSKK 高级` |
-| 反面 | **禁止再写 `"HSK" + level`**（这是原 `levelCode` 的拼法，`7` 会拼成 `HSK7`，B-02）；也**禁止回落到 `hsk_level_config.level_name`**（考试侧表，练习侧不读） |
-| 校验口径（实测） | TEST：49 行 0 空值，`level → level_name` 严格 1:1（7 个值）；长度上限 6/7 字符，远低于 `varchar(20)` |
+| 真源 | `practice_module_level_config.level_name` / `level_name_en` / `level_name_vi`（均 `varchar(20) NOT NULL DEFAULT ''`，三列 49 行全覆盖）—— 取库值，**不拼接、不换算、不写死** |
+| 语言规则 | 按 `Accept-Language` 三选一（`en` / `vi` / 其他归中文）；**en / vi 为空时回落中文**（`localized` 既有逻辑） |
+| 取值 | zh：`HSK1`…`HSK6`、`HSK7-9`；口语 2.0 三行为 `HSKK 初级` / `HSKK 中级` / `HSKK 高级`。en/vi：`HSK*` 三语同值；`HSKK Beginner` / `Intermediate` / `Advanced` 与 `HSKK Sơ cấp` / `Trung cấp` / `Cao cấp`（见上方换算表） |
+| 反面 | **禁止再写 `"HSK" + level`**（原 `levelCode` 的拼法，`7` 会拼成 `HSK7`，B-02）；也**禁止回落到 `hsk_level_config.level_name`**（考试侧表，练习侧不读）；**禁止把译名写死在枚举/前端**（`SpeakingLevel.displayName` 那种） |
+| 校验口径（实测） | TEST：49 行三列 0 空值，`level → level_name` 严格 1:1（7 个值）；最长 `HSKK Intermediate` = 17 字符，低于 `varchar(20)` |
 
 > ⚠️ **两个 `level_name` 同名不同义，不能混**：
 >
 > | 表 | 列的语义 | 值 | 谁在用 |
 > |---|---|---|---|
-> | `practice_module_level_config.level_name` | **等级短名 / 接口显示名** | `HSK1`、`HSK7-9`、`HSKK 初级` | 本接口的 `levelName`（**唯一**） |
-> | `hsk_level_config.level_name` | **语言化等级名**（另有 `_en` / `_vi`）。该表属 **HSK 考试侧**（exam-service） | `一级` / `Level 1` / `Cấp 1` | **无 —— 练习侧不使用**（2026-11-11 口径：这是考试用的表，练习侧不碰）。绝不可当接口 `levelName` |
+> | `practice_module_level_config.level_name` ×3 | **等级短名 / 接口显示名（三语）** | `HSK1`、`HSK7-9`、`HSKK 初级`（en/vi 见换算表） | 本接口的 `levelName`（**唯一**） |
+> | `hsk_level_config.level_name` ×3 | **语言化等级名**。该表属 **HSK 考试侧**（exam-service） | `一级` / `Level 1` / `Cấp 1` | **无 —— 练习侧不使用**（2026-11-11 口径：这是考试用的表，练习侧不碰）。绝不可当接口 `levelName` |
 >
-> 代码侧收口：只留 `PracticeModuleLevelConfig.levelName` 一个入口；`practice-service` 里那份映射 `hsk_level_config` 的 `PracticeLevelConfig` + `PracticeLevelConfigMapper` **应整文件删除**，阅读 / 写作 Catalog 里那两次 `levelMapper.selectOne` 一并去掉（§9.2）。
+> 代码侧已收口（2026-11-11）：`PracticeLevelConfig` + `PracticeLevelConfigMapper` **已整文件删除**，阅读 / 写作 / 口语的 `levelName` 全部走 `localized(...)` 读 `PracticeModuleLevelConfig` 三列。
 
 
 **卷状态枚举统一为小写**
@@ -504,7 +507,7 @@ X-Client-Type: APP
 | 字段                        | 类型      | 改动标记  | 说明                                                                                 |
 | ------------------------- | ------- | ----- | ---------------------------------------------------------------------------------- |
 | `level`                   | String  | 【无变更】 | 数字串 `"1"`…`"6"`、`"7"`（`7` = HSK7-9 整级），与请求参数同值同域（§4.0.6 规定 3）。听力原本就是数字串，**本次不改取值** |
-| `levelName`               | String  | 【新增】  | 显示名，原样取 `practice_module_level_config.level_name`（`HSK1` / `HSK7-9`；口语 2.0 为 `HSKK 初级`），**不随 `Accept-Language`**（§4.0.6 真源表） |
+| `levelName`               | String  | 【新增】  | 显示名，取 `practice_module_level_config.level_name` / `_en` / `_vi` 三列（`HSK1` / `HSK7-9`；口语 2.0 为 `HSKK 初级`），随 `Accept-Language`（§4.0.6 真源表） |
 | `paperCount`              | Integer | 【修改】  | 该等级卷数。**旧实现混入 3.0 卷且 `totalCount=0`，本次修正**                                         |
 | `papers[].paperId`        | Long    | 【无变更】 | 试卷 ID（19 位，**P1 改 String**）                                                        |
 | `papers[].paperCode`      | String  | 【无变更】 | 试卷名称，取 `exam_paper.source`                                                         |
@@ -940,17 +943,16 @@ Authorization: Bearer xxx
 
 **返回字段说明**
 
-| 字段 | 类型 | 改动标记 | 说明 |
-|---|---|---|---|
-| `level` | String | 【修改】 | 原数值 `7` + `levelCode` 双字段 → 统一数字串 `"7"`（§4.0.6 规定 3） |
-| `levelName` | String | 【修改】 | 同 A4：改读 `practice_module_level_config.level_name` |
-| `paperCount` | Integer | 【新增】 | 该等级可练卷数（`totalCount=0` 的卷不计） |
-| `papers[]` | Array | 【新增】 | 原先由 A12 单独返回，现内嵌；**A12 已删除** |
-| `papers[].paperId` / `paperCode` | — | 【无变更】 | `paperCode` 取 `source`；`paperName` 删除 |
-| `papers[].status` | String | 【修改】 | **大写改小写** `not_started` |
-| `papers[].completedCount` / `totalCount` | Integer | 【修改】 | 原 `completedQuestionCount` / `totalQuestionCount` 改名；写作 `totalCount` 是**题数**（HSK7-9 为 2），不是卷数 |
-| ~~`levelId` / `writingAvailable`~~ | — | 【删除】 | `levelId` 是内部主键；`writingAvailable` 与 `level_config.enabled` 重复，等级关掉时本就不出现在 `papers` 里 |
-| ~~`abilityDesc` / `totalQuestionCount` / `suggestDurationMinutes` / `sections[]`~~ | — | 【删除】 | 全部挪到 A11 `/levels/{level}/intro` |
+| 字段                                                                                 | 类型      | 改动标记  | 说明                                                                                            |
+| ---------------------------------------------------------------------------------- | ------- | ----- | --------------------------------------------------------------------------------------------- |
+| `level`                                                                            | String  | 【修改】  | 原数值 `7` + `levelCode` 双字段 → 统一数字串 `"7"`（§4.0.6 规定 3）                                          |
+| `levelName`                                                                        | String  | 【修改】  | 同 A4：改读 `practice_module_level_config.level_name`                                             |
+| `paperCount`                                                                       | Integer | 【新增】  | 该等级可练卷数（`totalCount=0` 的卷不计）                                                                  |
+| `papers[]`                                                                         | Array   | 【新增】  | 原先由 A12 单独返回，现内嵌；**A12 已删除**                                                                  |
+| `papers[].paperId` / `paperCode`                                                   | —       | 【无变更】 | `paperCode` 取 `source`；`paperName` 删除                                                         |
+| `papers[].status`                                                                  | String  | 【修改】  | **大写改小写** `not_started`                                                                       |
+| `papers[].completedCount` / `totalCount`                                           | Integer | 【修改】  | 原 `completedQuestionCount` / `totalQuestionCount` 改名；写作 `totalCount` 是**题数**（HSK7-9 为 2），不是卷数 |
+
 
 **服务端内部执行顺序**
 
@@ -2273,7 +2275,7 @@ available = 存在 enabled=1 的 level_config 行
 |---|---|
 | **答题形式** | **只看 `layout`**（题目接口）与 `layouts`（板块接口），原样值不换算。`typeCode` 只用于显示题型名与选择评分策略 |
 | 翻译两张卡 | 按 `parts[].layouts` 区分：`["input"]` → 文本输入；`["record"]` → 录音 |
-| 三语切换 | `parts[]` 三语同发，前端本地切换无需重新请求；`abilityDescription` / `header` 仍随 `Accept-Language`。**`levelName` 例外**：它取 `practice_module_level_config.level_name`（`HSK1` / `HSKK 初级`），是单语常量，切换语言不变（见 §10 第 18 条） |
+| 三语切换 | `parts[]` / `abilityDescription` ×3 / `header` / **`levelName`**（`practice_module_level_config.level_name` ×3，§4.0.6）均三语，服务端按 `Accept-Language` 选一 |
 | 模块卡片置灰 | `available=false` 时置灰 + Toast 提示，**不要隐藏卡片**（保持 5 卡/4 卡布局稳定），`disabledReason` 映射文案 |
 | 版本切换 | 清空已选 `level`、卷列表、滚动位置、本地「上次练习」。**不要复用旧 `level` 打新版本接口**：2.0 的 `HSK1` 在 3.0 下虽存在但卷集合不同；`HSK7-9` 在 2.0 下返回空结果 |
 | 等级切换 | 三跳下「等级 chip」与「卷列表」在同一屏：点 chip 只重拉 `/{mod}/levels?level=`，**不要重拉整页** |
@@ -2462,7 +2464,7 @@ POST /translation/attempts/{attemptId}/submissions
 | E3 | `practice_module_level_config.parts_config` | 已 drop | 仍在 | 无（接口不再读该列） |
 | E4 | 3.0 模块配置行 | 28 行 | **0 行** | 生产 3.0 首页五卡无数据 |
 | E5 | `uk_module_part` 唯一键 | 仍缺（B-18） | — | 无（本期 TEST 侧补） |
-| E17 | `practice_module_level_config.level_name` | **已有**（`varchar(20) NOT NULL DEFAULT ''`，49 行全覆盖） | **未核验**（2026-11-11 新增列，生产大概率缺） | **缺列则 `levelName` 一律为 `null`**。生产补列时必须同批刷值：`HSK1`…`HSK6`、`HSK7-9`，外加口语 2.0 三行 `HSKK 初级/中级/高级`（见 §9.1.1）。⚠️ 不要 `DEFAULT 'HSK1'` 了事 |
+| E17 | `practice_module_level_config.level_name` / `_en` / `_vi` | **已有**（三列均 `varchar(20) NOT NULL DEFAULT ''`，49 行全覆盖；2026-11-11 下午补齐 `_en`/`_vi` 并回填） | **未核验**（2026-11-11 新增列，生产大概率缺） | **缺列则 `levelName` 一律为 `null`**，前端等级 chip 无文案。生产补列时必须同批刷值：`HSK1`…`HSK6`、`HSK7-9` 三语同值，口语 2.0 三行 zh `HSKK 初级/中级/高级` + en `HSKK Beginner/Intermediate/Advanced` + vi `HSKK Sơ cấp/Trung cấp/Cao cấp`（`tmp/_add_level_name_i18n.py`）。⚠️ 不要只加一列了事 |
 
 **B. 数据差异（会改变接口返回值）**
 
@@ -2551,7 +2553,7 @@ ALTER TABLE practice_module_part_config
 | 5 张内容表 `enabled_prac` / `enabled_exam` | ✅ 已加，取值全 `1` |
 | `practice_module_part_config` | ✅ 已建 132 行 + `enabled` 列已加，三语 132/132 填充 |
 | `practice_module_level_config.parts_config` | ✅ 已 drop |
-| `practice_module_level_config.level_name` | ✅ 已加（`varchar(20) NOT NULL DEFAULT ''`，49 行全覆盖）；取值 `HSK1`…`HSK6` / `HSK7-9`，口语 2.0 三行 = `HSKK 初级/中级/高级`（2026-11-11 已 `--apply`） |
+| `practice_module_level_config.level_name` ×3 | ✅ 已加（三列 `varchar(20) NOT NULL DEFAULT ''`，49 行全覆盖）；zh `HSK1`…`HSK7-9` + 口语 2.0 三行 `HSKK 初级/中级/高级`，en `HSKK Beginner/Intermediate/Advanced`，vi `HSKK Sơ cấp/Trung cấp/Cao cấp`（2026-11-11 已 `--apply`） |
 | `question.layout` | ✅ 非空率 100%，7 个规范值 |
 | **模块字典**（`/hsk/modules` 数据源） | ✅ 已铺 9 项：`hsk_practice_module_v2`（id 1007，4 项）/ `hsk_practice_module_v3`（id 1008，5 项）；`item_value` 全部命中 `practice_module_level_config`；`description` = `moduleCode`；`item_properties` = `{moduleCode,nameEn,nameVi}` |
 | 代码侧 `enabled_prac` 过滤 | ✅ 已改完并编译通过 |
@@ -2581,4 +2583,4 @@ ALTER TABLE practice_module_part_config
 | 15 | **口语 2.0 的 `level` 编码** | 定数字串 `"1"`/`"2"`/`"3"`（= HSKK 初/中/高），与 `level_config.level` 一致；卷侧的 `Beginner/Intermediate/Advanced` 由 `PracticeLevelCode` 换算（§4.0.6）。`levelName` 按「模块 + 版本」取，2.0 显示「HSKK 初级」、3.0 的 `"3"` 显示「HSK3」—— **两版本在库里各存各的 `level_name` 行（2026-11-11 已落库），代码不做换算** | 产品 + 前端 |
 | 16 | **`draft` / `report` / `stats` 三块的命名** | 现定义为 `{draft:{id,answeredCount,currentQuestionId}, report:{id,hasReport,status}, stats:{口语四项}}`。若前端更习惯把 `correctCount`/`wrongCount` 也放进 `report`，可整体调整——但**必须三块一起定**，不要一半平铺一半嵌套 | 前端 |
 | 17 | **作答链路（B5–B10）的 `status` 是否也统一小写** | **本期不动**：`writing_attempt.status` / 报告状态仍是 `IN_PROGRESS` / `PENDING` / `READY`（DB 原值）。本次统一范围只到「目录三接口」（`/levels`、`/intro`、`/parts`）。P1 若统一，需要一次 DB 枚举迁移 + 前端全量替换，不建议与目录改造同批 | 后端 + 前端 |
-| 18 | **`levelName` 要不要多语言** | 现为**单语**：`practice_module_level_config` 只有 `level_name` 一列（无 `_en` / `_vi`），切 `Accept-Language` 不变。若产品要英/越语等级名，两条路：① 该表补 `level_name_en` / `level_name_vi`（P1，命名风格照考试侧 `hsk_level_config` 的 `_en` / `_vi`，**只借命名、不引依赖**）；② 前端按 `level` 自己映射。**本期按单语上线**，不改 | 产品 + 前端 |
+| 18 | **`levelName` 要不要多语言** | ✅ **已解决（2026-11-11）**：`practice_module_level_config` 已补 `level_name_en` / `level_name_vi` 两列并回填 49/49 行（`HSK*` 三语同值；口语 2.0 = `HSKK Beginner/Intermediate/Advanced` + `HSKK Sơ cấp/Trung cấp/Cao cấp`）。`levelName` 随 `Accept-Language`，空值回落中文。§7 三语表同步 | 已办结 |
