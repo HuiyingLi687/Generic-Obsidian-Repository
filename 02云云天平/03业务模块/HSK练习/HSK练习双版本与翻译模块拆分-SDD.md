@@ -387,10 +387,12 @@ GROUP BY paper_id, section_mapping, section;
 ```sql
 WHERE paper_id = ? AND deleted = 0 AND enabled_prac = 1 AND number > 0
   AND section = ?           -- 板块号，数字；PART_ 与业务 type_code 都不再参与取题
-  AND question_type_mapping NOT IN ('instructions', 'outline')  -- 流程说明 / 提纲不是作答项
+  AND question_type_mapping NOT IN ('instructions', 'outline')  -- 保险起见，见下
 ```
 
-⚠️ **最后一行不能省**：`section` 内夹着辅助行——TEST 实测 `instructions` 在 1/2/3 部分分别 37/37/19 行，`outline` 25/19 行（`outline` 是看图说话的提纲提示，属题面素材）。前导 4 类（`section='0'`）被 `section=?` 天然排除。排除清单固定为这两个词，**不是业务题型白名单**，所以新题型不受影响。
+⚠️ **两个边界要分清**：
+- 前导 4 类（`opening_music` / `confirm_name` / `confirm_nationality` / `number_confirmation`，`section='0'`，`number` 为 `-4..-1`）被 `section = ?`（1/2/3）天然排除；
+- 夹在板块内的 `instructions`（1/2/3 部分各 37/37/19 行）与 `outline`（25/19 行）**`number` 恒为 0**（TEST 实测），本来就已被 `number > 0` 排掉，所以最后一行只是**零成本保险**，不是必须；它的清单固定为这两个词，**不是业务题型白名单**，新题型不受影响。
 
 同理，`PartCodeCase`（`PART_1/2/3` 硬编码映射）整段可以删掉。
 

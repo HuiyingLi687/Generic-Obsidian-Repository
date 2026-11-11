@@ -1267,7 +1267,7 @@ Authorization: Bearer xxx
 1. 登录、`version`
 2. 查 `speaking_exam_paper`：`id=? AND deleted=0 AND enabled_prac=1`
 3. 板块骨架来自 `practice_module_part_config`（`section_mapping='SEC_SPEAK'`），**不再按硬编码题型白名单**
-4. 取题：`speaking_exam_paper_question WHERE paper_id=? AND deleted=0 AND enabled_prac=1 AND number>0 AND section = <板块 section> AND question_type_mapping NOT IN ('instructions','outline')`（**2026-11-11 起该表已有 `section` 列**，数字 `1/2/3`；原来按 `question_type_mapping` 取题会漏掉配置里新出现的 6 个 `type_code`，缺陷 B-19 由此自然修掉。⚠️ `section='0'` 是开场音乐/确认姓名/确认国籍/报号 4 类前导流程题，不属任何板块；`instructions` / `outline` 是夹在板块内的辅助行（TEST：`instructions` 1/2/3 部分 37/37/19 行、`outline` 25/19 行），必须显式排除，否则会被当成作答项下发）
+4. 取题：`speaking_exam_paper_question WHERE paper_id=? AND deleted=0 AND enabled_prac=1 AND number>0 AND section = <板块 section> AND question_type_mapping NOT IN ('instructions','outline')`（**2026-11-11 起该表已有 `section` 列**，数字 `1/2/3`；原来按 `question_type_mapping` 取题会漏掉配置里新出现的 6 个 `type_code`，缺陷 B-19 由此自然修掉。⚠️ `section='0'` 是开场音乐/确认姓名/确认国籍/报号 4 类前导流程题，不属任何板块；`instructions` / `outline` 是夹在板块内的辅助行（TEST：`instructions` 1/2/3 部分 37/37/19 行、`outline` 25/19 行），但它们的 `number` 恒为 0、已被 `number>0` 排掉，再加一条 `NOT IN` 只是零成本保险）
 5. 按 `section` 查 `speaking_attempt` 草稿与报告
 
 > ⚠️ 口语的 `paperId` 域与其它三个模块**不重叠**：`speaking_attempt.paper_id` 指向 `speaking_exam_paper.id`。前端不要把听力/阅读的 `paperId` 传进来，会返回 404。
@@ -1882,6 +1882,7 @@ GET /api/practice/papers/2082102061357023234/parts/2/reports/latest?module=speak
 
 **通用约定**：
 - 无报告时 `data = null`，**不报 404**（阅读/写作/口语的原实现在无报告时抛 404，此处统一收敛为 `null`）
+- ⚠️ **口语异常要单独接**：`SpeakingException` 继承 `RuntimeException`（**不是** `BusinessException`），且 `SpeakingExceptionHandler` 的 `basePackages` 只到 `practice.hsk.speaking.controller`，覆盖不到本端点 → 统一端点内必须显式捕获：404 → `data=null`，其余 code 转成 `BusinessException` 原样下发；漏接会落到全局兜底返回 **500**，把「无报告」错报成系统异常
 - **不校验 `enabled_prac`**：卷下架后用户已完成的报告仍应可查，否则运营下架一次就会让历史报告全部消失
 - 旧路径 `/{mod}/papers/{paperId}/parts/{section}/reports/latest`（带模块前缀）**全部删除，不保留兼容**；更旧的 `/parts/{structureId}/reports/latest` 同样 404；上一版 CR `.../parts/{sectionMapping}/{section}/reports/latest`（`sectionMapping` 走路径段）**也一并作废**（决策 17c）
 - 口语的 `paperId` 域与其它模块不重叠，传错域会直接 404，不会查到别的模块
@@ -2512,7 +2513,8 @@ ALTER TABLE practice_module_part_config
 | `hsk/controller/HskModuleController.java` | 新增：`GET /hsk/modules` |
 | ~~`hsk/controller/ModuleConfigController.java`~~ | **本期不建**（决策 19）：运营端板块配置端点移除，运营临时直接改库 |
 | `hsk/report/controller/PracticeReportController.java`（新增） | **CR 统一报告端点** `GET /papers/{paperId}/parts/{section}/reports/latest?module=&version=`：`module` 决定卷域（`exam_paper` / `speaking_exam_paper`）与 `section_mapping` → 用三元组反查 `structure_id` → 委托各模块原查询逻辑（四套读模型与 SQL 零改写）。无报告统一降级 `data=null`。原 4 个 `*ReportController` 的 latest 端点全部注释（保留方法体便于回滚，不删除） |
-| `hsk/report/service/impl/PracticeReportQueryServiceImpl.java`（新增） | 三元组定位 + 四模块分发；`module` 白名单校验（缺省/非法 → 400）；`section` 原样透传（**不拼 `PART_` 前缀**）；`selectByIdForReport` 不判 `enabled_prac`（下架卷的历史报告仍可查） |
+| `hsk/report/service/impl/PracticeReportQueryServiceImpl.java`（新增） | 三元组定位 + 四模块分发；`module` 白名单校验（缺省/非法 → 400）；`section` 原样透传（**不拼 `PART_` 前缀**）；`BusinessException(404)` 与 `SpeakingException(404)` 都降级 `data=null`（后者非 `BusinessException` 子类、且本包不在其 advice 作用域内，非 404 要转 `BusinessException` 才能避免 500）；`selectByIdForReport` 不判 `enabled_prac`（下架卷的历史报告仍可查） |
+| `hsk/report/service/impl/PracticeReportQueryServiceImplTest.java`（新增 11 例） | 覆盖：`module` 缺省/非法 400、`section` 空 400、卷不存在/版本不符/板块不存在 404、大小写不敏感、读/听 happy path 回显 `module`、写作 404 与口语 `SpeakingException` 404 都降级 `data=null`、口语非 404 转 `BusinessException` |
 | `hsk/catalog/mapper/PracticePartSettingMapper` + `mapper/catalog/PracticePartSettingMapper.xml`（新增 `selectStructureIdByPart`） | 三元组 → `structure_id`；`section_code IN (N, CONCAT('PART_', N))`，把口语历史 `PART_N` 与数字 `section` 在 SQL 侧归一（该表本期 drop，届时一并删除） |
 | `hsk/speaking/mapper/SpeakingSourcePaperMapper`（改） | 新增 `selectByIdForReport`（只判 `deleted=0`，与 `selectActiveById` 并存） |
 
