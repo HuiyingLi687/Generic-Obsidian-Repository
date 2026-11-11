@@ -537,7 +537,6 @@ Authorization: Bearer xxx
     {
       "levelId": 3001,
       "level": 7,
-      "levelCode": "HSK7-9",
       "levelName": "HSK 7-9",
       "abilityDesc": "能就广泛话题进行深入交流",
       "totalQuestionCount": 40,
@@ -609,7 +608,7 @@ Authorization: Bearer xxx
 **请求示例**
 
 ```http
-GET /api/practice/reading/papers?level=HSK7-9&version=HSK3.0
+GET /api/practice/reading/papers?level=7&version=HSK3.0
 Authorization: Bearer xxx
 ```
 
