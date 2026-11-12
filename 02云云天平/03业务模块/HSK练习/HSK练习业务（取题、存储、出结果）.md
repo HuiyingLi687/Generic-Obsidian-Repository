@@ -10,16 +10,16 @@
 3、出结果：交卷即出结果。逐题比对 answer 和 question.answer算出总题数、已答题数、答对数、答错数、正确率，写回记录。未作答的一律记为错，所以「错题数 = 总题数 − 答对数」。practice_record.current_question_number是practice_record.question_ids的数组下标+1、practice_record.idempotency_key的拼接方式是module-recordid-submit-1
 
 写作：
-1、取题：根据paper_id、section_mapping、section取question.enabled_prac=1的题目，
+1、取题：根据paper_id、section_mapping、section取question.enabled_prac=1的题目
 2、存储：
 3、出结果：
 
 翻译：
-1、取题：
+1、取题：根据paper_id、section_mapping、section取question.enabled_prac=1的题目
 2、存储：
 3、出结果：
 
 口语：
-1、取题：
+1、取题：根据paper_id、section_mapping、section取question.enabled_prac=1的题目或speaking_exam_paper_question.enabled_prac=1（speaking_exam_paper_question默认section_mapping等于SEC_SPEAKING）
 2、存储：
 3、出结果：
