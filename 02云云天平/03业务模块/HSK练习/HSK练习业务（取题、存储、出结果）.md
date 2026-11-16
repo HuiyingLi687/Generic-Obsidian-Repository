@@ -12,14 +12,14 @@
 写作：
 1、取题：根据paper_id、section_mapping、section取question.enabled_prac=1的题目
 2、存储：practice_answer题目快照存question.section_title、question.content、question.passage、question_group.content、question_group.passage，选项快照存question.option_content、question_group.option_content；开始练习时就冻结题干
-3、出结果：若是question.has_standard_answer是1，交卷即出结果。若是0则需要
+3、出结果：若是question.has_standard_answer是1，交卷即出结果。若是0则需要交给ai来评分。practice_*_record.current_question_number是practice_record.question_ids的数组下标+1、practice_*_record.idempotency_key的拼接方式是module-recordid-submit-1
 
 翻译：
 1、取题：根据paper_id、section_mapping、section取question.enabled_prac=1的题目
 2、存储：practice_answer题目快照存question.section_title、question.content、question.passage、question_group.content、question_group.passage，选项快照存question.option_content、question_group.option_content；开始练习时就冻结题干
-3、出结果：
+3、出结果：若是question.has_standard_answer是1，交卷即出结果。若是0则需要交给ai来评分。practice_*_record.current_question_number是practice_record.question_ids的数组下标+1、practice_*_record.idempotency_key的拼接方式是module-recordid-submit-1
 
 口语：
 1、取题：根据paper_id、section_mapping、section取question.enabled_prac=1的题目或speaking_exam_paper_question.enabled_prac=1（speaking_exam_paper_question默认section_mapping等于SEC_SPEAKING）
 2、存储：practice_answer题目快照存question.section_title、question.content、question.passage、question_group.content、question_group.passage，选项快照存question.option_content、question_group.option_content；开始练习时就冻结题干
-3、出结果：
+3、出结果：若是question.has_standard_answer是1，交卷即出结果。若是0则需要交给ai来评分。practice_*_record.current_question_number是practice_record.question_ids的数组下标+1、practice_*_record.idempotency_key的拼接方式是module-recordid-submit-1
