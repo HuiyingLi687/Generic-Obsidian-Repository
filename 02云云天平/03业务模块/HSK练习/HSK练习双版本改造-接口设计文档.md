@@ -2389,21 +2389,21 @@ E1 首页模块卡
 
 ### 4.6.5 口语（recordId 主键 = `practice_speaking_record.id`，录音题）
 
-| 步 | 端点 | 说明 |
-|---|---|---|
-| ① | `POST /speaking/records/start` `{paperId, sectionMapping, section}` | 返回 `recordId`；2.0 `level` 为 `"1"`–`"3"` |
-| ①b | `GET /speaking/records/{recordId}` | （续练可选）查详情 |
-| ①c | `GET /speaking/records/{recordId}/answer-card` | 答题卡（已答/未答） |
-| ② | `GET /speaking/records/{recordId}/questions` | **P0 恒 `layout=record`**（`speaking_exam_paper_question` 无 `layout` 列，决策见 §4.0.5） |
-| ③ | `POST /speaking/records/{recordId}/questions/{questionId}/recordings/prepare` | **录音两步·第 1 步**：拿预签名直传凭证 |
-| ③b | `POST /speaking/records/{recordId}/questions/{questionId}/answers` | **录音两步·第 2 步**：上传完成后保存答案（音频 key + 时长） |
-| ③c | ~~`POST /speaking/records/{recordId}/sessions` → heartbeat → end~~ | 🔴 **删除（决策 24）**：同写作——倒计时制无心跳，时长 = `end_time` − `start_time`；会话端点注释掉 |
-| ③d | ~~`POST /speaking/records/{recordId}/pause`~~ | 🔴 **注释掉（决策 24）**：倒计时练习不需要暂停 |
-| ④ | `POST /speaking/records/{recordId}/submit` | 交卷，`Idempotency-Key` 必填；**异步 AI 判分** |
-| ⑤ | `GET /papers/{paperId}/reports/latest?module=speaking&section=` | **CR** 轮询：AI 判分未完成 `reportStatus=GRADING`（`grading_state=0`），完成 `READY` |
-| ⑤b | `GET /speaking/records/{recordId}/report` | 报告详情（对齐听/读，决策 24）：数据由 `practice_speaking_record` + `practice_speaking_answer` 现拼 |
-| ⑤c | `GET /speaking/records/{recordId}/report/questions/{questionId}` | 逐题评分：按 `practice_speaking_answer.grading_state` 取 AI 结果（`1`=`points`/`analysis` 就绪，`0`=评分中） |
-| ⑤d | `POST /speaking/records/{recordId}/report/retry` | 判分失败重试（对齐听/读路径风格） |
+| 步   | 端点                                                                            | 说明                                                                                          |
+| --- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| ①   | `POST /speaking/records/start` `{paperId, sectionMapping, section}`           | 返回 `recordId`；2.0 `level` 为 `"1"`–`"3"`                                                     |
+| ①b  | `GET /speaking/records/{recordId}`                                            | （续练可选）查详情                                                                                   |
+| ①c  | `GET /speaking/records/{recordId}/answer-card`                                | 答题卡（已答/未答）                                                                                  |
+| ②   | `GET /speaking/records/{recordId}/questions`                                  | **P0 恒 `layout=record`**（`speaking_exam_paper_question` 无 `layout` 列，决策见 §4.0.5）            |
+| ③   | `POST /speaking/records/{recordId}/questions/{questionId}/recordings/prepare` | **录音两步·第 1 步**：拿预签名直传凭证                                                                     |
+| ③b  | `POST /speaking/records/{recordId}/questions/{questionId}/answers`            | **录音两步·第 2 步**：上传完成后保存答案（音频 key + 时长）                                                       |
+| ③c  | ~~`POST /speaking/records/{recordId}/sessions` → heartbeat → end~~            | 🔴 **删除（决策 24）**：同写作——倒计时制无心跳，时长 = `end_time` − `start_time`；会话端点注释掉                        |
+| ③d  | ~~`POST /speaking/records/{recordId}/pause`~~                                 | 🔴 **注释掉（决策 24）**：倒计时练习不需要暂停                                                                |
+| ④   | `POST /speaking/records/{recordId}/submit`                                    | 交卷，`Idempotency-Key` 必填；**异步 AI 判分**                                                        |
+| ⑤   | `GET /papers/{paperId}/reports/latest?module=speaking&section=`               | **CR** 轮询：AI 判分未完成 `reportStatus=GRADING`（`grading_state=0`），完成 `READY`                     |
+| ⑤b  | `GET /speaking/records/{recordId}/report`                                     | 报告详情（对齐听/读，决策 24）：数据由 `practice_speaking_record` + `practice_speaking_answer` 现拼            |
+| ⑤c  | `GET /speaking/records/{recordId}/report/questions/{questionId}`              | 逐题评分：按 `practice_speaking_answer.grading_state` 取 AI 结果（`1`=`points`/`analysis` 就绪，`0`=评分中） |
+| ⑤d  | `POST /speaking/records/{recordId}/report/retry`                              | 判分失败重试（对齐听/读路径风格）                                                                           |
 
 ### 4.6.6 翻译（recordId 主键 = `practice_writing_record.id`，复用写作链路，B5–B10）
 
