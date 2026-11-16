@@ -55,7 +55,7 @@
 | 22  | **登记五模块作答链路「取题 / 存储 / 出结果」口径，全流程端点明细 §4.7**（2026-11-16；冻结时机已修订）                              | 按模块登记三段口径并逐一标注改造点（§4.7）：**取题**统一 `(paper_id, section_mapping, section)` + `question.enabled_prac=1`（口语双源：`question` 表或 `speaking_exam_paper_question.enabled_prac=1`）；**存储** = 快照冻结（题目/题组/选项/音频），**冻结时机 = 提交时**（2026-11-16 修订，原「开始练习时冻结」作废；与现状一致，零改造）；**出结果** = 听/读交卷即判（逐题比对 `answer` vs `question.answer`，未作答记错）、写/译/说按 **`question.has_standard_answer`** 分流（1=交卷即出、0=AI 评分）。⚠️ `has_standard_answer` 列**当前不存在**，需新增（缺口 G3）——这与「判主客观只能用 `type_id`」的旧口径并存，迁移完成后以新列为准 |
 | 23  | **写/译/说作答链路对齐听/读：路径改 `records`、主键统一 `recordId`、start 请求体三字段**（2026-11-16）                            | ① attempt 表已退场（写作 = `practice_writing_record`、口语 = `practice_speaking_record`，实体已映射新表），**链路以听力/阅读为模板**：写/译/说路径由 `/{mod}/attempts/...` 改为 `/{mod}/records/...`（翻译 B5–B10 同批），路径变量与响应字段统一 `recordId`（原 `attemptId` 全部退场）；② **start 请求体统一 `{paperId, sectionMapping, section}` 三字段必填**——HSK 3.0 综合卷同号共存（B5 §2026-11-11 修正实测 `section=1` 同卷命中五个 `section_mapping`），只传 `{paperId, section}` 推不出唯一板块，靠入参三元组直接定位，**防重复开卷**。决策 21 的「作答主键」与「start 请求体」口径被本条修订取代 |
 | 24  | **报告表退场 + 会话/暂停端点退场**（2026-11-16）                                                              | 🔴 **① 报告表退场**：库里只剩 record 表和 answer 表（实测 `SHOW TABLES LIKE '%report%'` 为空），报告由 record + answer **现拼**，`reportId` 概念取消：报告详情端点对齐听/读改 `GET /{mod}/records/{recordId}/report`（写/说/原 B10 同批改造）；**AI 评分状态设计**——`has_standard_answer=1` 交卷即出；`=0` 的题查 `practice_writing_answer` / `practice_speaking_answer` 的 **`grading_state`**（列已存在，零 DDL）：`0` = AI 还在评分中（`reportStatus=GRADING`），`1` = 评分完成（`reportStatus=READY`，返回 `points` / `analysis`）。CR 扩展块数据源改 record 统计列（`objective_count` / `ai_scored_count` / `final_score`…）。🔴 **② 时长口径**：一律 = record 表 `end_time − start_time` 间隔，**写作/口语的 sessions 心跳三端点与 pause 端点注释掉**（练习是倒计时制，无心跳/暂停必要；听/读既有端点暂不动）。决策 20 的「写/说扩展块原 C3/C4 字段」与「翻译恒 UNAVAILABLE（D5）」口径随之作废 |
-| 25  | **五模块各新增答题卡接口 `GET /{mod}/records/{recordId}/answer-card`**（2026-11-16）                              | 练习中/交卷后展示答题卡（题号 chip + 已答/对错），五模块**路径形态与响应同构**（只换模块前缀）。响应：`{recordId, totalQuestions, answeredCount, questions[]}`，`questions[]` 按 **`question_ids` 快照顺序**逐题 `{order, questionId, answered, correct}`。`correct` 三态与 CR `answerCard[]` 完全一致：**交卷前全 `null`**（不判分）；交卷后听/读取交卷快照 `is_correct`，写/说/译按 `has_standard_answer` + `grading_state`（`0` → `null` 评分中）。**两处答题卡分工**：练习中用本接口，报告页用 CR 通用块 `answerCard[]`——两者题序同源（`question_ids` 快照）、语义一致（§4.6.1 约定 8） |
+| 25  | **五模块各新增答题卡接口 `GET /{mod}/records/{recordId}/answer-card`**（2026-11-16；**2026-11-16 二次修订：定位收窄为「作答中答题卡」，参考 CSCA，不下发对错**）                              | **只服务作答中场景**（记录题目是否已答），参考 CSCA 答题卡（exam-service `CscaAnswerCardDTO`，文档 §2.7）：🔴 **不下发 `correct`**——对错只在交卷后的报告接口出现（CR `answerCard[]`），与 CSCA「答题卡只展示答没答、标没标、收没收藏」同一原则。五模块路径与响应同构：`{recordId, paperId, section, totalQuestions, answeredCount, unansweredCount, currentQuestionNumber, questions[]}`，`questions[]` 按 **`question_ids` 快照顺序**逐题 `{order, questionId, answered, isTag, favorite, current}`。**标记 / 收藏字段本期预留**（`isTag` 恒 `0`、`favorite` 恒 `false`）：`practice_answer` 无 `is_tag` 列、练习侧也无收藏表（`csca_question_favorite` 是考试专用），后续版本新建收藏表 + 加列后启用；**收藏跨场次长期有效**（同 CSCA 语义）。`answered` 数据源 = `practice_answer.answered`（口语 = `practice_speaking_answer` 有无记录）。`current` 与入参 `currentQuestionNumber` 同值（缺省取记录进度，G5）。**两处答题卡分工**：作答中用本接口，报告页用 CR `answerCard[]`（题序同源） |
 
 ---
 
@@ -2336,7 +2336,7 @@ E1 首页模块卡
 | 5   | **报告统一入口 CR**：`GET /papers/{paperId}/reports/latest?module=&section=&version=`（§4.3，通用报告块）。详情页逐题解析再走各模块详情端点（见各模块表 ⑤） |
 | 6   | **异步报告轮询**：写/说/译的 AI 报告是异步生成——submit 成功后 CR 的 `reportStatus` 为未就绪，前端轮询 CR（或模块 `/status` 端点）直至 `READY`；听/读交卷即出报告，无轮询  |
 | 7   | 作答链路端点**不带 `version`**：版本由 `paperId` 唯一确定（§1 约束 1），仅目录端点（U1/U2/U3）与 CR 需要 `version`                                  |
-| 8   | **答题卡接口统一（决策 25）**：五模块各有 `GET /{mod}/records/{recordId}/answer-card`，响应同构——`{recordId, totalQuestions, answeredCount, questions[]}`，`questions[]` 按 `question_ids` 快照顺序逐题 `{order, questionId, answered, correct}`。`correct` 三态与 CR `answerCard[]` 一致：交卷前全 `null`；交卷后听/读取 `is_correct`，写/说/译按 `has_standard_answer` + `grading_state`（`0` → `null`）。**练习中答题卡用本接口，报告页答题卡用 CR 的 `answerCard[]`，两处题序同源** |
+| 8   | **答题卡接口统一（决策 25，参考 CSCA）**：五模块各有 `GET /{mod}/records/{recordId}/answer-card`，响应同构——`{recordId, paperId, section, totalQuestions, answeredCount, unansweredCount, currentQuestionNumber, questions[]}`，`questions[]` 按 `question_ids` 快照顺序逐题 `{order, questionId, answered, isTag, favorite, current}`。🔴 **不下发 `correct`**（CSCA 同一原则：答题卡只管答没答/标没标/收没收藏，对错只在交卷后报告出现）；`isTag` / `favorite` 本期预留（恒 `0` / `false`，收藏后续版本接入、跨场次长期有效）。**作答中答题卡用本接口，报告页对错用 CR 的 `answerCard[]`，两处题序同源** |
 
 ### 4.6.2 五模块差异矩阵
 
@@ -2364,7 +2364,7 @@ E1 首页模块卡
 | --- | -------------------------------------------------------------------- | ----------------------------------------------------------- |
 | ①   | `POST /listening/records/start` `{paperId, sectionMapping, section}` | 返回 `recordId` + `status`；已有进行中记录直接返回                        |
 | ①b  | `GET /listening/records/{recordId}`                                  | （续练可选）查记录详情/状态                                              |
-| ①c  | `GET /listening/records/{recordId}/answer-card`                      | 答题卡（决策 25）：`answered` 按 `practice_answer` 有无记录；交卷前 `correct` 全 `null`，交卷后取交卷快照 `is_correct` |
+| ①c  | `GET /listening/records/{recordId}/answer-card`                      | 答题卡（决策 25，参考 CSCA，**不下发对错**）：`answered` 按 `practice_answer.answered`；`isTag` / `favorite` 预留恒空 |
 | ②   | `GET /listening/records/{recordId}/questions`                        | 逐题下发 `layout`；按 `question_ids` 快照顺序                         |
 | ③   | `PUT /listening/records/{recordId}/answers/{questionId}`             | 单题保存                                                        |
 | ③b  | `PUT /listening/records/{recordId}/answers`                          | 批量保存                                                        |
@@ -2381,7 +2381,7 @@ E1 首页模块卡
 | --- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | ①   | `POST /writing/records/start` `{paperId, sectionMapping, section}`                  | 返回 `recordId` + `status`（大写 `IN_PROGRESS`，作答链路状态本期不统一，§10 #17）                                                                                        |
 | ①b  | `GET /writing/records/{recordId}`                                                   | （续练可选）查记录详情                                                                                                                                           |
-| ①c  | `GET /writing/records/{recordId}/answer-card`                                       | 答题卡（决策 25）：交卷前 `correct` 全 `null`；交卷后 `has_standard_answer=1` 取客观判分、`=0` 按 `grading_state`（`0`=评分中 `null`，`1`=AI 结果）                                  |
+| ①c  | `GET /writing/records/{recordId}/answer-card`                                       | 答题卡（决策 25，参考 CSCA，**不下发对错**）：`answered` 按 `practice_writing_answer` 有无记录；`isTag` / `favorite` 预留恒空                                  |
 | ②   | `GET /writing/records/{recordId}/questions`                                         | **修 B-04 后逐题下发 `layout`**（改读 `layout` 原样透传，弃 `type_id_mapping` switch）                                                                                |
 | ③   | `PUT /writing/records/{recordId}/answers`                                           | 批量保存答案                                                                                                                                                |
 | ③b  | ~~`POST /writing/records/{recordId}/sessions` → `/{sessionId}/heartbeat` → `/end`~~ | 🔴 **删除（2026-11-16，决策 24）**：练习是**倒计时**制，无心跳必要；`durationSeconds` = `end_time` − `start_time`（`practice_writing_record` 两列已有，零改造）。会话三端点实现代码**注释掉**，不删文件 |
@@ -2397,7 +2397,7 @@ E1 首页模块卡
 | --- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | ①   | `POST /speaking/records/start` `{paperId, sectionMapping, section}`           | 返回 `recordId`；2.0 `level` 为 `"1"`–`"3"`                                                     |
 | ①b  | `GET /speaking/records/{recordId}`                                            | （续练可选）查详情                                                                                   |
-| ①c  | `GET /speaking/records/{recordId}/answer-card`                                | 答题卡（决策 25）：`answered` = 录音上传完成（`practice_speaking_answer` 有记录）；交卷前 `correct` 全 `null`，交卷后随 AI 判分（`grading_state`） |
+| ①c  | `GET /speaking/records/{recordId}/answer-card`                                | 答题卡（决策 25，参考 CSCA，**不下发对错**）：`answered` = 录音上传完成（`practice_speaking_answer` 有记录）；`isTag` / `favorite` 预留恒空 |
 | ②   | `GET /speaking/records/{recordId}/questions`                                  | **P0 恒 `layout=record`**（`speaking_exam_paper_question` 无 `layout` 列，决策见 §4.0.5）            |
 | ③   | `POST /speaking/records/{recordId}/questions/{questionId}/recordings/prepare` | **录音两步·第 1 步**：拿预签名直传凭证                                                                     |
 | ③b  | `POST /speaking/records/{recordId}/questions/{questionId}/answers`            | **录音两步·第 2 步**：上传完成后保存答案（音频 key + 时长）                                                       |
@@ -2415,7 +2415,7 @@ E1 首页模块卡
 |---|---|---|
 | ① | `B5 POST /translation/records/start` `{paperId, sectionMapping, section}` | 委托 `WritingAttemptService#start`（`sectionMapping` 必须为 `SEC_TRANSLATION`；`section=1` 笔译 / `2` 口译） |
 | ①b | `B6 GET /translation/records/{recordId}` | 练习详情 |
-| ①c | `GET /translation/records/{recordId}/answer-card` | 答题卡（决策 25，口径同写作）：交卷前 `correct` 全 `null`；交卷后按 `has_standard_answer` + `grading_state` |
+| ①c | `GET /translation/records/{recordId}/answer-card` | 答题卡（决策 25，口径同写作，**不下发对错**）：`answered` 按 `practice_writing_answer` 有无记录；`isTag` / `favorite` 预留恒空 |
 | ② | `B7 GET /translation/records/{recordId}/questions` | 逐题下发 `layout`（笔译 `input` / 口译 `record`） |
 | ③ | `B8 PUT /translation/records/{recordId}/answers` | 批量保存（复用写作答案 DTO） |
 | ④ | `B9 POST /translation/records/{recordId}/submissions` | 交卷，`Idempotency-Key` 必填 |
@@ -2432,7 +2432,7 @@ E1 首页模块卡
 4. 拉题后按逐题 `layout` 渲染作答组件（§4.0.5），**不要**按 `typeCode` 猜形态。
 5. submit 前确保 Idempotency-Key 生成且单次会话复用同一 key。
 6. 交卷后报告入口只有 CR 一个；写/说/译需轮询 `reportStatus`（建议 2–3s 间隔、上限 60s，超时降级为「生成中」占位）。**状态语义（决策 24）**：`GRADING` = AI 还在评分（`grading_state=0`），`READY` = 评完可看；报告详情走 `GET /{mod}/records/{recordId}/report`。
-7. 答题卡两处分工（决策 25）：**练习中**调 `GET /{mod}/records/{recordId}/answer-card`（五模块同构，随保存/交卷刷新）；**报告页**「只看错题」用 CR 通用块 `answerCard[]`，`correct=null` 置灰不进错题过滤。两处题序同源（`question_ids` 快照）、`correct` 语义一致。
+7. 答题卡两处分工（决策 25，参考 CSCA）：**作答中**调 `GET /{mod}/records/{recordId}/answer-card`（五模块同构，**只有已答/未答 + 预留标记/收藏，不下发对错**，随保存刷新）；**报告页**对错/「只看错题」用 CR 通用块 `answerCard[]`，`correct=null` 置灰不进错题过滤。两处题序同源（`question_ids` 快照）。
 
 ---
 
@@ -2453,7 +2453,9 @@ E1 首页模块卡
 | G7 | **口语板块域常量统一 `SEC_SPEAK`**（用户口径文字里的 `SEC_SPEAKING` 以代码常量 `SEC_SPEAK` 为准） | 代码已恒 `SEC_SPEAK` | 🟡 命名对齐 |
 | G8 | **共享音频列名**：`question_shared_audio` 的音频列，实体映射读的是 `audio_url`；用户口径写作 `shareAudioUrl` | 同一列两种叫法 | ⚠️ **列名以库为准，落地前确认**（本节暂按实体 `audio_url` 书写） |
 
-**G9 答题卡接口（决策 25，五模块同构）**：`GET /{mod}/records/{recordId}/answer-card` →
+**G9 答题卡接口（决策 25，五模块同构，参考 CSCA）**：`GET /{mod}/records/{recordId}/answer-card`（`module` ∈ 五模块）——
+
+🔴 **不下发对错**（CSCA `CscaAnswerCardDTO` 同一原则：答题卡只展示「答没答、标没标、收没收藏」，对错只在交卷后的报告接口出现）。示例：
 
 ```json
 {
@@ -2461,14 +2463,18 @@ E1 首页模块卡
   "message": "操作成功",
   "data": {
     "recordId": 88100,
+    "paperId": 2104193520701620225,
+    "section": 1,
     "totalQuestions": 5,
     "answeredCount": 3,
+    "unansweredCount": 2,
+    "currentQuestionNumber": 3,
     "questions": [
-      { "order": 1, "questionId": 91001, "answered": true,  "correct": true },
-      { "order": 2, "questionId": 91002, "answered": true,  "correct": false },
-      { "order": 3, "questionId": 91003, "answered": false, "correct": null },
-      { "order": 4, "questionId": 91004, "answered": true,  "correct": null },
-      { "order": 5, "questionId": 91005, "answered": false, "correct": null }
+      { "order": 1, "questionId": 91001, "answered": true,  "isTag": 0, "favorite": false, "current": false },
+      { "order": 2, "questionId": 91002, "answered": true,  "isTag": 1, "favorite": false, "current": false },
+      { "order": 3, "questionId": 91003, "answered": false, "isTag": 0, "favorite": false, "current": true },
+      { "order": 4, "questionId": 91004, "answered": true,  "isTag": 0, "favorite": false, "current": false },
+      { "order": 5, "questionId": 91005, "answered": false, "isTag": 0, "favorite": false, "current": false }
     ]
   }
 }
@@ -2476,9 +2482,12 @@ E1 首页模块卡
 
 | 字段 | 说明 |
 |---|---|
-| `questions[]` | 按 `practice_record.question_ids` 快照顺序（与 CR `answerCard[]` 同源同序） |
-| `answered` | `practice_answer`（口语 = `practice_speaking_answer`）有无该题记录 |
-| `correct` | 三态同 CR：**交卷前全 `null`**；交卷后听/读取 `is_correct`，写/说/译按 `has_standard_answer`（1=客观判分、0=`grading_state`：0 → `null` 评分中，1 → AI 结果） |
+| `questions[]` | 按 `practice_record.question_ids` 快照顺序（与 CR `answerCard[]` 同源同序）；报告页对错看 CR，本接口**无 `correct`** |
+| `answered` | `practice_answer.answered`（口语 = `practice_speaking_answer` 有无记录，即录音上传完成） |
+| `isTag` / `favorite` | **本期预留**：`practice_answer` 无 `is_tag` 列、练习侧无收藏表（`csca_question_favorite` 是考试专用）→ `isTag` 恒 `0`、`favorite` 恒 `false`；后续版本加列 + 新建练习收藏表后启用，**收藏跨场次长期有效**（同 CSCA） |
+| `current` | 与入参 `currentQuestionNumber` 同值；入参缺省取记录进度（G5：`question_ids` 下标 + 1） |
+
+> 与 CSCA 的差异：CSCA 是考试、有一张整卷 + `remainingSeconds` 倒计时；练习是**板块粒度**（入参已有 `recordId`，卷/板块信息从记录快照取），倒计时由前端按板块时长自理，不重复下发。
 
 ### 4.7.1 听力（listening，主键 recordId）
 
@@ -2492,7 +2501,7 @@ E1 首页模块卡
 |---|---|---|---|
 | 1 | `POST /listening/records/start` `{paperId, sectionMapping, section}` | ⚪ | 开卷幂等（已有）；`question_ids` 固化（已有）。快照在 submit 冻结（G2），start 不动 |
 | 2 | `GET /listening/records/{recordId}` | ⚪ | 记录详情/续练状态 |
-| 2b | `GET /listening/records/{recordId}/answer-card` | 🟡 | **新增端点（决策 25）**：`questions[]` 按 `question_ids` 快照，`answered` 按 `practice_answer`，交卷后 `correct` 取 `is_correct` |
+| 2b | `GET /listening/records/{recordId}/answer-card` | 🟡 | **新增端点（决策 25，参考 CSCA，不下发对错）**：`questions[]` 按 `question_ids` 快照，`answered` 按 `practice_answer.answered`；`isTag` / `favorite` 预留 |
 | 3 | `GET /listening/records/{recordId}/questions` | 🔴 | 数据源改三元组 + `enabled_prac=1`（G1）；共享音频走 `question_shared_audio`（G8）；逐题 `layout` |
 | 4 | `PUT /listening/records/{recordId}/answers/{questionId}` | 🟡 | 单题保存；`current_question_number` 口径（G5） |
 | 5 | `PUT /listening/records/{recordId}/answers` | 🟡 | 批量保存；同上 |
@@ -2515,7 +2524,7 @@ E1 首页模块卡
 |---|---|---|---|
 | 1 | `POST /reading/records/start` | ⚪ | 同听力 1（快照在 submit 冻结，start 不动） |
 | 2 | `GET /reading/records/{recordId}` | ⚪ | 详情 |
-| 2b | `GET /reading/records/{recordId}/answer-card` | 🟡 | **新增端点（决策 25）**：口径同听力 2b |
+| 2b | `GET /reading/records/{recordId}/answer-card` | 🟡 | **新增端点（决策 25，不下发对错）**：口径同听力 2b |
 | 3 | `GET /reading/records/{recordId}/questions` | 🔴 | 数据源三元组 + `enabled_prac=1`；共享材料走 `question_group` |
 | 4 | `PUT /reading/records/{recordId}/answers/{questionId}` | 🟡 | 单题保存（G5） |
 | 5 | `PUT /reading/records/{recordId}/answers` | 🟡 | 批量保存（G5） |
@@ -2537,7 +2546,7 @@ E1 首页模块卡
 |---|---|---|---|
 | 1 | `POST /writing/records/start` | ⚪ | 快照在 submit 冻结（G2），start 不动 |
 | 2 | `GET /writing/records/{recordId}` | ⚪ | 详情 |
-| 2b | `GET /writing/records/{recordId}/answer-card` | 🟡 | **新增端点（决策 25）**：交卷前 `correct` 全 `null`；交卷后按 `has_standard_answer` + `grading_state` |
+| 2b | `GET /writing/records/{recordId}/answer-card` | 🟡 | **新增端点（决策 25，不下发对错）**：`answered` 按 answer 表有无记录；`isTag` / `favorite` 预留 |
 | 3 | `GET /writing/records/{recordId}/questions` | 🔴 | 数据源 `enabled_prac=1`（G1）+ `layout` 改读原值（B-04，已在 §4.0.5） |
 | 4 | `PUT /writing/records/{recordId}/answers` | 🟡 | 批量保存 + 快照口径 |
 | 5 | ~~`POST /writing/records/{recordId}/sessions` ×3~~ | 🔴 | **注释掉（决策 24）**：倒计时无心跳，`duration` = `end_time − start_time` |
@@ -2558,7 +2567,7 @@ E1 首页模块卡
 |---|---|---|---|
 | 1 | `POST /speaking/records/start` | ⚪ | 开卷幂等；双源取题口径在 questions 侧落地，快照在 submit 冻结（G2） |
 | 2 | `GET /speaking/records/{recordId}` | ⚪ | 详情 |
-| 3 | `GET /speaking/records/{recordId}/answer-card` | 🟡 | **新增端点（决策 25）**：`answered` = 录音上传完成；交卷前 `correct` 全 `null`，交卷后随 AI 判分（`grading_state`） |
+| 3 | `GET /speaking/records/{recordId}/answer-card` | 🟡 | **新增端点（决策 25，不下发对错）**：`answered` = 录音上传完成；`isTag` / `favorite` 预留 |
 | 4 | `GET /speaking/records/{recordId}/questions` | 🔴 | 双源数据源改造；P0 恒 `record` |
 | 5 | `POST /speaking/records/{recordId}/questions/{questionId}/recordings/prepare` | ⚪ | 录音两步·预签名 |
 | 6 | `POST /speaking/records/{recordId}/questions/{questionId}/answers` | 🟡 | 保存答案（G5） |
@@ -2579,7 +2588,7 @@ E1 首页模块卡
 |---|---|---|---|
 | 1 | `B5 POST /translation/records/start` | ⚪ | 快照在 B9 submit 冻结（G2），start 不动 |
 | 2 | `B6 GET /translation/records/{recordId}` | ⚪ | 详情 |
-| 2b | `GET /translation/records/{recordId}/answer-card` | 🟡 | **新增端点（决策 25）**：口径同写作 2b |
+| 2b | `GET /translation/records/{recordId}/answer-card` | 🟡 | **新增端点（决策 25，不下发对错）**：口径同写作 2b |
 | 3 | `B7 GET /translation/records/{recordId}/questions` | 🔴 | 数据源 `enabled_prac=1`（G1） |
 | 4 | `B8 PUT /translation/records/{recordId}/answers` | 🟡 | 快照口径（笔译 `TEXT` / 口译 `AUDIO`） |
 | 5 | `B9 POST /translation/records/{recordId}/submissions` | 🔴 | **has_standard_answer 分流**（G3）——原「P0 无评分策略恒 UNAVAILABLE」**不再成立**，§4.3 翻译填充规则需按本口径重写（客观题交卷即出分）+ `idempotency_key` 落库（G4）+ **提交时冻结快照**（G2，与现状一致）+ AI 评分落 `grading_state`（决策 24） |
@@ -2596,7 +2605,7 @@ E1 首页模块卡
 | 🔴 **G4 `idempotency_key` 统一 `{module}-{recordId}-submit`**（去 `-1`、服务端拼、说/译补落库） | 听/读/写/说/译 submit ×5 | 五模块 |
 | 🔴 **G1 取题加 `enabled_prac=1` 过滤** | 各模块 questions（口语双源） | 五模块 |
 | 🟡 G5/G6/G7 口径对齐 | 答题保存、听/读 submit 统计写回、口语常量 | — |
-| 🟡 **决策 25：answer-card 端点 ×5 新增**（五模块同构，响应见 §4.6.1 约定 8） | `GET /{listening\|reading\|writing\|speaking\|translation}/records/{recordId}/answer-card` | 五模块 |
+| 🟡 **决策 25：answer-card 端点 ×5 新增**（五模块同构、参考 CSCA、**不下发对错**，响应见 §4.7.0 G9；`isTag` / `favorite` 预留） | `GET /{listening\|reading\|writing\|speaking\|translation}/records/{recordId}/answer-card` | 五模块 |
 
 > 快照冻结（G2）= **提交时**，与现状一致，无改造；仅需确认各模块 submit 实现覆盖了口径列出的全部快照字段（尤其听力的音频、口语试卷的 `practice_audio_url` / `reference_answer`）。
 
