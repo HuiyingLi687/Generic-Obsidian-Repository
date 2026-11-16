@@ -12,7 +12,7 @@
 写作：
 1、取题：根据paper_id、section_mapping、section取question.enabled_prac=1的题目
 2、存储：practice_answer题目快照存question.section_title、question.content、question.passage、question_group.content、question_group.passage，选项快照存question.option_content、question_group.option_content；开始练习时就冻结题干
-3、出结果：
+3、出结果：若是question.has_standard_answer是1，交卷即出结果。若是0则需要
 
 翻译：
 1、取题：根据paper_id、section_mapping、section取question.enabled_prac=1的题目
