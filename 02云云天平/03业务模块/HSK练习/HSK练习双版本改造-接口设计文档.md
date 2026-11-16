@@ -2402,18 +2402,18 @@ E1 首页模块卡
 
 ### 4.6.4 写作（attempt 主键）
 
-| 步 | 端点 | 说明 |
-|---|---|---|
-| ① | `POST /writing/attempts/start` `{paperId, section}` | 返回 `attemptId` + `status`（大写 `IN_PROGRESS`，作答链路状态本期不统一，§10 #17） |
-| ①b | `GET /writing/attempts/{attemptId}` | （续练可选）查 attempt 详情 |
-| ② | `GET /writing/attempts/{attemptId}/questions` | **修 B-04 后逐题下发 `layout`**（改读 `layout` 原样透传，弃 `type_id_mapping` switch） |
-| ③ | `PUT /writing/attempts/{attemptId}/answers` | 批量保存答案 |
-| ③b | `POST /writing/attempts/{attemptId}/sessions` → `POST .../{sessionId}/heartbeat` → `POST .../{sessionId}/end` | 计时会话（`durationSeconds` 来源） |
-| ③c | `POST /writing/attempts/{attemptId}/pause` | 暂停 |
-| ④ | `POST /writing/attempts/{attemptId}/submit` | 交卷，`Idempotency-Key` 必填。🔴 **路径是 `/submit`**，与翻译 B9 的 `/submissions` 不同名（历史原因，勿混） |
-| ⑤ | `GET /papers/{paperId}/reports/latest?module=writing&section=` | **CR** 轮询：`reportStatus` 未就绪时等待，就绪后 `writing` 扩展块含评估反馈全字段（`feedbackStatus` / `progressPercent` / `etag`…） |
-| ⑤b | `GET /writing/reports/{reportId}` / `GET /writing/reports/{reportId}/status` | 报告详情 / 状态轮询（`/status` 支持 ETag） |
-| ⑤c | `GET /writing/reports/{reportId}/questions/{questionId}` | 逐题反馈 |
+| 步   | 端点                                                                                                            | 说明                                                                                                        |
+| --- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| ①   | `POST /writing/attempts/start` `{paperId, section}`                                                           | 返回 `attemptId` + `status`（大写 `IN_PROGRESS`，作答链路状态本期不统一，§10 #17）                                           |
+| ①b  | `GET /writing/attempts/{attemptId}`                                                                           | （续练可选）查 attempt 详情                                                                                        |
+| ②   | `GET /writing/attempts/{attemptId}/questions`                                                                 | **修 B-04 后逐题下发 `layout`**（改读 `layout` 原样透传，弃 `type_id_mapping` switch）                                    |
+| ③   | `PUT /writing/attempts/{attemptId}/answers`                                                                   | 批量保存答案                                                                                                    |
+| ③b  | `POST /writing/attempts/{attemptId}/sessions` → `POST .../{sessionId}/heartbeat` → `POST .../{sessionId}/end` | 计时会话（`durationSeconds` 来源）                                                                                |
+| ③c  | `POST /writing/attempts/{attemptId}/pause`                                                                    | 暂停                                                                                                        |
+| ④   | `POST /writing/attempts/{attemptId}/submit`                                                                   | 交卷，`Idempotency-Key` 必填。🔴 **路径是 `/submit`**，与翻译 B9 的 `/submissions` 不同名（历史原因，勿混）                         |
+| ⑤   | `GET /papers/{paperId}/reports/latest?module=writing&section=`                                                | **CR** 轮询：`reportStatus` 未就绪时等待，就绪后 `writing` 扩展块含评估反馈全字段（`feedbackStatus` / `progressPercent` / `etag`…） |
+| ⑤b  | `GET /writing/reports/{reportId}` / `GET /writing/reports/{reportId}/status`                                  | 报告详情 / 状态轮询（`/status` 支持 ETag）                                                                            |
+| ⑤c  | `GET /writing/reports/{reportId}/questions/{questionId}`                                                      | 逐题反馈                                                                                                      |
 
 ### 4.6.5 口语（attempt 主键，录音题）
 
