@@ -2387,19 +2387,19 @@ E1 首页模块卡
 
 以听力为例（阅读把 `listening` 换成 `reading` 即可，端点形态逐条对应）：
 
-| 步 | 端点 | 说明 |
-|---|---|---|
-| ① | `POST /listening/records/start` `{paperId, sectionMapping, section}` | 返回 `recordId` + `status`；已有进行中记录直接返回 |
-| ①b | `GET /listening/records/{recordId}` | （续练可选）查记录详情/状态 |
-| ② | `GET /listening/records/{recordId}/questions` | 逐题下发 `layout`；按 `question_ids` 快照顺序 |
-| ③ | `PUT /listening/records/{recordId}/answers/{questionId}` | 单题保存 |
-| ③b | `PUT /listening/records/{recordId}/answers` | 批量保存 |
-| ③c | `POST /listening/records/{recordId}/pause` | 暂停计时 |
-| ④ | `POST /listening/records/{recordId}/submit` | 交卷，**`Idempotency-Key` 必填**；同步出报告 |
-| ⑤ | `GET /papers/{paperId}/reports/latest?module=listening&section=` | **CR**，通用报告块（`answerCard` 按 `recordId` → `question_ids` 构造） |
-| ⑤b | `GET /listening/records/{recordId}/report` | 报告详情 |
-| ⑤c | `GET /listening/records/{recordId}/report/questions/{questionId}` | 逐题解析 |
-| ⑤d | `POST /listening/records/{recordId}/report/retry` | 报告异常重试 |
+| 步   | 端点                                                                   | 说明                                                          |
+| --- | -------------------------------------------------------------------- | ----------------------------------------------------------- |
+| ①   | `POST /listening/records/start` `{paperId, sectionMapping, section}` | 返回 `recordId` + `status`；已有进行中记录直接返回                        |
+| ①b  | `GET /listening/records/{recordId}`                                  | （续练可选）查记录详情/状态                                              |
+| ②   | `GET /listening/records/{recordId}/questions`                        | 逐题下发 `layout`；按 `question_ids` 快照顺序                         |
+| ③   | `PUT /listening/records/{recordId}/answers/{questionId}`             | 单题保存                                                        |
+| ③b  | `PUT /listening/records/{recordId}/answers`                          | 批量保存                                                        |
+| ③c  | `POST /listening/records/{recordId}/pause`                           | 暂停计时                                                        |
+| ④   | `POST /listening/records/{recordId}/submit`                          | 交卷，**`Idempotency-Key` 必填**；同步出报告                           |
+| ⑤   | `GET /papers/{paperId}/reports/latest?module=listening&section=`     | **CR**，通用报告块（`answerCard` 按 `recordId` → `question_ids` 构造） |
+| ⑤b  | `GET /listening/records/{recordId}/report`                           | 报告详情                                                        |
+| ⑤c  | `GET /listening/records/{recordId}/report/questions/{questionId}`    | 逐题解析                                                        |
+| ⑤d  | `POST /listening/records/{recordId}/report/retry`                    | 报告异常重试                                                      |
 
 ### 4.6.4 写作（recordId 主键 = `practice_writing_record.id`）
 
