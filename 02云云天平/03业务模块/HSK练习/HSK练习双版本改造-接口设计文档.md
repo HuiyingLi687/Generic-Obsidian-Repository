@@ -2359,15 +2359,15 @@ E1 首页模块卡
 
 **公共约定**：
 
-| # | 约定 |
-|---|---|
-| 1 | **start 幂等**：该 `(userId, paperId, section)` 已有进行中单据时直接返回该单据（不新开卷）；**续练 = 再调一次 start**，然后按返回的题目顺序续答 |
-| 2 | **start 请求体统一 `{paperId, section}`**——`structureId` 随结构表删除（§3.2.5），旧 `{paperId, structureId}` 请求体一律作废 |
-| 3 | **拉题按快照**：start 时服务端把板块题目 ID 固化进 `question_ids`（听/读在 `practice_record`），questions 接口按快照顺序拉题——题库改版不影响进行中/已交卷的题序 |
-| 4 | **提交类端点必带 `Idempotency-Key`** header（§4.0.1）：submit（五模块）；答题保存类不强制 |
-| 5 | **报告统一入口 CR**：`GET /papers/{paperId}/reports/latest?module=&section=&version=`（§4.3，通用报告块）。详情页逐题解析再走各模块详情端点（见各模块表 ⑤） |
-| 6 | **异步报告轮询**：写/说/译的 AI 报告是异步生成——submit 成功后 CR 的 `reportStatus` 为未就绪，前端轮询 CR（或模块 `/status` 端点）直至 `READY`；听/读交卷即出报告，无轮询 |
-| 7 | 作答链路端点**不带 `version`**：版本由 `paperId` 唯一确定（§1 约束 1），仅目录端点（U1/U2/U3）与 CR 需要 `version` |
+| #   | 约定                                                                                                                   |
+| --- | -------------------------------------------------------------------------------------------------------------------- |
+| 1   | **start 幂等**：该 `(userId, paperId, section)` 已有进行中单据时直接返回该单据（不新开卷）；**续练 = 再调一次 start**，然后按返回的题目顺序续答                   |
+| 2   | **start 请求体统一 `{paperId,sectionMapping section}`**——`structureId` 随结构表删除（§3.2.5），旧 `{paperId, structureId}` 请求体一律作废  |
+| 3   | **拉题按快照**：start 时服务端把板块题目 ID 固化进 `question_ids`（听/读在 `practice_record`），questions 接口按快照顺序拉题——题库改版不影响进行中/已交卷的题序       |
+| 4   | **提交类端点必带 `Idempotency-Key`** header（§4.0.1）：submit（五模块）；答题保存类不强制                                                    |
+| 5   | **报告统一入口 CR**：`GET /papers/{paperId}/reports/latest?module=&section=&version=`（§4.3，通用报告块）。详情页逐题解析再走各模块详情端点（见各模块表 ⑤） |
+| 6   | **异步报告轮询**：写/说/译的 AI 报告是异步生成——submit 成功后 CR 的 `reportStatus` 为未就绪，前端轮询 CR（或模块 `/status` 端点）直至 `READY`；听/读交卷即出报告，无轮询  |
+| 7   | 作答链路端点**不带 `version`**：版本由 `paperId` 唯一确定（§1 约束 1），仅目录端点（U1/U2/U3）与 CR 需要 `version`                                  |
 
 ### 4.6.2 五模块差异矩阵
 
