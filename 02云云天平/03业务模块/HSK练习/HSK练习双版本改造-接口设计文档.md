@@ -50,6 +50,7 @@
 | 19  | **运营端板块配置端点（D 组）本期不规划**（2026-11-11）                                                       | `GET/PATCH /hsk/module-config/parts` 两个端点从本期移除；运营临时直接改库 `practice_module_part_config`（只能改 `enabled` / `sort_order`，规则照 §4.0.4：不能删行）。接口化 P1 再议                                                                                                                                                                                                                                                                                                             |
 | 20  | **CR 统一「通用报告块」，五模块共用同一个报告页**（2026-11-11）                                                | 通用学习报告页（正确率卡 / 答题时间 / 答对情况 / 答题卡「只看错题」）**五个模块共用一页**（听/读/写/说/**译**），因此 CR 的 `data` 不再是四套形状：统一为 **通用报告块**（`module` / `reportStatus` / `durationSeconds` / `totalQuestions` / `answeredCount` / `correctCount` / `wrongCount` / `accuracyRate` / `answerCard[]` / `submittedTime`…，字段名四模块一致）+ **模块扩展块**（写作评估反馈 / 口语评分状态 / 阅读 `items[]` / 翻译（同写作形状）收进 `writing` / `speaking` / `reading` / `translation` 可选对象）。**翻译 2026-11-11 起并入 CR**（原「先拿 reportId 再查 B10」两跳作废，B10 保留用于按 ID 查详情）。**字段名统一是破坏性的**：阅读 `totalQuestionCount` → `totalQuestions`、口语 `status` → `reportStatus`（见 §6.1 #14）。算不出的字段（写/译/说无客观判分）置 `null`，前端遇 `null` 隐藏/置灰对应卡片 |
 | 21  | **登记五模块答题流程接口流转（§4.6 新增，只登记不改端点）**（2026-11-11）                                          | 五模块从目录到报告的**全链路调用时序**集中登记到 §4.6：听/读/写/说四个模块的作答端点**沿用既有路径**（不在 §3.1 的 11 个保留端点内），翻译作答链路 B5–B10 已在 §3.1。要点：① 作答主键——听/读 = `recordId`（`practice_record`），写/说 = `attemptId`，译 = `attemptId`（复用 `writing_attempt`）；② 各模块 start 请求体统一 `{paperId, section}`（`structureId` 随结构表删除，§3.2.5 契约变更）；③ `start` 幂等（已有进行中单据直接返回），续练 = 再调一次 start；④ 提交类端点必带 `Idempotency-Key`（§4.0.1）；⑤ 报告统一入口 CR，写/说/译为异步 AI 报告需轮询。**只补文档，不改任何端点** |
+| 22  | **登记五模块作答链路「取题 / 存储 / 出结果」口径，全流程端点明细 §4.7**（2026-11-16；冻结时机已修订）                              | 按模块登记三段口径并逐一标注改造点（§4.7）：**取题**统一 `(paper_id, section_mapping, section)` + `question.enabled_prac=1`（口语双源：`question` 表或 `speaking_exam_paper_question.enabled_prac=1`）；**存储** = 快照冻结（题目/题组/选项/音频），**冻结时机 = 提交时**（2026-11-16 修订，原「开始练习时冻结」作废；与现状一致，零改造）；**出结果** = 听/读交卷即判（逐题比对 `answer` vs `question.answer`，未作答记错）、写/译/说按 **`question.has_standard_answer`** 分流（1=交卷即出、0=AI 评分）。⚠️ `has_standard_answer` 列**当前不存在**，需新增（缺口 G3）——这与「判主客观只能用 `type_id`」的旧口径并存，迁移完成后以新列为准 |
 
 ---
 
@@ -2455,6 +2456,141 @@ E1 首页模块卡
 5. submit 前确保 Idempotency-Key 生成且单次会话复用同一 key。
 6. 交卷后报告入口只有 CR 一个；写/说/译需轮询 `reportStatus`（建议 2–3s 间隔、上限 60s，超时降级为「生成中」占位）。
 7. 「只看错题」/答题卡渲染只依赖 CR 通用块的 `answerCard[]`（§4.3），`correct=null` 的题置灰不进错题过滤。
+
+---
+
+## 4.7 五模块作答链路端点明细（取题 / 存储 / 出结果口径，决策 22，2026-11-16）
+
+> §4.6 只登记了**调用时序**；本节按「**取题 → 存储 → 出结果**」三段登记每个模块的**数据口径**，并把全流程端点逐一列出、标注**哪些需要改造**（🔴 改造 / 🟡 口径落地（逻辑不变，实现需对齐口径）/ ⚪ 无变更）。路径加网关前缀 `/api/practice`。
+
+### 4.7.0 全局口径与改造点（五模块通用，先读）
+
+| # | 口径（目标） | 现状 | 结论 |
+|---|---|---|---|
+| G1 | **取题统一三元组**：按 `(paper_id, section_mapping, section)` 取题，只取 `question.enabled_prac=1` | 三元组改造已在 §3.2.5 完成；`enabled_prac` 过滤口语双源侧未对齐 | 部分改造 |
+| G2 | **快照冻结时机 = 提交时**（2026-11-16 修订，原「开始练习时冻结」作废）：交卷时把题干/题组/选项/音频冻结进快照 | `practice_answer` 的 `question_snapshot` / `group_snapshot` / `option_snapshot` 列已存在，实体注释即「提交时冻结」——**口径与现状一致** | ⚪ **无改造** |
+| G3 | **`question.has_standard_answer` 判分流**：1 = 客观题交卷即判；0 = 交 AI 评分 | 🔴 **列不存在**（`question` 表无此列），需新增 + 回填；旧口径「判主客观只能用 `type_id`」在迁移完成后由本列取代 | 🔴 **改造**（DDL + 判分分流） |
+| G4 | **`idempotency_key` 拼法统一 `{module}-{recordId}-submit`**（服务端拼，不取客户端头） | 听/读 Finalizer 现在拼的是 `listening-{recordId}-submit-1` / `reading-…-submit-1`（**多 `-1` 后缀**）；写作取客户端幂等头；口语/翻译 submit 未落 key | 🔴 **改造**：五模块统一、去掉 `-1` |
+| G5 | **`*_record.current_question_number` = `question_ids` 数组下标 + 1** | 各处取值来源不一（答题时更新 / pause 请求体回传） | 🟡 口径落地 |
+| G6 | **听/读出结果 = 交卷即判**：逐题比对 `practice_answer.answer` vs `question.answer`，算总题数/已答/答对/答错/正确率**写回记录**；**未作答一律记错 → 错题数 = 总题数 − 答对数** | 听/读 Finalizer 已同步出结果；「未作答记错」「错题数公式」需对齐 | 🟡 口径落地 |
+| G7 | **口语板块域常量统一 `SEC_SPEAK`**（用户口径文字里的 `SEC_SPEAKING` 以代码常量 `SEC_SPEAK` 为准） | 代码已恒 `SEC_SPEAK` | 🟡 命名对齐 |
+| G8 | **共享音频列名**：`question_shared_audio` 的音频列，实体映射读的是 `audio_url`；用户口径写作 `shareAudioUrl` | 同一列两种叫法 | ⚠️ **列名以库为准，落地前确认**（本节暂按实体 `audio_url` 书写） |
+
+### 4.7.1 听力（listening，主键 recordId）
+
+**三段口径**：
+
+- **取题**：`(paper_id, section_mapping, section)` 取 `question.enabled_prac=1` 的题目。单题音频 = `question.audio_url`；共享音频 = `question.group_id` → `question_shared_audio.audio_url`（G8）。
+- **存储**：**提交时冻结**（G2，2026-11-16 修订）。`practice_answer` 快照列：`question_snapshot` 存 `question.section_title` / `content` / `passage` / `audio_url`、共享音频存 `question_shared_audio.audio_url`；`option_snapshot` 存 `question.option_content`。
+- **出结果**：交卷即出（G6）。逐题比对 `answer` vs `question.answer` → 总题数 / 已答题数 / 答对数 / 答错数 / 正确率写回 `practice_record`；未作答记错，**错题数 = 总题数 − 答对数**。`current_question_number` = `question_ids` 下标 + 1（G5）；`idempotency_key` = `listening-{recordId}-submit`（G4）。
+
+| # | 端点 | 标记 | 说明 |
+|---|---|---|---|
+| 1 | `POST /listening/records/start` `{paperId, section}` | ⚪ | 开卷幂等（已有）；`question_ids` 固化（已有）。快照在 submit 冻结（G2），start 不动 |
+| 2 | `GET /listening/records/{recordId}` | ⚪ | 记录详情/续练状态 |
+| 3 | `GET /listening/records/{recordId}/questions` | 🔴 | 数据源改三元组 + `enabled_prac=1`（G1）；共享音频走 `question_shared_audio`（G8）；逐题 `layout` |
+| 4 | `PUT /listening/records/{recordId}/answers/{questionId}` | 🟡 | 单题保存；`current_question_number` 口径（G5） |
+| 5 | `PUT /listening/records/{recordId}/answers` | 🟡 | 批量保存；同上 |
+| 6 | `POST /listening/records/{recordId}/pause` | ⚪ | 暂停 |
+| 7 | `POST /listening/records/{recordId}/submit` | 🔴 | `idempotency_key` 拼法改 `{module}-{recordId}-submit`（G4，去 `-1`）；判分口径 G6 对齐；**提交时冻结题目快照**（G2，与现状一致，确认实现覆盖音频快照字段） |
+| 8 | `GET /papers/{paperId}/reports/latest?module=listening&section=`（CR） | ⚪ | `answerCard` 按 `question_ids` 构造（§4.3） |
+| 9 | `GET /listening/records/{recordId}/report` | 🟡 | 报告数据源改读**快照列**（题干/选项以快照为准） |
+| 10 | `GET /listening/records/{recordId}/report/questions/{questionId}` | 🟡 | 同上 |
+| 11 | `POST /listening/records/{recordId}/report/retry` | ⚪ | 听力同步出结果，retry 保留兜底 |
+
+### 4.7.2 阅读（reading，主键 recordId）
+
+**三段口径**（与听力的差异只在内容来源）：
+
+- **取题**：`(paper_id, section_mapping, section)` 取 `question.enabled_prac=1`。单题：题干/选项在 `question` 上；共享材料在 `question_group` 上（`content` / `passage` / `option_content`）。
+- **存储**：提交时冻结（G2，2026-11-16 修订）。`question_snapshot` 存 `question.section_title` / `content` / `passage`；`group_snapshot` 存 `question_group.content` / `passage`；`option_snapshot` 存 `question.option_content` + `question_group.option_content`。
+- **出结果**：同听力（G6）——逐题比对、未作答记错、错题数 = 总题数 − 答对数、统计写回记录；`idempotency_key` = `reading-{recordId}-submit`（G4）。
+
+| # | 端点 | 标记 | 说明 |
+|---|---|---|---|
+| 1 | `POST /reading/records/start` | ⚪ | 同听力 1（快照在 submit 冻结，start 不动） |
+| 2 | `GET /reading/records/{recordId}` | ⚪ | 详情 |
+| 3 | `GET /reading/records/{recordId}/questions` | 🔴 | 数据源三元组 + `enabled_prac=1`；共享材料走 `question_group` |
+| 4 | `PUT /reading/records/{recordId}/answers/{questionId}` | 🟡 | 单题保存（G5） |
+| 5 | `PUT /reading/records/{recordId}/answers` | 🟡 | 批量保存（G5） |
+| 6 | `POST /reading/records/{recordId}/pause` | ⚪ | 暂停 |
+| 7 | `POST /reading/records/{recordId}/submit` | 🔴 | `idempotency_key` 去 `-1`（G4）+ 判分口径（G6）+ **提交时冻结快照**（G2，与现状一致） |
+| 8 | `POST /reading/records/{recordId}/sessions` → `/{sessionId}/heartbeat` → `/end` | ⚪ | 计时会话（听力没有，阅读独有） |
+| 9 | CR `?module=reading&section=` | ⚪ | — |
+| 10 | `GET /reading/records/{recordId}/report` / `.../report/questions/{q}` / `report/retry` | 🟡 | 报告数据源改读快照列 |
+
+### 4.7.3 写作（writing，主键 attemptId）
+
+**三段口径**：
+
+- **取题**：`(paper_id, section_mapping, section)` 取 `question.enabled_prac=1`。
+- **存储**：提交时冻结（G2，2026-11-16 修订）。`writing_answer`（`*_answer`）快照：`question_snapshot` 存 `question.section_title` / `content` / `passage`、`group_snapshot` 存 `question_group.content` / `passage`；`option_snapshot` 存 `question.option_content` + `question_group.option_content`。
+- **出结果**：**按 `question.has_standard_answer` 分流**（G3）：`1` → 交卷即出结果（同听/读比对口径）；`0` → 交 AI 评分（异步，CR 轮询）。`current_question_number`（G5）；`idempotency_key` = `writing-{attemptId}-submit`（G4，现状取客户端头）。
+
+| # | 端点 | 标记 | 说明 |
+|---|---|---|---|
+| 1 | `POST /writing/attempts/start` | ⚪ | 快照在 submit 冻结（G2），start 不动 |
+| 2 | `GET /writing/attempts/{attemptId}` | ⚪ | 详情 |
+| 3 | `GET /writing/attempts/{attemptId}/questions` | 🔴 | 数据源 `enabled_prac=1`（G1）+ `layout` 改读原值（B-04，已在 §4.0.5） |
+| 4 | `PUT /writing/attempts/{attemptId}/answers` | 🟡 | 批量保存 + 快照口径 |
+| 5 | `POST /writing/attempts/{attemptId}/sessions` ×3 | ⚪ | 计时会话 |
+| 6 | `POST /writing/attempts/{attemptId}/pause` | ⚪ | 暂停 |
+| 7 | `POST /writing/attempts/{attemptId}/submit` | 🔴 | **has_standard_answer 分流**（G3）+ `idempotency_key` 服务端统一（G4，弃客户端头）+ **提交时冻结快照**（G2，与现状一致） |
+| 8 | CR `?module=writing&section=` | ⚪ | `writing` 扩展块不变 |
+| 9 | `GET /writing/reports/{reportId}` / `/status`（ETag）/ `/questions/{q}` | 🟡 | 数据源改读快照列 |
+
+### 4.7.4 口语（speaking，主键 attemptId，双源取题）
+
+**三段口径**：
+
+- **取题**：双源——① HSK7-9 口语模块：`question.enabled_prac=1`；② 口语试卷：`speaking_exam_paper_question.enabled_prac=1`（其 `section_mapping` 默认 `SEC_SPEAK`，G7）。均按三元组定位。
+- **存储**：① HSK7-9 口语模块：快照同写作（`section_title` / `content` / `passage` / `question_group.content` / `passage`、选项快照）；② 口语试卷：快照存 `speaking_exam_paper_question.passage` / `practice_audio_url` / `reference_answer`。**均提交时冻结**（G2，2026-11-16 修订）。
+- **出结果**：按 `has_standard_answer` 分流（G3，同写作）；`idempotency_key` = `speaking-{attemptId}-submit`（G4，现状未落 key）。
+
+| # | 端点 | 标记 | 说明 |
+|---|---|---|---|
+| 1 | `POST /speaking/attempts/start` | ⚪ | 开卷幂等；双源取题口径在 questions 侧落地，快照在 submit 冻结（G2） |
+| 2 | `GET /speaking/attempts/{attemptId}` | ⚪ | 详情 |
+| 3 | `GET /speaking/attempts/{attemptId}/answer-card` | ⚪ | 答题卡 |
+| 4 | `GET /speaking/attempts/{attemptId}/questions` | 🔴 | 双源数据源改造；P0 恒 `record` |
+| 5 | `POST /speaking/attempts/{attemptId}/questions/{questionId}/recordings/prepare` | ⚪ | 录音两步·预签名 |
+| 6 | `POST /speaking/attempts/{attemptId}/questions/{questionId}/answers` | 🟡 | 保存答案（G5） |
+| 7 | `POST /speaking/attempts/{attemptId}/sessions` ×3 / `pause` | ⚪ | 计时 / 暂停 |
+| 8 | `POST /speaking/attempts/{attemptId}/submit` | 🔴 | has_standard_answer 分流（G3）+ `idempotency_key` 落库（G4）+ **提交时冻结快照**（口语试卷快照字段另一套：`passage` / `practice_audio_url` / `reference_answer`） |
+| 9 | CR `?module=speaking&section=` | ⚪ | `speaking` 扩展块不变 |
+| 10 | `GET /speaking/reports/{reportId}` / `/status` / `/questions/{q}` / `/retry` | 🟡 | 数据源改读快照列 |
+
+### 4.7.5 翻译（translation，主键 attemptId，复用写作链路）
+
+**三段口径**：
+
+- **取题**：`(paper_id, section_mapping, section)` 取 `question.enabled_prac=1`（与写作同源，`section_mapping=SEC_TRANSLATION`）。
+- **存储**：提交时冻结（G2，2026-11-16 修订），快照字段同写作。
+- **出结果**：按 `has_standard_answer` 分流（G3）：`1` → 交卷即出结果；`0` → 交 AI。`idempotency_key` = `translation-{attemptId}-submit`（G4，现状未落 key）。
+
+| # | 端点 | 标记 | 说明 |
+|---|---|---|---|
+| 1 | `B5 POST /translation/attempts/start` | ⚪ | 快照在 B9 submit 冻结（G2），start 不动 |
+| 2 | `B6 GET /translation/attempts/{attemptId}` | ⚪ | 详情 |
+| 3 | `B7 GET /translation/attempts/{attemptId}/questions` | 🔴 | 数据源 `enabled_prac=1`（G1） |
+| 4 | `B8 PUT /translation/attempts/{attemptId}/answers` | 🟡 | 快照口径（笔译 `TEXT` / 口译 `AUDIO`） |
+| 5 | `B9 POST /translation/attempts/{attemptId}/submissions` | 🔴 | **has_standard_answer 分流**（G3）——原「P0 无评分策略恒 UNAVAILABLE」**不再成立**，§4.3 翻译填充规则需按本口径重写（客观题交卷即出分）+ `idempotency_key` 落库（G4）+ **提交时冻结快照**（G2，与现状一致） |
+| 6 | CR `?module=translation&section=` | 🔴 | 填充规则同步：`has_standard_answer=1` 的板块 `score` / 对错字段有值，不再全 `null` |
+| 7 | `B10 GET /translation/reports/{reportId}` | ⚪ | 按 reportId 查详情 |
+
+### 4.7.6 改造点汇总（给排期用）
+
+| 改造点 | 影响端点 | 模块 |
+|---|---|---|
+| 🔴 **G3 `question.has_standard_answer` 新列 + 回填 + 判分分流** | 写 / 说 / 译的 submit + CR 填充规则 | 写/说/译 |
+| 🔴 **G4 `idempotency_key` 统一 `{module}-{recordId}-submit`**（去 `-1`、服务端拼、说/译补落库） | 听/读/写/说/译 submit ×5 | 五模块 |
+| 🔴 **G1 取题加 `enabled_prac=1` 过滤** | 各模块 questions（口语双源） | 五模块 |
+| 🟡 G5/G6/G7 口径对齐 | 答题保存、听/读 submit 统计写回、口语常量 | — |
+| 🟡 报告详情数据源改读快照列 | 各模块报告详情端点 | 五模块 |
+
+> 快照冻结（G2）= **提交时**，与现状一致，无改造；仅需确认各模块 submit 实现覆盖了口径列出的全部快照字段（尤其听力的音频、口语试卷的 `practice_audio_url` / `reference_answer`）。
+
+> ⚠️ G3 与铁律「判主客观只能用 `type_id`」的关系：`has_standard_answer` 落地并回填完成前，判分分流仍以 `type_id` 兜底；完成后的迁移方案需在 SDD 缺口清单登记（列来源/回填规则）。
 
 ---
 
