@@ -1,8 +1,8 @@
 # HSK 练习双版本（2.0 / 3.0）与翻译模块拆分 · 接口设计文档
 
-> 版本：v1.3｜更新日期：2026-11-11
-> 影响服务：practice-service（改造 + 新增）；exam-service / manage 仅实体加字段
-> 关联文档：[HSK练习双版本与翻译模块拆分-SDD](HSK练习双版本与翻译模块拆分-SDD.md)
+> 版本：v1.3｜更新日期：2026-11-11  
+> 影响服务：practice-service（改造 + 新增）；exam-service / manage 仅实体加字段  
+> 关联文档：[HSK练习双版本与翻译模块拆分-SDD](HSK练习双版本与翻译模块拆分-SDD.md)  
 > 开发：待填｜测试：待填｜前端：待填
 >
 > 🧭 **基线声明**：本文所有字段、值域、用例、验收**一律以 TEST 库为准**。生产库与 TEST 的差异只在 **§9.1** 登记（明细见 SDD 附录 D），生产改造另行安排，不在本文档范围内。
@@ -17,6 +17,8 @@
 - 【无变更】：原有内容，本次迭代不做任何改动
 
 ---
+
+
 
 ## 0. 变更决策记录
 
@@ -172,6 +174,7 @@
 ---
 
 ## 4. 改动接口详情
+
 
 ### 4.0 公共约定（先读这一节）
 
@@ -437,6 +440,8 @@
 
 > ⚠️ **两个 `level_name` 同名不同义，不能混**：
 >
+|  |  |  |  |  |
+| --- | --- | --- | --- | --- |
 > | 表 | 列的语义 | 值 | 谁在用 |
 > |---|---|---|---|
 > | `practice_module_level_config.level_name` ×3 | **等级短名 / 接口显示名（三语）** | `HSK1`、`HSK7-9`、`HSKK 初级`（en/vi 见换算表） | 本接口的 `levelName`（**唯一**） |
@@ -507,6 +512,7 @@
 > ⚠️ **目录与作答的板块来源不同，会出现「U3 看得到、却开不了练」**：U3 的板块来自 `part_config` + `question` 现算，而 B5（翻译开练）仍要求 `practice_part_setting` 有对应行。实测 3.0 翻译卷 `2104188199979532289` 的 `section=2`（口译，2 题）在 `question` 里存在、U3 会下发，但 `practice_part_setting` 只有 `section_code='1'` → B5 传 `section=2` **404**。要开口译需运营补 1 行 `part_setting`（`section_code='2'`、`type_code='translation_oral'`），已登记为 D16 同批动作。
 
 ---
+
 
 ### 4.1 目录端点（原 A 组：全部并入 U1–U3，本节保留各模块响应示例）
 
@@ -1318,6 +1324,7 @@ Authorization: Bearer xxx
 
 ---
 
+
 ### 4.2 翻译模块（B 组：作答链路 6 个新增保留；目录 3 个并入 U1–U3）
 
 #### 翻译模块的实测数据基线（TEST，2026-11-10）
@@ -1882,6 +1889,7 @@ Authorization: Bearer xxx
 
 ---
 
+
 ### 4.3 板块最近报告（原 C 组 4 个端点，合并为 CR）
 
 **2026-11-11 合并**（决策 17）：四个模块的「板块最近报告」功能几乎一样、只是路径前缀和 `data` 形状不同，**合并为一个统一端点**。
@@ -1911,6 +1919,8 @@ Authorization: Bearer xxx
 
 > 五个模块的查询结果都由 `PracticeReportController` **重映射成统一的「通用报告块 + 模块扩展块」**（决策 20），不在响应里暴露各模块原始形状。
 
+|  |  |
+| --- | --- |
 **翻译并入 CR**（2026-11-11，决策 20）：通用报告页五模块共用一页，翻译不再单独走「先拿 reportId 再查 B10」的两跳；「最近报告」直接调 CR `module=translation&section=1|2`。**B10 `GET /translation/reports/{reportId}` 保留**，用于按报告 ID 查详情 / 历史报告（reportId 从 CR 或 U3 `parts[]` 的 `report` 块取）。
 
 **响应骨架**：**四模块共用同一个报告页**（决策 20），`data` 统一为「**通用报告块** + **模块扩展块**」——通用块字段名四模块完全一致，通用报告页只读通用块；模块专属能力（写作 AI 点评、口语评分状态、阅读逐题明细）收进可选扩展对象，模块专属页再读扩展块。
@@ -2373,8 +2383,14 @@ E1 首页模块卡
 
 ### 4.6.2 五模块差异矩阵
 
+|  |  |  |  |  |  |
+| --- | --- | --- | --- | --- | --- |
 |     | 听 listening | 读 reading | 写 writing | 说 speaking | 译 translation |
+|  |  |  |  |  |  |  |  |  |  |  |  |  |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | --- | ----------- | --------- | --------- | ---------- | ------------- || 作答主键 | `recordId`（`practice_record`） | `recordId` | `recordId`（`practice_writing_record`） | `recordId`（`practice_speaking_record`） | `recordId`（复用 `practice_writing_record`） |
+|  |  |  |  |  |  |
+| --- | --- | --- | --- | --- | --- |
 | start 路径 | `POST /listening/records/start` | `POST /reading/records/start` | `POST /writing/records/start` | `POST /speaking/records/start` | `B5 POST /translation/records/start` |
 | 答题形态 | `PUT .../answers/{questionId}`（单题）+ `PUT .../answers`（批量） | 同听 | `PUT .../answers`（批量） | 录音两步（prepare → answers） | `PUT .../answers`（笔译 `TEXT` / 口译 `AUDIO`） |
 | 暂停 | `POST .../pause` | `POST .../pause` | `POST .../pause` | `POST .../pause` | 无（P1） |
@@ -2972,6 +2988,8 @@ ALTER TABLE practice_module_part_config
 
 
 
+|  |  |
+| --- | --- |
 | `core/entity/PracticeModuleLevelConfig.java` | 补 `@TableField("level_name") private String levelName`（新列，位于 `level` 之后）；**同时删 `partsConfig` 字段**（TEST 已 drop 该列，留着必 `Unknown column`） |
 | `reading` / `writing` 的 `levelResponse` | `levelName` 改取 `config.getLevelName()`；**删 `"HSK" + level` 拼接**与 `levelMapper.selectOne`（读 `hsk_level_config` 那次）一并去掉。听力 / 口语本就未读该表 |
 | `core/entity/PracticeUserPreference.java` / `core/mapper/PracticeUserPreferenceMapper.java` | **整文件删除（2026-11-11 已删）** —— 偏好机制下线（A8/A9 删除，§4 A8）。库表 `practice_user_preference` 保留不 drop（TEST 17 行历史数据） |
