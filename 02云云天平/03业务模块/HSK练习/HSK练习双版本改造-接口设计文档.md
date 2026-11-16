@@ -2498,20 +2498,20 @@ E1 首页模块卡
 - **存储**：**提交时冻结**（G2，2026-11-16 修订）。`practice_answer` 快照列：`question_snapshot` 存 `question.section_title` / `content` / `passage` / `audio_url`、共享音频存 `question_shared_audio.audio_url`；`option_snapshot` 存 `question.option_content`。
 - **出结果**：交卷即出（G6）。逐题比对 `answer` vs `question.answer` → 总题数 / 已答题数 / 答对数 / 答错数 / 正确率写回 `practice_record`；未作答记错，**错题数 = 总题数 − 答对数**。`current_question_number` = `question_ids` 下标 + 1（G5）；`idempotency_key` = `listening-{recordId}-submit`（G4）。
 
-| # | 端点 | 标记 | 说明 |
-|---|---|---|---|
-| 1 | `POST /listening/records/start` `{paperId, sectionMapping, section}` | ⚪ | 开卷幂等（已有）；`question_ids` 固化（已有）。快照在 submit 冻结（G2），start 不动 |
-| 2 | `GET /listening/records/{recordId}` | ⚪ | 记录详情/续练状态 |
-| 2b | `GET /listening/records/{recordId}/answer-card` | 🟡 | **新增端点（决策 25，参考 CSCA）**：`questions[]` 按 `question_ids` 快照；只回 `answered`（取 `practice_answer`）——**无对错/标记/收藏**（G9） |
-| 3 | `GET /listening/records/{recordId}/questions` | 🔴 | 数据源改三元组 + `enabled_prac=1`（G1）；共享音频走 `question_shared_audio`（G8）；逐题 `layout` |
-| 4 | `PUT /listening/records/{recordId}/answers/{questionId}` | 🟡 | 单题保存；`current_question_number` 口径（G5） |
-| 5 | `PUT /listening/records/{recordId}/answers` | 🟡 | 批量保存；同上 |
-| 6 | `POST /listening/records/{recordId}/pause` | ⚪ | 暂停 |
-| 7 | `POST /listening/records/{recordId}/submit` | 🔴 | `idempotency_key` 拼法改 `{module}-{recordId}-submit`（G4，去 `-1`）；判分口径 G6 对齐；**提交时冻结题目快照**（G2，与现状一致，确认实现覆盖音频快照字段） |
-| 8 | `GET /papers/{paperId}/reports/latest?module=listening&section=`（CR） | ⚪ | `answerCard` 按 `question_ids` 构造（§4.3） |
-| 9 | `GET /listening/records/{recordId}/report` | 🟡 | 报告数据源改读**快照列**（题干/选项以快照为准） |
-| 10 | `GET /listening/records/{recordId}/report/questions/{questionId}` | 🟡 | 同上 |
-| 11 | `POST /listening/records/{recordId}/report/retry` | ⚪ | 听力同步出结果，retry 保留兜底 |
+| #   | 端点                                                                   | 标记  | 说明                                                                                                              |
+| --- | -------------------------------------------------------------------- | --- | --------------------------------------------------------------------------------------------------------------- |
+| 1   | `POST /listening/records/start` `{paperId, sectionMapping, section}` | ⚪   | 开卷幂等（已有）；`question_ids` 固化（已有）。快照在 submit 冻结（G2），start 不动                                                       |
+| 2   | `GET /listening/records/{recordId}`                                  | ⚪   | 记录详情/续练状态                                                                                                       |
+| 2b  | `GET /listening/records/{recordId}/answer-card`                      | 🟡  | **新增端点（决策 25，参考 CSCA）**：`questions[]` 按 `question_ids` 快照；只回 `answered`（取 `practice_answer`）——**无对错/标记/收藏**（G9） |
+| 3   | `GET /listening/records/{recordId}/questions`                        | 🔴  | 数据源改三元组 + `enabled_prac=1`（G1）；共享音频走 `question_shared_audio`（G8）；逐题 `layout`                                    |
+| 4   | `PUT /listening/records/{recordId}/answers/{questionId}`             | 🟡  | 单题保存；`current_question_number` 口径（G5）                                                                           |
+| 5   | `PUT /listening/records/{recordId}/answers`                          | 🟡  | 批量保存；同上                                                                                                         |
+| 6   | `POST /listening/records/{recordId}/pause`                           | ⚪   | 暂停                                                                                                              |
+| 7   | `POST /listening/records/{recordId}/submit`                          | 🔴  | `idempotency_key` 拼法改 `{module}-{recordId}-submit`（G4，去 `-1`）；判分口径 G6 对齐；**提交时冻结题目快照**（G2，与现状一致，确认实现覆盖音频快照字段）   |
+| 8   | `GET /papers/{paperId}/reports/latest?module=listening&section=`（CR） | ⚪   | `answerCard` 按 `question_ids` 构造（§4.3）                                                                          |
+| 9   | `GET /listening/records/{recordId}/report`                           | 🟡  | 报告数据源改读**快照列**（题干/选项以快照为准）                                                                                      |
+| 10  | `GET /listening/records/{recordId}/report/questions/{questionId}`    | 🟡  | 同上                                                                                                              |
+| 11  | `POST /listening/records/{recordId}/report/retry`                    | ⚪   | 听力同步出结果，retry 保留兜底                                                                                              |
 
 ### 4.7.2 阅读（reading，主键 recordId）
 
@@ -2521,19 +2521,19 @@ E1 首页模块卡
 - **存储**：提交时冻结（G2，2026-11-16 修订）。`question_snapshot` 存 `question.section_title` / `content` / `passage`；`group_snapshot` 存 `question_group.content` / `passage`；`option_snapshot` 存 `question.option_content` + `question_group.option_content`。
 - **出结果**：同听力（G6）——逐题比对、未作答记错、错题数 = 总题数 − 答对数、统计写回记录；`idempotency_key` = `reading-{recordId}-submit`（G4）。
 
-| # | 端点 | 标记 | 说明 |
-|---|---|---|---|
-| 1 | `POST /reading/records/start` | ⚪ | 同听力 1（快照在 submit 冻结，start 不动） |
-| 2 | `GET /reading/records/{recordId}` | ⚪ | 详情 |
-| 2b | `GET /reading/records/{recordId}/answer-card` | 🟡 | **新增端点（决策 25）**：口径同听力 2b，只回 `answered`，无对错/标记/收藏 |
-| 3 | `GET /reading/records/{recordId}/questions` | 🔴 | 数据源三元组 + `enabled_prac=1`；共享材料走 `question_group` |
-| 4 | `PUT /reading/records/{recordId}/answers/{questionId}` | 🟡 | 单题保存（G5） |
-| 5 | `PUT /reading/records/{recordId}/answers` | 🟡 | 批量保存（G5） |
-| 6 | `POST /reading/records/{recordId}/pause` | ⚪ | 暂停 |
-| 7 | `POST /reading/records/{recordId}/submit` | 🔴 | `idempotency_key` 去 `-1`（G4）+ 判分口径（G6）+ **提交时冻结快照**（G2，与现状一致） |
-| 8 | `POST /reading/records/{recordId}/sessions` → `/{sessionId}/heartbeat` → `/end` | ⚪ | 计时会话（听力没有，阅读独有） |
-| 9 | CR `?module=reading&section=` | ⚪ | — |
-| 10 | `GET /reading/records/{recordId}/report` / `.../report/questions/{q}` / `report/retry` | 🟡 | 报告数据源改读快照列 |
+| #   | 端点                                                                                     | 标记  | 说明                                                            |
+| --- | -------------------------------------------------------------------------------------- | --- | ------------------------------------------------------------- |
+| 1   | `POST /reading/records/start`                                                          | ⚪   | 同听力 1（快照在 submit 冻结，start 不动）                                 |
+| 2   | `GET /reading/records/{recordId}`                                                      | ⚪   | 详情                                                            |
+| 2b  | `GET /reading/records/{recordId}/answer-card`                                          | 🟡  | **新增端点（决策 25）**：口径同听力 2b，只回 `answered`，无对错/标记/收藏              |
+| 3   | `GET /reading/records/{recordId}/questions`                                            | 🔴  | 数据源三元组 + `enabled_prac=1`；共享材料走 `question_group`              |
+| 4   | `PUT /reading/records/{recordId}/answers/{questionId}`                                 | 🟡  | 单题保存（G5）                                                      |
+| 5   | `PUT /reading/records/{recordId}/answers`                                              | 🟡  | 批量保存（G5）                                                      |
+| 6   | `POST /reading/records/{recordId}/pause`                                               | ⚪   | 暂停                                                            |
+| 7   | `POST /reading/records/{recordId}/submit`                                              | 🔴  | `idempotency_key` 去 `-1`（G4）+ 判分口径（G6）+ **提交时冻结快照**（G2，与现状一致） |
+| 8   | `POST /reading/records/{recordId}/sessions` → `/{sessionId}/heartbeat` → `/end`        | ⚪   | 计时会话（听力没有，阅读独有）                                               |
+| 9   | CR `?module=reading&section=`                                                          | ⚪   | —                                                             |
+| 10  | `GET /reading/records/{recordId}/report` / `.../report/questions/{q}` / `report/retry` | 🟡  | 报告数据源改读快照列                                                    |
 
 ### 4.7.3 写作（writing，主键 recordId）
 
