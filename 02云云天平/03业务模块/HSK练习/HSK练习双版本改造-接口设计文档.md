@@ -149,6 +149,7 @@
 | B9  | POST   | `/translation/records/{recordId}/submissions`              | 交卷           | 新增   | 委托 `WritingSubmissionService#submit`                            |
 | B10 | GET    | `/translation/records/{recordId}/report`                     | 报告详情         | 改造   | 🔴 决策 24：原 `/translation/reports/{reportId}` 随报告表退场作废，对齐听/读改按 `recordId` 定位（§4.2 B10 段） |
 | E1  | GET    | `/hsk/modules`                                               | 首页模块卡聚合      | 新增   | 一次返回布局 + 卡片 + 可用性 + 进度                                          |
+| AC  | GET    | `/{module}/records/{recordId}/answer-card`                   | 五模块公用答题卡     | 新增   | **决策 25 + G9**：`module` ∈ `listening`/`reading`/`writing`/`speaking`/`translation`，五个路径响应完全一致；只回 `answered` + 当前题号，**无对错/标记/收藏**；题序按 `question_ids` 快照（与 CR `answerCard[]` 同源同序） |
 
 > U1–U3 与 CR 的响应统一带 `module` 字段，前端不需要自己记「这份响应属于哪个模块」。
 > 🔴 本表**只列本期改造/新增的端点**；听/读/写/说的作答端点（start / questions / answers / pause / submit / 报告详情）沿用既有路径、本期零改动，全链路流转统一登记在 **§4.6**（决策 21）。
