@@ -451,14 +451,16 @@ ALTER TABLE practice_record MODIFY COLUMN question_ids json NULL
 
 | 旧 | 新 |
 |---|---|
-| `POST /listening/records/start {paperId, structureId}` | `{paperId, section}` |
+| `POST /listening/records/start {paperId, structureId}` | `{paperId, sectionMapping, section}`（决策 23 三字段必填） |
 | `GET /listening/parts/{structureId}/reports/latest` | `GET /papers/{paperId}/reports/latest?module=listening&section=`（**CR 统一端点**，不带模块前缀，板块号走 query） |
 | `POST /reading/records/start {paperId, structureId}` | `{paperId, section}` |
 | `GET /reading/parts/{structureId}/reports/latest` | 同上（CR，`?module=reading&section=`） |
 
 前端改拿目录响应里的 `partCode`（= `section`）+ 卷 `id`。**目录响应不再下发 `structureId`**——它随结构表一起消失，不留 deprecated 字段，避免前端继续依赖。
 
-> 🔴 **五模块答题流程全链路流转**（2026-11-11，接口设计文档 **§4.6** + 决策 21，只登记不改端点）：E1 → U1 → U2 → U3 → start（幂等，请求体统一 `{paperId, section}`）→ questions（逐题 `layout`，按 `question_ids` 快照）→ answers → pause/会话心跳（随模块）→ submit（`Idempotency-Key` 必填）→ 报告（统一入口 CR；写/说/译异步轮询）。作答主键：听/读 `recordId`、写/说 `attemptId`、译 `attemptId`（复用 `writing_attempt`）；**翻译交卷是 `/submissions`，写作是 `/submit`，不同名**。听/读/写/说作答端点沿用既有路径（不在 §3.1 保留端点清单内）。
+> 🔴 **五模块答题流程全链路流转**（2026-11-11，接口设计文档 **§4.6** + 决策 21/23，只登记不改端点）：E1 → U1 → U2 → U3 → start（幂等，请求体统一 `{paperId, sectionMapping, section}` 三字段必填——综合卷同号共存，只传 `{paperId, section}` 推不出唯一板块）→ questions（逐题 `layout`，按 `question_ids` 快照）→ answers → pause/会话心跳（随模块）→ submit（`Idempotency-Key` 必填）→ 报告（统一入口 CR；写/说/译异步轮询）。**作答主键五模块统一 `recordId`**（听/读 = `practice_record`，写/译 = `practice_writing_record`，说 = `practice_speaking_record`）；写/译/说**链路以听/读为模板**，路径统一 `/{mod}/records/...`（决策 23，旧 `attempts` 路径 404）；**翻译交卷是 `/submissions`，写作是 `/submit`，不同名**。听/读作答端点沿用既有路径（不在 §3.1 保留端点清单内）。
+
+> 🔴 **attempt 表已退场（2026-11-16，决策 23）**：`writing_attempt` → **`practice_writing_record`**、`speaking_attempt` → **`practice_speaking_record`**（实体 `WritingAttempt` / `SpeakingAttempt` 已映射新表名）。本 SDD 中 §3.2.6 等处的 `writing_attempt` / `speaking_attempt` 为**当时实测的历史实录**，读到时一律按新表名理解；后续迁移脚本执行前需把目标表名替换为新名。
 
 > 🔴 **五模块「取题 / 存储 / 出结果」口径 + 全流程端点明细**（2026-11-16，接口设计文档 **§4.7** + 决策 22）：取题统一三元组 + `question.enabled_prac=1`（口语双源：`question` 或 `speaking_exam_paper_question.enabled_prac=1`，板块域常量 `SEC_SPEAK`）；快照（题目/题组/选项/音频）**提交时冻结**（G2，与现状一致零改造）；听/读交卷即判（逐题比对 `answer` vs `question.answer`、未作答记错、错题数 = 总题数 − 答对数、统计写回记录）；写/译/说按 **`question.has_standard_answer`** 分流（1=交卷即出、0=AI）——⚠️ **该列当前不存在，需新增 + 回填**，落地前判分分流仍以 `type_id` 兜底（铁律 #3），此为新缺口需登记；`idempotency_key` 统一 `{module}-{recordId}-submit`（现状听/读多 `-1` 后缀、写作取客户端头、说/译未落库，均要改）；翻译 P0「恒 UNAVAILABLE」口径随 has_standard_answer 分流作废，CR 翻译填充规则需重写。
 
