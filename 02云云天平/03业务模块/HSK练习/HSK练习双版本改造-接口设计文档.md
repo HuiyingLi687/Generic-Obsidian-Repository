@@ -2377,19 +2377,19 @@ E1 首页模块卡
 
 ### 4.6.4 写作（recordId 主键 = `practice_writing_record.id`）
 
-| 步   | 端点                                                                                                          | 说明                                                                                                        |
-| --- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| ①   | `POST /writing/records/start` `{paperId, sectionMapping, section}`                                          | 返回 `recordId` + `status`（大写 `IN_PROGRESS`，作答链路状态本期不统一，§10 #17）                                            |
-| ①b  | `GET /writing/records/{recordId}`                                                                           | （续练可选）查记录详情                                                                                               |
-| ①c  | `GET /writing/records/{recordId}/answer-card`                                                               | 答题卡（决策 25）：交卷前 `correct` 全 `null`；交卷后 `has_standard_answer=1` 取客观判分、`=0` 按 `grading_state`（`0`=评分中 `null`，`1`=AI 结果） |
-| ②   | `GET /writing/records/{recordId}/questions`                                                                 | **修 B-04 后逐题下发 `layout`**（改读 `layout` 原样透传，弃 `type_id_mapping` switch）                                    |
-| ③   | `PUT /writing/records/{recordId}/answers`                                                                   | 批量保存答案                                                                                                    |
-| ③b | ~~`POST /writing/records/{recordId}/sessions` → `/{sessionId}/heartbeat` → `/end`~~ | 🔴 **删除（2026-11-16，决策 24）**：练习是**倒计时**制，无心跳必要；`durationSeconds` = `end_time` − `start_time`（`practice_writing_record` 两列已有，零改造）。会话三端点实现代码**注释掉**，不删文件 |
-| ③c | ~~`POST /writing/records/{recordId}/pause`~~ | 🔴 **注释掉（2026-11-16，决策 24）**：倒计时练习不需要暂停 |
-| ④   | `POST /writing/records/{recordId}/submit`                                                                   | 交卷，`Idempotency-Key` 必填。🔴 **路径是 `/submit`**，与翻译 B9 的 `/submissions` 不同名（历史原因，勿混）                         |
-| ⑤   | `GET /papers/{paperId}/reports/latest?module=writing&section=`                                              | **CR** 轮询：AI 评分未完成时 `reportStatus=GRADING`（`grading_state=0`），完成后 `READY` 并携带评分结果 |
-| ⑤b  | `GET /writing/records/{recordId}/report`                                                                    | 报告详情（**对齐听/读，2026-11-16 决策 24**）：reportId 已随报告表退场，报告数据由 `practice_writing_record` + `practice_writing_answer` 现拼 |
-| ⑤c  | `GET /writing/records/{recordId}/report/questions/{questionId}`                                             | 逐题反馈：`has_standard_answer=1` → 客观判分结果；`=0` → 按 `practice_writing_answer.grading_state` 取 AI 评分（`1`=`points`/`analysis` 已就绪，`0`=评分中） |
+| 步   | 端点                                                                                  | 说明                                                                                                                                                    |
+| --- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ①   | `POST /writing/records/start` `{paperId, sectionMapping, section}`                  | 返回 `recordId` + `status`（大写 `IN_PROGRESS`，作答链路状态本期不统一，§10 #17）                                                                                        |
+| ①b  | `GET /writing/records/{recordId}`                                                   | （续练可选）查记录详情                                                                                                                                           |
+| ①c  | `GET /writing/records/{recordId}/answer-card`                                       | 答题卡（决策 25）：交卷前 `correct` 全 `null`；交卷后 `has_standard_answer=1` 取客观判分、`=0` 按 `grading_state`（`0`=评分中 `null`，`1`=AI 结果）                                  |
+| ②   | `GET /writing/records/{recordId}/questions`                                         | **修 B-04 后逐题下发 `layout`**（改读 `layout` 原样透传，弃 `type_id_mapping` switch）                                                                                |
+| ③   | `PUT /writing/records/{recordId}/answers`                                           | 批量保存答案                                                                                                                                                |
+| ③b  | ~~`POST /writing/records/{recordId}/sessions` → `/{sessionId}/heartbeat` → `/end`~~ | 🔴 **删除（2026-11-16，决策 24）**：练习是**倒计时**制，无心跳必要；`durationSeconds` = `end_time` − `start_time`（`practice_writing_record` 两列已有，零改造）。会话三端点实现代码**注释掉**，不删文件 |
+| ③c  | ~~`POST /writing/records/{recordId}/pause`~~                                        | 🔴 **注释掉（2026-11-16，决策 24）**：倒计时练习不需要暂停                                                                                                               |
+| ④   | `POST /writing/records/{recordId}/submit`                                           | 交卷，`Idempotency-Key` 必填。🔴 **路径是 `/submit`**，与翻译 B9 的 `/submissions` 不同名（历史原因，勿混）                                                                     |
+| ⑤   | `GET /papers/{paperId}/reports/latest?module=writing&section=`                      | **CR** 轮询：AI 评分未完成时 `reportStatus=GRADING`（`grading_state=0`），完成后 `READY` 并携带评分结果                                                                     |
+| ⑤b  | `GET /writing/records/{recordId}/report`                                            | 报告详情（**对齐听/读，2026-11-16 决策 24**）：reportId 已随报告表退场，报告数据由 `practice_writing_record` + `practice_writing_answer` 现拼                                      |
+| ⑤c  | `GET /writing/records/{recordId}/report/questions/{questionId}`                     | 逐题反馈：`has_standard_answer=1` → 客观判分结果；`=0` → 按 `practice_writing_answer.grading_state` 取 AI 评分（`1`=`points`/`analysis` 已就绪，`0`=评分中）                   |
 
 ### 4.6.5 口语（recordId 主键 = `practice_speaking_record.id`，录音题）
 
