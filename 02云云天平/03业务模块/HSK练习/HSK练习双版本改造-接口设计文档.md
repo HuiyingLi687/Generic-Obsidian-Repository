@@ -2543,18 +2543,18 @@ E1 首页模块卡
 - **存储**：提交时冻结（G2，2026-11-16 修订）。`writing_answer`（`*_answer`）快照：`question_snapshot` 存 `question.section_title` / `content` / `passage`、`group_snapshot` 存 `question_group.content` / `passage`；`option_snapshot` 存 `question.option_content` + `question_group.option_content`。
 - **出结果**：**按 `question.has_standard_answer` 分流**（G3）：`1` → 交卷即出结果（同听/读比对口径）；`0` → 交 AI 评分（异步，CR 轮询）。`current_question_number`（G5）；`idempotency_key` = `writing-{recordId}-submit`（G4，现状取客户端头）。
 
-| # | 端点 | 标记 | 说明 |
-|---|---|---|---|
-| 1 | `POST /writing/records/start` | ⚪ | 快照在 submit 冻结（G2），start 不动 |
-| 2 | `GET /writing/records/{recordId}` | ⚪ | 详情 |
-| 2b | `GET /writing/records/{recordId}/answer-card` | 🟡 | **新增端点（决策 25）**：只回 `answered`（按 answer 表有无记录），无对错/标记/收藏 |
-| 3 | `GET /writing/records/{recordId}/questions` | 🔴 | 数据源 `enabled_prac=1`（G1）+ `layout` 改读原值（B-04，已在 §4.0.5） |
-| 4 | `PUT /writing/records/{recordId}/answers` | 🟡 | 批量保存 + 快照口径 |
-| 5 | ~~`POST /writing/records/{recordId}/sessions` ×3~~ | 🔴 | **注释掉（决策 24）**：倒计时无心跳，`duration` = `end_time − start_time` |
-| 6 | ~~`POST /writing/records/{recordId}/pause`~~ | 🔴 | **注释掉（决策 24）**：倒计时无暂停 |
-| 7 | `POST /writing/records/{recordId}/submit` | 🔴 | **has_standard_answer 分流**（G3）+ `idempotency_key` 服务端统一（G4，弃客户端头）+ **提交时冻结快照**（G2，与现状一致）+ AI 评分落 `grading_state`（决策 24，不再建报告行） |
-| 8 | CR `?module=writing&section=` | 🔴 | `writing` 扩展块重设计（决策 24）：数据源改 record + answer 表，`reportStatus` 按 `grading_state` |
-| 9 | `GET /writing/records/{recordId}/report` + `/report/questions/{q}` | 🔴 | **改造（决策 24）**：原 `/writing/reports/{reportId}` 系列随报告表退场作废，对齐听/读按 `recordId` 定位；逐题反馈按 `grading_state` / `points` / `analysis` |
+| #   | 端点                                                                 | 标记  | 说明                                                                                                                             |
+| --- | ------------------------------------------------------------------ | --- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | `POST /writing/records/start`                                      | ⚪   | 快照在 submit 冻结（G2），start 不动                                                                                                     |
+| 2   | `GET /writing/records/{recordId}`                                  | ⚪   | 详情                                                                                                                             |
+| 2b  | `GET /writing/records/{recordId}/answer-card`                      | 🟡  | **新增端点（决策 25）**：只回 `answered`（按 answer 表有无记录），无对错/标记/收藏                                                                        |
+| 3   | `GET /writing/records/{recordId}/questions`                        | 🔴  | 数据源 `enabled_prac=1`（G1）+ `layout` 改读原值（B-04，已在 §4.0.5）                                                                        |
+| 4   | `PUT /writing/records/{recordId}/answers`                          | 🟡  | 批量保存 + 快照口径                                                                                                                    |
+| 5   | ~~`POST /writing/records/{recordId}/sessions` ×3~~                 | 🔴  | **注释掉（决策 24）**：倒计时无心跳，`duration` = `end_time − start_time`                                                                     |
+| 6   | ~~`POST /writing/records/{recordId}/pause`~~                       | 🔴  | **注释掉（决策 24）**：倒计时无暂停                                                                                                          |
+| 7   | `POST /writing/records/{recordId}/submit`                          | 🔴  | **has_standard_answer 分流**（G3）+ `idempotency_key` 服务端统一（G4，弃客户端头）+ **提交时冻结快照**（G2，与现状一致）+ AI 评分落 `grading_state`（决策 24，不再建报告行） |
+| 8   | CR `?module=writing&section=`                                      | 🔴  | `writing` 扩展块重设计（决策 24）：数据源改 record + answer 表，`reportStatus` 按 `grading_state`                                                |
+| 9   | `GET /writing/records/{recordId}/report` + `/report/questions/{q}` | 🔴  | **改造（决策 24）**：原 `/writing/reports/{reportId}` 系列随报告表退场作废，对齐听/读按 `recordId` 定位；逐题反馈按 `grading_state` / `points` / `analysis`    |
 
 ### 4.7.4 口语（speaking，主键 recordId，双源取题）
 
