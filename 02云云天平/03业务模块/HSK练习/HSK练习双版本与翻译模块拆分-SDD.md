@@ -464,6 +464,8 @@ ALTER TABLE practice_record MODIFY COLUMN question_ids json NULL
 
 > 🔴 **五模块「取题 / 存储 / 出结果」口径 + 全流程端点明细**（2026-11-16，接口设计文档 **§4.7** + 决策 22）：取题统一三元组 + `question.enabled_prac=1`（口语双源：`question` 或 `speaking_exam_paper_question.enabled_prac=1`，板块域常量 `SEC_SPEAK`）；快照（题目/题组/选项/音频）**提交时冻结**（G2，与现状一致零改造）；听/读交卷即判（逐题比对 `answer` vs `question.answer`、未作答记错、错题数 = 总题数 − 答对数、统计写回记录）；写/译/说按 **`question.has_standard_answer`** 分流（1=交卷即出、0=AI）——⚠️ **该列当前不存在，需新增 + 回填**，落地前判分分流仍以 `type_id` 兜底（铁律 #3），此为新缺口需登记；`idempotency_key` 统一 `{module}-{recordId}-submit`（现状听/读多 `-1` 后缀、写作取客户端头、说/译未落库，均要改）；翻译 P0「恒 UNAVAILABLE」口径随 has_standard_answer 分流作废，CR 翻译填充规则需重写。
 
+> 🔴 **报告表退场 + 会话/暂停端点退场（2026-11-16，决策 24）**：实测报告表已全部退场（`SHOW TABLES LIKE '%report%'` 为空），库里只剩 record 表和 answer 表——**报告 = record + answer 现拼，`reportId` 概念取消**：① 报告详情端点对齐听/读改 `GET /{mod}/records/{recordId}/report`（写/说/B10 同批，旧 `/reports/{reportId}` 路径 404）；② **AI 评分状态 = `practice_writing_answer` / `practice_speaking_answer` 的 `grading_state` 列（已存在，零 DDL）**：`0` = AI 评分中（`reportStatus=GRADING`）、`1` = 评完（`READY`，`points` / `analysis` 就绪）；`has_standard_answer=1` 交卷即出，不影响该状态；③ CR 通用块 `recordId` 五模块全有、`durationSeconds` 一律 = record 表 `end_time − start_time`；④ **写作/口语的 sessions 心跳三端点与 pause 端点注释掉**（练习是倒计时制；听/读既有端点暂不动）；⑤ CR 写/说/译扩展块数据源改 record 统计列（`objective_count` / `objective_correct_count` / `ai_question_count` / `ai_scored_count` / `final_score` / `total_score`），原 C3/C4 形状与 D5「恒 UNAVAILABLE」口径作废。
+
 **`question_ids` 用法**
 
 | 时机 | 动作 |
@@ -703,10 +705,10 @@ ALTER TABLE exam_paper
 
 🔴 **CR 的 `data` 统一「通用报告块 + 模块扩展块」（决策 20，2026-11-11）**：通用学习报告页**五个模块**（听/读/写/说/译）**共用一页**（正确率 / 答题时间 `HH:MM:SS` / 答对情况 `3/5` / 答题卡逐题对错 + 「只看错题」），因此不再保留四套 `data` 形状：
 
-- **通用块（字段名五模块一致）**：`module` / `reportId` / `recordId`（听/读 = `practice_record.id`，写/译/说 = `null`）/ `paperId` / `section` / `reportStatus` / `submittedTime` / `generatedTime` / `durationSeconds` / `totalQuestions` / `answeredCount` / `correctCount` / `wrongCount` / `accuracyRate` / `answerCard[]`（逐题 `{order, correct}`，`correct` 三态：`true` 绿 / `false` 红 / `null` 置灰；「只看错题」前端按 `correct === false` 自滤）
-- **`answerCard[]` 构造**：拿 `practice_record.id` 查 **`practice_record.question_ids`**（交卷时固化的题目 ID 数组）放进数组——数组顺序即 `order`（下标 +1，与题目下发顺序一致），每题 `correct` 取交卷快照的 `is_correct`（HSK 不判分，以交卷前端传值为准），**不现查题库**（题库改版后历史报告仍可复现）
-- **模块扩展块**：`reading`（`recordId` / `items[]`）/ `writing`（评估反馈全字段）/ `speaking`（评分状态全字段）/ `translation`（**形状同 `writing`**，翻译复用写作链路）——只挂 `module` 对应那一个，其余恒 `null`
-- **翻译并入 CR**（2026-11-11）：原「先拿 reportId 再查 B10」两跳作废，B10 `GET /translation/reports/{reportId}` 保留按 ID 查详情；`module=translation&section=1|2`，2.0 的卷查不到 `SEC_TRANSLATION` 板块 → **404**（不是 `data=null`，决策 9 翻译仅 3.0 有数据）
+- **通用块（字段名五模块一致）**：`module` / `recordId`（🔴 决策 24：**五模块全有**——听/读 = `practice_record.id`、写/译 = `practice_writing_record.id`、说 = `practice_speaking_record.id`；`reportId` 已随报告表退场）/ `paperId` / `section` / `reportStatus`（🔴 决策 24：`READY` / `GRADING` / `FAILED`，写/译/说按 `grading_state`：0=`GRADING`、1=`READY`）/ `submittedTime` / `generatedTime` / `durationSeconds`（🔴 决策 24：一律 = record 表 `end_time − start_time`）/ `totalQuestions` / `answeredCount` / `correctCount` / `wrongCount` / `accuracyRate` / `answerCard[]`（逐题 `{order, correct}`，`correct` 三态：`true` 绿 / `false` 红 / `null` 置灰；「只看错题」前端按 `correct === false` 自滤）
+- **`answerCard[]` 构造**：拿各模块 record 表的 `question_ids`（交卷时固化的题目 ID 数组）放进数组——数组顺序即 `order`（下标 +1，与题目下发顺序一致），每题 `correct` 取交卷快照的 `is_correct`（HSK 不判分，以交卷前端传值为准），**不现查题库**（题库改版后历史报告仍可复现）
+- **模块扩展块**（🔴 决策 24：数据源改 record + answer 表，原 C3/C4 报告表形状作废）：`reading`（`items[]`）/ `writing`（`gradingState` / `score`= `final_score` / `maxScore` / `objectiveCount` / `objectiveCorrectCount` / `aiQuestionCount` / `aiScoredCount`）/ `speaking`（同口径，`scoredCount` 随 `grading_state`）/ `translation`（**形状同 `writing`**）——只挂 `module` 对应那一个，其余恒 `null`；逐题 AI 反馈走 `GET /{mod}/records/{recordId}/report/questions/{q}`
+- **翻译并入 CR**（2026-11-11）：原「先拿 reportId 再查 B10」两跳作废；🔴 决策 24 后 B10 详情端点改 `GET /translation/records/{recordId}/report`（`/translation/reports/{reportId}` 404）；`module=translation&section=1|2`，2.0 的卷查不到 `SEC_TRANSLATION` 板块 → **404**（不是 `data=null`，决策 9 翻译仅 3.0 有数据）
 - **字段名归一是破坏性的**：阅读 `totalQuestionCount` → `totalQuestions`；口语 `status` → `reportStatus`；写/说原平铺字段收进扩展块（接口文档 §6.1 #14）
 - **填充规则**：听/读全量填充（`is_correct` 以交卷前端传值为准）；写/译/说无客观判分 → 对错字段全 `null`，前端隐藏/置灰对应卡片，只留答题时间 + 扩展块
 
@@ -747,7 +749,7 @@ ALTER TABLE exam_paper
 | T7 | `GET /translation/records/{recordId}/questions` | `#listQuestions` |
 | T8 | `PUT /translation/records/{recordId}/answers` | `WritingAnswerService#save` |
 | T9 | `POST /translation/records/{recordId}/submissions` | `WritingSubmissionService#submit` |
-| T10 | `GET /translation/reports/{reportId}` | `WritingReportService#get` |
+| T10 | `GET /translation/records/{recordId}/report` | 🔴 决策 24：原 `/translation/reports/{reportId}` + `WritingReportService#get` 随报告表退场，改 record + answer 现拼 |
 
 **统一前置校验**（每个封装方法第一行）：按 `(paperId, section)` 校验**内容侧的真实归属**——`question` 里该卷该板块的 `section_mapping` 必须为 `SEC_TRANSLATION`，否则 400 `SECTION_MAPPING_MISMATCH`。
 
