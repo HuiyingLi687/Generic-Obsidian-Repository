@@ -453,7 +453,7 @@ ALTER TABLE practice_record MODIFY COLUMN question_ids json NULL
 |---|---|
 | `POST /listening/records/start {paperId, structureId}` | `{paperId, sectionMapping, section}`（决策 23 三字段必填） |
 | `GET /listening/parts/{structureId}/reports/latest` | `GET /papers/{paperId}/reports/latest?module=listening&section=`（**CR 统一端点**，不带模块前缀，板块号走 query） |
-| `POST /reading/records/start {paperId, structureId}` | `{paperId, section}` |
+| `POST /reading/records/start {paperId, structureId}` | `{paperId, sectionMapping, section}`（决策 23 三字段必填） |
 | `GET /reading/parts/{structureId}/reports/latest` | 同上（CR，`?module=reading&section=`） |
 
 前端改拿目录响应里的 `partCode`（= `section`）+ 卷 `id`。**目录响应不再下发 `structureId`**——它随结构表一起消失，不留 deprecated 字段，避免前端继续依赖。
@@ -572,7 +572,7 @@ CREATE INDEX idx_speaking_attempt_part ON speaking_attempt
 | `PracticePartSetting` / `PracticePaperStructure` 实体 | 整文件删除 |
 | `PracticeRecord` / `PracticeReport` / `PracticeQuestionOptionPool` 实体 | 删 `structureId` 字段 |
 | `CscaStructureIds` + 3 处 CSCA 调用 | 改用 `SEC_CSCA` + 科目码（§3.2.5） |
-| 各 Controller / DTO 的 `structureId` 入参出参 | 改 `paperId + section`（§3.2.5 接口表） |
+| 各 Controller / DTO 的 `structureId` 入参出参 | 改 `paperId + sectionMapping + section`（§3.2.5 接口表 + 接口文档决策 23） |
 | `ListeningReportController` / `ReadingReportController` | latest 端点摘除，并入 **CR** `GET /papers/{paperId}/reports/latest?module=&section=`（`module` 必填并决定模块，`section` 必填选板块，`paperId` 只判卷域；委托原查询逻辑，见接口设计文档 §4.3 `PracticeReportController`） |
 
 **`practice_question_option_pool`（P2）**：加两列回填后按题目关联，退场前置三件事——① 补 `reading_cloze` 缺失记录（TEST 90 / PROD 90 全无）；② `pool_code` 去掉 `structureId`，改 `{section_mapping}_{paperId}_{section}_{sha256(option_content)}`；③ 答题快照 `optionPoolCode` 改现算（现在由 `ReadingSnapshotSupport` 读表写入）。它不阻塞结构表 drop，因为结构表先走完 P0。
@@ -742,11 +742,11 @@ ALTER TABLE exam_paper
 
 | # | 路径 | 委托 |
 |---|---|---|
-| T5 | `POST /translation/attempts/start` | `WritingAttemptService#start` |
-| T6 | `GET /translation/attempts/{attemptId}` | `#get` |
-| T7 | `GET /translation/attempts/{attemptId}/questions` | `#listQuestions` |
-| T8 | `PUT /translation/attempts/{attemptId}/answers` | `WritingAnswerService#save` |
-| T9 | `POST /translation/attempts/{attemptId}/submissions` | `WritingSubmissionService#submit` |
+| T5 | `POST /translation/records/start` | `WritingAttemptService#start` |
+| T6 | `GET /translation/records/{recordId}` | `#get` |
+| T7 | `GET /translation/records/{recordId}/questions` | `#listQuestions` |
+| T8 | `PUT /translation/records/{recordId}/answers` | `WritingAnswerService#save` |
+| T9 | `POST /translation/records/{recordId}/submissions` | `WritingSubmissionService#submit` |
 | T10 | `GET /translation/reports/{reportId}` | `WritingReportService#get` |
 
 **统一前置校验**（每个封装方法第一行）：按 `(paperId, section)` 校验**内容侧的真实归属**——`question` 里该卷该板块的 `section_mapping` 必须为 `SEC_TRANSLATION`，否则 400 `SECTION_MAPPING_MISMATCH`。
@@ -840,15 +840,15 @@ GET /hsk/modules?version=HSK3.0 → 解析版本 → 查字典（唯一 1 次 SQ
 
 **翻译开始练习（含准入链）**
 ```
-POST /translation/attempts/start {paperId, section}
+POST /translation/records/start {paperId, section}
  → requireAuthenticatedAppUserId（仅委托）
  → 前置校验：question 里 (paperId, section) 的 section_mapping == SEC_TRANSLATION
  → WritingAttemptServiceImpl#start
      ├─ requirePaper：卷有效 + exam_type=1 + enabled_prac=1 + level ≥ 3
      ├─ validatePart：contentType ∈ {SEC_WRITE, SEC_TRANSLATION} 且 == sectionMapping
      ├─ 已有 IN_PROGRESS → 直接返回（幂等）
-     └─ 新建 attempt，快照 section_mapping / section / paperVersion / questionSetVersion
- → 返回 attemptId（String）
+     └─ 新建记录（practice_writing_record），快照 section_mapping / section / paperVersion / questionSetVersion
+ → 返回 recordId（String）
 ```
 
 **版本切换**
@@ -893,7 +893,7 @@ POST /translation/attempts/start {paperId, section}
 | 项 | 措施 |
 |---|---|
 | 参数注入 | `version` / `level` 走白名单枚举；SQL 全部参数绑定 |
-| 越权 | `attempt` 校验 `userId` 归属；翻译薄封装必须校验 `(paperId, section)` 的实际 `section_mapping`，否则可用写作板块串号 |
+| 越权 | `record` 校验 `userId` 归属；翻译薄封装必须校验 `(paperId, sectionMapping, section)` 的实际 `section_mapping`，否则可用写作板块串号 |
 | 版本探测 | 卷版本不符统一回「试卷不存在」 |
 | 答案泄露 | `answer` / `analysis` 不得在作答阶段 `/questions` 下发，只在报告接口给 |
 | 音频 | 前端直传 `system-service /file/uploadVoice`，本服务只存 URL，不代理二进制 |
@@ -1040,7 +1040,7 @@ POST /translation/attempts/start {paperId, section}
 
 「不能做唯一键」不是保留理由：重复组（TEST 131 / PROD 106）确实存在，但业务语义始终是取最新一条，从不需要唯一约束。
 
-**同一个口径贯彻到全部作答表**：`writing_attempt`(217/284) 与 `speaking_attempt`(283/473) 原本只有 `paper_id + structure_id`，实测都能 100% 回填出三元组（§3.2.6），所以不留「结构表当 ID 注册表」这个尾巴，P0 一次删干净。接口风格也不再分叉——所有模块都用 `paperId + section`。
+**同一个口径贯彻到全部作答表**：`writing_attempt`(217/284) 与 `speaking_attempt`(283/473) 原本只有 `paper_id + structure_id`，实测都能 100% 回填出三元组（§3.2.6；⚠️ 两表 2026-11-16 已改名 `practice_writing_record` / `practice_speaking_record`），所以不留「结构表当 ID 注册表」这个尾巴，P0 一次删干净。接口风格也不再分叉——所有模块都用 `paperId + sectionMapping + section`（决策 23 三字段）。
 
 ### 9.7 卷级上下架用 `exam_paper.enabled_prac`，`practice_paper_setting` drop
 
