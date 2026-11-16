@@ -16,10 +16,10 @@
 
 翻译：
 1、取题：根据paper_id、section_mapping、section取question.enabled_prac=1的题目
-2、存储：
+2、存储：practice_answer题目快照存question.section_title、question.content、question.passage、question_group.content、question_group.passage，选项快照存question.option_content、question_group.option_content；开始练习时就冻结题干
 3、出结果：
 
 口语：
 1、取题：根据paper_id、section_mapping、section取question.enabled_prac=1的题目或speaking_exam_paper_question.enabled_prac=1（speaking_exam_paper_question默认section_mapping等于SEC_SPEAKING）
-2、存储：
+2、存储：practice_answer题目快照存question.section_title、question.content、question.passage、question_group.content、question_group.passage，选项快照存question.option_content、question_group.option_content；开始练习时就冻结题干
 3、出结果：
