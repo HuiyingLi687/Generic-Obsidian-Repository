@@ -188,14 +188,14 @@ Authorization: Bearer <登录拿到的 token>
 
 ### 2.2 语义差异
 
-| 维度 | 听力 / 阅读 | 写作 / 翻译 | 口语 |
-|---|---|---|---|
-| 判分方式 | 交卷即判，报告立刻 `READY` | 客观题即判，主观题走 AI（`GRADING` → `READY`） | 全部 AI 判分 |
-| 交卷后能否改 | 否 | 否 | 否 |
-| 答案形态 | `selectedOptionId`（A/B/C…）/ `answer` | `answerText` 文本 | `answer` 音频 URL + `durationMs` |
-| 进度定位 | `currentQuestionId` + 题号 | 同 | 同 |
-| 计时 | `durationSeconds` 客户端上报 | 同 | 同 |
-| 答题卡 `answered` | 该题选过 | 该题存过答案 | 录音已上传完成 |
+| 维度             | 听力 / 阅读                              | 写作 / 翻译                            | 口语                             |
+| -------------- | ------------------------------------ | ---------------------------------- | ------------------------------ |
+| 判分方式           | 交卷即判，报告立刻 `READY`                    | 客观题即判，主观题走 AI（`GRADING` → `READY`） | 全部 AI 判分                       |
+| 交卷后能否改         | 否                                    | 否                                  | 否                              |
+| 答案形态           | `selectedOptionId`（A/B/C…）/ `answer` | `answerText` 文本                    | `answer` 音频 URL + `durationMs` |
+| 进度定位           | `currentQuestionId` + 题号             | 同                                  | 同                              |
+| 计时             | `durationSeconds` 客户端上报              | 同                                  | 同                              |
+| 答题卡 `answered` | 该题选过                                 | 该题存过答案                             | 录音已上传完成                        |
 
 ### 2.3 内部接口（前端不要用）
 
