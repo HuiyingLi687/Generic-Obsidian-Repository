@@ -127,13 +127,13 @@ Authorization: Bearer <登录拿到的 token>
 
 ### 1.7 模块 ↔ `sectionMapping` 对照
 
-| module | sectionMapping | 记录表 | 交卷路名 |
-|---|---|---|---|
-| `listening` | `SEC_LISTEN` | `practice_record` | `/listening/records/{id}/submit` |
-| `reading` | `SEC_READ` | `practice_record` | `/reading/records/{id}/submit` |
-| `writing` | `SEC_WRITE` | `practice_subjective_record` | `/writing/records/{id}/submit` |
+| module        | sectionMapping    | 记录表                          | 交卷路名                                           |
+| ------------- | ----------------- | ---------------------------- | ---------------------------------------------- |
+| `listening`   | `SEC_LISTEN`      | `practice_record`            | `/listening/records/{id}/submit`               |
+| `reading`     | `SEC_READ`        | `practice_record`            | `/reading/records/{id}/submit`                 |
+| `writing`     | `SEC_WRITE`       | `practice_subjective_record` | `/writing/records/{id}/submit`                 |
 | `translation` | `SEC_TRANSLATION` | `practice_subjective_record` | `/translation/records/{id}/submissions`（注意是复数） |
-| `speaking` | `SEC_SPEAKING` | `practice_subjective_record` | `/speaking/records/{id}/submit` |
+| `speaking`    | `SEC_SPEAKING`    | `practice_subjective_record` | `/speaking/records/{id}/submit`                |
 
 > 口语的 `SEC_SPEAK`（少一个 ING）是历史拼写错误，服务端仍放行，但**响应里返回的一律是 `SEC_SPEAKING`**。新代码请用 `SEC_SPEAKING`。
 
