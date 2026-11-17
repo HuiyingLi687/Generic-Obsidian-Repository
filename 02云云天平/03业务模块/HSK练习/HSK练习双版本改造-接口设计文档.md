@@ -58,7 +58,7 @@
 | 25  | **五模块各新增答题卡接口 `GET /{mod}/records/{recordId}/answer-card`**（2026-11-16；二次修订：定位收窄为「作答中答题卡」，参考 CSCA；三次修订：**本期只做「已答/未答」，标记/收藏/错题一律不写进设计**）                              | **只服务作答中场景**：回答「这道题答了没有」，参考 CSCA 答题卡（exam-service `CscaAnswerCardDTO`，文档 §2.7）的**结构**，功能面收窄到单一维度。五模块路径与响应同构：`{recordId, paperId, section, totalQuestions, answeredCount, unansweredCount, currentQuestionNumber, questions[]}`，`questions[]` 按 **`question_ids` 快照顺序**逐题 `{order, questionId, answered, current}`。🔴 **本期只此一项**：不下发 `correct`（对错只在 CR 报告页），**标记 / 收藏 / 错题都不在设计范围内**。`answered` 数据源 = `practice_answer.answered`（口语 = `practice_subjective_answer` 有无记录，即录音上传完成）。`current` 与入参 `currentQuestionNumber` 同值（缺省取记录进度，G5）。**作答中答题卡用本接口，报告页对错用 CR `answerCard[]`（题序同源）** |
 | 26  | **写/译/说作答存储层合并为 `practice_subjective_record` + `practice_subjective_answer`**（2026-11-16；DB 已改，接口层不变） | 🔴 **存储层已实测改造完成（TEST）**：`practice_subjective_record` / `practice_subjective_answer` 两表已建（各 0 行），原 `practice_writing_record` / `practice_writing_answer` / `practice_speaking_record` / `practice_speaking_answer` 四表已重命名为 `__bak20261116`。**写作 / 翻译 / 口语共用这一对表**，用 `section_mapping`（`SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAKING`）区分模块，靠 `section` 区分板块。**接口层零变化**：路径仍是 `/{mod}/records/...`、主键仍是 `recordId`、请求/响应结构不动，只把文档里的存储层表名指向新表。**关键 schema 变化**（实现必看）：① 答案表关联列 = **`practice_record_id`**；② 快照由三列合并为 **`snapshot` 单列 json**（主观表没有 `question_snapshot`/`group_snapshot`/`option_snapshot`）；③ **无 `is_correct` 列** → 客观判分落 `points` + `is_full_score`，主观评分落 `grading_state`（**三态：0 待评 / 1 已评 / 2 未答或失败**）；④ 音频与文本同表分列——`answer`（音频 URL）/ `answer_text`（正文或转写）/ `duration_ms` / `grapheme_count`，写作侧 `answer` 恒 NULL、口语侧 `grapheme_count` 恒 0；⑤ 统计列齐全（`objective_count` / `objective_correct_count` / `ai_question_count` / `ai_scored_count` / `final_score` / `total_score`），CR 扩展块直接读。⚠️ **PROD 尚未建这两张表**（实测 PROD 只有老结构表），上线前需 DDL + 存量迁移，见 §9.1 |
 | 27  | **写/译/说 AI 评分扣费（决策登记，详见 SDD）**（2026-11-16） | AI 评分收 `ai_analysis` 配额，口径两条：**按卷扣一次**（一次交卷 = 1 次配额，不按题）+ **评分成功才扣**（全卷 AI 题到终态且 `ai_scored_count > 0`；全失败不扣）。**它会改交卷接口行为**：交卷时无 AI 题直接置 `ai_deduct_state=3`；有 AI 题先 `GET /benefit/aiQuota` 软校验，**余额 0 → `4001` 拦住交卷**（查询异常一律放行），校验在交卷事务内、回滚得掉；评分线程用 CAS 抢「`ai_deduct_state=0`」后调 `POST /benefit/deductAi`（`sceneCode=ai_analysis`、`bizId=recordId`），失败转 `2` 记账 + WARN，**分数不回收**。开关 `subjective.grading.deduct-enabled`（默认 `true`）。🔴 前端需处理交卷 `4001`（引导充值，别当网络错误重试）。`ai_deduct_state` / `ai_deduct_time` TEST 已建，PROD 随 E19 一起上 |
-| 28  | **作答草稿：`practice_subjective_answer` 新增 3 列 + 保存/恢复通道**（2026-11-17，写/译/说） | **目标**：主观题作答中「服务端暂存、每次进来恢复」。🔴 **必须单独一列，不能复用 `answer_text`**——`answer_text` 是判分输入（写作正文 / 口语转写），草稿写进去会改变判分对象与 `grapheme_count`；且口语草稿 = 提纲 + 试录音频，单列 text 装不下。**DDL 三列**：`answer_draft json NULL`（内容）、`answer_draft_version bigint NOT NULL DEFAULT 0`（每次保存 +1，丢弃乱序旧写）、`answer_draft_saved_time bigint NULL`（服务端毫秒，供恢复提示与「草稿是否比答案新」判断）。json 内部键 `{text, audioUrl, durationMs}`，**后续扩字段加键即可，不再 DDL**。**接口**：保存 `PUT /{mod}/records/{recordId}/questions/{questionId}/draft`（`PUT` 全量覆盖，`expectedVersion` 可选乐观锁 → 不匹配 `409`）；恢复**不单开端点**，挂在 ② `GET /{mod}/records/{recordId}/questions` 的每道题 `answerDraft` 字段（开场一次拿全）。🔴 **边界**：① 草稿**不置 `answered`**（答题卡仍显示未答，G9 不变）；② **不参与判分**（`grading_state`/`points` 不受影响）；③ 交卷**不自动拿草稿兜底**，改为交卷响应回显 `draftNotSubmitted:[questionId]` 提示前端返回保存；④ 交卷后草稿冻结只读、不清理；⑤ 不跨场次（新 record 新行）。⚠️ **命名勿混**：这里的「草稿」是**题目级**，与 `/parts[].draft`（**记录级**「未提交的那次 record」）不是一回事，接口字段一律用 **`answerDraft`**。详见 §4.7.0 G10 |
+| 28  | **作答草稿：`practice_subjective_answer` 新增 3 列 + 保存/恢复通道**（2026-11-17，写/译/说） | **目标**：主观题作答中「服务端暂存、每次进来恢复」。🔴 **必须单独一列，不能复用 `answer_text`**——`answer_text` 是判分输入（写作正文 / 口语转写），草稿写进去会改变判分对象与 `grapheme_count`；而且口语草稿是**提纲**，混进 `answer_text` 会被当成转写参与评分。**DDL 三列**：`answer_draft mediumtext NULL`（正文，三个模块**都只存文字**：写作正文 / 笔译译文 / 口语·口译提纲）、`answer_draft_version bigint NOT NULL DEFAULT 0`（每次保存 +1，丢弃乱序旧写）、`answer_draft_saved_time bigint NULL`（服务端毫秒，供恢复提示与「草稿是否比答案新」判断）。**接口**：保存 `PUT /{mod}/records/{recordId}/questions/{questionId}/draft`（`PUT` 全量覆盖，`expectedVersion` 可选乐观锁 → 不匹配 `409`）；恢复**不单开端点**，挂在 ② `GET /{mod}/records/{recordId}/questions` 的每道题 `answerDraft` 字段（开场一次拿全）。🔴 **边界**：① 草稿**不置 `answered`**（答题卡仍显示未答，G9 不变）；② **不参与判分**（`grading_state`/`points` 不受影响）；③ 交卷**不自动拿草稿兜底**，改为交卷响应回显 `draftNotSubmitted:[questionId]` 提示前端返回保存；④ 交卷后草稿冻结只读、不清理；⑤ 不跨场次（新 record 新行）。⚠️ **命名勿混**：这里的「草稿」是**题目级**，与 `/parts[].draft`（**记录级**「未提交的那次 record」）不是一回事，接口字段一律用 **`answerDraft`**。详见 §4.7.0 G10 |
 
 ---
 
@@ -100,7 +100,7 @@
 | `practice_record` | 【删除】`structure_id`、`practice_name`；【启用】`question_ids` 快照 |
 | `practice_report` | 【删除】`structure_id` |
 | `practice_subjective_record` | 【**合并新表**】2026-11-16 起**写作 / 翻译 / 口语共用这一张表**（原 `practice_writing_record` / `practice_speaking_record` 已重命名为 `__bak20261116`）：列取两者并集，`section_mapping` 为 `SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAKING` 区分模块；`section_mapping` / `section` / `level_code` 已就位，`structure_id` 不再需要 |
-| `practice_subjective_answer` | 【**合并新表**】同上，三模块共用（原 `practice_writing_answer` / `practice_speaking_answer` 已 `__bak20261116`）：`practice_record_id` 关联记录、`snapshot` 单列存题目快照、`answer`（音频 URL）+ `answer_text`（文本/转写）、`duration_ms` / `grapheme_count`、`grading_state` / `points` / `max_score` / `is_full_score` / `analysis`；**无 `is_correct` 列**（主观题不判对错）。【新增 · 决策 28】**草稿三列** `answer_draft`（json）、`answer_draft_version`（bigint 默认 0）、`answer_draft_saved_time`（bigint 毫秒）：位在 `answer_version` 之后，承载「作答中服务端暂存、重进恢复」，**不参与判分、不置 `answered`**（DDL 见 §4.7.0 G10） |
+| `practice_subjective_answer` | 【**合并新表**】同上，三模块共用（原 `practice_writing_answer` / `practice_speaking_answer` 已 `__bak20261116`）：`practice_record_id` 关联记录、`snapshot` 单列存题目快照、`answer`（音频 URL）+ `answer_text`（文本/转写）、`duration_ms` / `grapheme_count`、`grading_state` / `points` / `max_score` / `is_full_score` / `analysis`；**无 `is_correct` 列**（主观题不判对错）。【新增 · 决策 28】**草稿三列** `answer_draft`（`mediumtext`，纯文字）、`answer_draft_version`（bigint 默认 0）、`answer_draft_saved_time`（bigint 毫秒）：位在 `answer_version` 之后，承载「作答中服务端暂存、重进恢复」，**不参与判分、不置 `answered`**（DDL 见 §4.7.0 G10） |
 | `sys_dict` / `sys_dict_item` | 【仅数据，不改表结构】新增 `hsk_practice_module_v2`（1007，4 项）/ `hsk_practice_module_v3`（1008，5 项），作为 `/hsk/modules` 的模块卡数据源 |
 
 > 以上均为 **TEST 现状**（5 张内容表两列已就位、`part_config` 132 行含 `enabled`）。生产库缺哪些列 / 表不在此展开，统一见 §9.1。
@@ -2349,7 +2349,7 @@ E1 首页模块卡
 | 维度 | 听 listening | 读 reading | 写 writing | 说 speaking | 译 translation |
 | --- | --- | --- | --- | --- | --- |
 | 作答主键 | `recordId`（`practice_record`） | `recordId`（`practice_record`） | `recordId`（`practice_subjective_record`） | `recordId`（**同一张表**，`section_mapping=SEC_SPEAKING`） | `recordId`（**同一张表**，`section_mapping=SEC_TRANSLATION`） |
-| 作答草稿（决策 28） | — 不涉及 | — 不涉及 | `PUT .../questions/{questionId}/draft` → `answer_draft.text` | 同写，另存 `audioUrl` + `durationMs`（提纲 + 试录） | 同写（笔译 `text` / 口译 `audio`） |
+| 作答草稿（决策 28） | — 不涉及 | — 不涉及 | `PUT .../draft` → `answer_draft`（正文文字） | 同写（存提纲文字） | 同写（笔译译文 / 口译提纲，都是文字） |
 | start 路径 | `POST /listening/records/start` | `POST /reading/records/start` | `POST /writing/records/start` | `POST /speaking/records/start` | `B5 POST /translation/records/start` |
 | 答题形态 | `PUT .../answers/{questionId}`（单题）+ `PUT .../answers`（批量） | 同听 | `PUT .../answers`（批量） | 录音两步（prepare → answers） | `PUT .../answers`（笔译 `TEXT` / 口译 `AUDIO`） |
 | 暂停 | `POST .../pause` | `POST .../pause` | ~~`POST .../pause`~~ **注释掉（决策 24：倒计时无暂停）** | 同写 | 无 |
@@ -2386,7 +2386,7 @@ E1 首页模块卡
 | ①c  | `GET /writing/records/{recordId}/answer-card`                                       | 答题卡（决策 25，参考 CSCA）：只回「已答/未答」，`answered` 按 `practice_subjective_answer` 有无记录；**无对错/标记/收藏**                                  |
 | ②   | `GET /writing/records/{recordId}/questions`                                         | **修 B-04 后逐题下发 `layout`**（改读 `layout` 原样透传，弃 `type_id_mapping` switch）                                                                                |
 | ③   | `PUT /writing/records/{recordId}/answers`                                           | 批量保存答案                                                                                                                                                |
-| ③d  | `PUT /writing/records/{recordId}/questions/{questionId}/draft`                      | **草稿保存（决策 28 / G10）**：正文暂存 `answer_draft.text`，**不置 `answered`、不判分**；两次进页面由 ② 的 `answerDraft` 恢复                                    |
+| ③d  | `PUT /writing/records/{recordId}/questions/{questionId}/draft`                      | **草稿保存（决策 28 / G10）**：正文暂存 `answer_draft`，**不置 `answered`、不判分**；重进由 ② 的 `answerDraft` 恢复                                    |
 | ③b  | ~~`POST /writing/records/{recordId}/sessions` → `/{sessionId}/heartbeat` → `/end`~~ | 🔴 **删除（2026-11-16，决策 24）**：练习是**倒计时**制，无心跳必要；`durationSeconds` = `end_time` − `start_time`（`practice_subjective_record` 两列已有，零改造）。会话三端点实现代码**注释掉**，不删文件 |
 | ③c  | ~~`POST /writing/records/{recordId}/pause`~~                                        | 🔴 **注释掉（2026-11-16，决策 24）**：倒计时练习不需要暂停                                                                                                               |
 | ④   | `POST /writing/records/{recordId}/submit`                                           | 交卷，`Idempotency-Key` 必填。🔴 **路径是 `/submit`**，与翻译 B9 的 `/submissions` 不同名（历史原因，勿混）                                                                     |
@@ -2406,7 +2406,7 @@ E1 首页模块卡
 | ③b  | `POST /speaking/records/{recordId}/questions/{questionId}/answers`            | **录音两步·第 2 步**：上传完成后保存答案（音频 key + 时长）                                                       |
 | ③c  | ~~`POST /speaking/records/{recordId}/sessions` → heartbeat → end~~            | 🔴 **删除（决策 24）**：同写作——倒计时制无心跳，时长 = `end_time` − `start_time`；会话端点注释掉                        |
 | ③d  | ~~`POST /speaking/records/{recordId}/pause`~~                                 | 🔴 **注释掉（决策 24）**：倒计时练习不需要暂停                                                                |
-| ③e  | `PUT /speaking/records/{recordId}/questions/{questionId}/draft`               | **草稿保存（决策 28 / G10）**：提纲 → `answer_draft.text`、试录音频 → `audioUrl` + `durationMs`；**不写 `answer`/`answer_text`、不置 `answered`**；二是重进由 ② 恢复 |
+| ③e  | `PUT /speaking/records/{recordId}/questions/{questionId}/draft`               | **草稿保存（决策 28 / G10）**：提纲文字 → `answer_draft`；**不写 `answer`/`answer_text`、不置 `answered`**；重进由 ② 恢复 |
 | ④   | `POST /speaking/records/{recordId}/submit`                                    | 交卷，`Idempotency-Key` 必填；**异步 AI 判分**                                                        |
 | ⑤   | `GET /papers/{paperId}/reports/latest?module=speaking&section=`               | **CR** 轮询：AI 判分未完成 `reportStatus=GRADING`（`grading_state=0`），完成 `READY`                     |
 | ⑤b  | `GET /speaking/records/{recordId}/report`                                     | 报告详情（对齐听/读，决策 24）：数据由 `practice_subjective_record` + `practice_subjective_answer` 现拼            |
@@ -2422,7 +2422,7 @@ E1 首页模块卡
 | ①c | `GET /translation/records/{recordId}/answer-card` | 答题卡（决策 25，口径同写作）：只回「已答/未答」，`answered` 按 `practice_subjective_answer` 有无记录；**无对错/标记/收藏** |
 | ② | `B7 GET /translation/records/{recordId}/questions` | 逐题下发 `layout`（笔译 `input` / 口译 `record`） |
 | ③ | `B8 PUT /translation/records/{recordId}/answers` | 批量保存（复用写作答案 DTO） |
-| ③a | `PUT /translation/records/{recordId}/questions/{questionId}/draft` | **草稿保存（决策 28 / G10）**：笔译译文 → `answer_draft.text`、口译试录 → `audioUrl` + `durationMs`；**不置 `answered`、不判分** |
+| ③a | `PUT /translation/records/{recordId}/questions/{questionId}/draft` | **草稿保存（决策 28 / G10）**：笔译译文 / 口译提纲 → `answer_draft`；**不置 `answered`、不判分** |
 | ④ | `B9 POST /translation/records/{recordId}/submissions` | 交卷，`Idempotency-Key` 必填 |
 | ⑤ | `GET /papers/{paperId}/reports/latest?module=translation&section=` | **CR**（决策 20/21）：AI 评分未完成 `reportStatus=GRADING`，完成 `READY`；2.0 的卷 → 404（翻译仅 3.0 有数据） |
 | ⑤b | ~~`B10 GET /translation/reports/{reportId}`~~ → `GET /translation/records/{recordId}/report` | **报告详情（决策 24）**：reportId 随报告表退场，对齐听/读；逐题反馈 `/report/questions/{questionId}` 按 `grading_state` 取 AI 结果 |
@@ -2503,8 +2503,8 @@ E1 首页模块卡
 
 ```sql
 ALTER TABLE practice_subjective_answer
-  ADD COLUMN `answer_draft` json DEFAULT NULL
-    COMMENT '作答草稿（答题端暂存，不参与判分）',
+  ADD COLUMN `answer_draft` mediumtext DEFAULT NULL
+    COMMENT '作答草稿正文（答题端暂存，不参与判分）',
   ADD COLUMN `answer_draft_version` bigint NOT NULL DEFAULT '0'
     COMMENT '草稿版本（每次保存+1，乱序/多端冲突检测）',
   ADD COLUMN `answer_draft_saved_time` bigint DEFAULT NULL
@@ -2513,28 +2513,18 @@ ALTER TABLE practice_subjective_answer
 
 | 列 | 类型 | 说明 |
 |---|---|---|
-| `answer_draft` | `json NULL` | 草稿内容。**必须 json、不能复用 `answer_text`**——`answer_text` 是判分输入（写作正文 / 口语转写），草稿写进去会直接改变判分对象与 `grapheme_count`；且口语的草稿是「提纲 + 试录音频」，单列 text 装不下 |
+| `answer_draft` | `mediumtext NULL` | **草稿正文，三个模块都只存文字**：写作正文 / 笔译译文 / 口语·口译的提纲。类型与 `answer_text` 对齐（同为 `mediumtext`，长文不截断）。**不能直接复用 `answer_text`**——那是判分输入，写进去会让半成品或提纲参与评分、并污染 `grapheme_count`；草稿必须独立成列。`NULL` = 从未存过草稿；`''` = 用户清空后保存过（两者恢复都是空编辑器，需要区分时看 `answer_draft_saved_time` 是否为 `NULL`） |
 | `answer_draft_version` | `bigint NOT NULL DEFAULT 0` | 每次成功保存 `+1`，用于丢弃**乱序到达**的旧保存（弱网下「后发先至」会把新内容覆盖成旧内容）。**不复用 `answer_version`**——那是答案通道的并发号，两条通道共号会互相误伤 |
 | `answer_draft_saved_time` | `bigint NULL` | 服务端时钟写入，供①恢复时显示「上次编辑于 xx」②交卷时判断「草稿比正式答案新」③排查。**不能用 `updated_time` 代替**（任何字段更新都会刷新它） |
 
-**`answer_draft` 内部结构（json 键，不强制 schema，按模块取用）**：
-
-```json
-{
-  "text": "写作正文 / 笔译译文 / 口语提纲",
-  "audioUrl": "口语·口译试录音频 key（写作/笔译恒 null）",
-  "durationMs": 12000
-}
-```
-
-> 用 json 的价值：后续若需存「光标位置 / 试录分段列表 / 选区」，**加键即可，无需再 DDL**。字数不落库——由服务端按 `text` 实时算（口径同 `grapheme_count`：不含空白字素数），随响应下发，避免前端算法与判分口径不一致。
+> 三个模块草稿同构：列里就是**一段文字**，不分题型、不存结构化字段。字数不落库——由服务端按 `answer_draft` 实时算（口径同 `grapheme_count`：不含空白字素数），随保存响应与 ② 下发，避免前端算法与判分口径不一致。
 
 **保存草稿**：`PUT /{mod}/records/{recordId}/questions/{questionId}/draft`（`{mod}` ∈ `writing` / `translation` / `speaking`）
 
 请求体：
 
 ```json
-{ "text": "…", "audioUrl": null, "durationMs": 0, "expectedVersion": 3 }
+{ "text": "…", "expectedVersion": 3 }
 ```
 
 响应 `data`：
@@ -2550,7 +2540,8 @@ ALTER TABLE practice_subjective_answer
 | 并发/乱序 | `expectedVersion` **可选**：省略 = 强制覆盖（前端串行化保存即可）；传了且 ≠ 当前版本 → `409` 并回 `{currentVersion, savedTime}`，客户端重取后重发。多端同时编辑才需要 |
 | 越权 | `recordId` 必须属于当前用户且属于该 `module`（`section_mapping` 校验），否则 `404`；同 G9 口径 |
 | 交卷后 | record `status` 非「进行中」→ **拒写** `409`（草稿随之冻结，只读保留，供回看对照） |
-| 频控 | 前端 `debounce 2–3s` + 失焦/切题/离开页面立即保存；服务端不做硬限流，建议同题 1s 内重复请求直接回上一版本，减少 json 整列重写的写放大 |
+| 频控 | 前端 `debounce 2–3s` + 失焦/切题/离开页面立即保存；服务端不做硬限流，建议同题 1s 内重复请求直接回上一版本，减少整列重写的写放大 |
+| 长度 | 与正式答案同规则校验（写作 / 笔译沿用 5000 字上限），**超限 `400` 而不是静默截断**（截断会让用户以为存上了）。口语·口译提纲不限，空串允许 |
 
 **恢复草稿**：不单开端点——**挂在 ② 逐题下发**里，`GET /{mod}/records/{recordId}/questions` 的每道题加 `answerDraft` 字段（无草稿为 `null`）：
 
@@ -2562,8 +2553,6 @@ ALTER TABLE practice_subjective_answer
   "content": "…",
   "answerDraft": {
     "text": "…",
-    "audioUrl": null,
-    "durationMs": 0,
     "graphemeCount": 412,
     "version": 4,
     "savedTime": 1789612800000
@@ -2577,7 +2566,7 @@ ALTER TABLE practice_subjective_answer
 
 1. **草稿不置 `answered`** —— 答题卡（G9）仍显示「未答」，这是对的：答题卡表达「是否定稿」。用户若困惑，属 UI 侧提示，**不改 G9 字段**。
 2. **草稿不参与判分** —— 交卷判分只读 `answer` / `answer_text`；`grading_state` / `points` / `analysis` 不受草稿影响。
-3. **服务端不替用户把草稿变答案** —— 交卷时若某题 `answered=0` 但 `answer_draft.text` 非空，**不自动写入** `answer_text`（隐式改判分对象，风险不可预期），改为在交卷响应回显 `draftNotSubmitted: [questionId…]`，前端弹「有 N 题只有草稿未提交」并引导返回保存。**正常流程约定：交卷前前端必须先调 ③ 批量保存当前编辑器内容**。
+3. **服务端不替用户把草稿变答案** —— 交卷时若某题 `answered=0` 但 `answer_draft` 非空，**不自动写入** `answer_text`（隐式改判分对象，风险不可预期），改为在交卷响应回显 `draftNotSubmitted: [questionId…]`，前端弹「有 N 题只有草稿未提交」并引导返回保存。**正常流程约定：交卷前前端必须先调 ③ 批量保存当前编辑器内容**。
 4. **草稿不跨场次** —— 重开练习 = 新 `recordId` = 新行，天然隔离；不做「上次草稿带过来」。
 5. **草稿不清理** —— 交卷后保留（只读）。不做 TTL 删除（未提交 record 本就长期存在，草稿体积可忽略）。
 
@@ -2631,7 +2620,7 @@ ALTER TABLE practice_subjective_answer
 **三段口径**：
 
 - **取题**：`(paper_id, section_mapping, section)` 取 `question.enabled_prac=1`。
-- **存储**：提交时冻结（G2，2026-11-16 修订）。落 **`practice_subjective_answer`**（写/译/说共表）：`snapshot`（**单列 json**，主观表没有 `question_snapshot`/`group_snapshot`/`option_snapshot` 三列）存 `question.section_title` / `content` / `passage` / `question_group.content` / `passage` / `question.option_content`；正文落 `answer_text`、`grapheme_count`（不含空白字数）；`answer`（音频 URL）与 `duration_ms` 写作恒 `NULL`/`0`。**作答中另走草稿通道（G10）**：正文暂存 `answer_draft.text`，不写 `answer_text`、不置 `answered`。
+- **存储**：提交时冻结（G2，2026-11-16 修订）。落 **`practice_subjective_answer`**（写/译/说共表）：`snapshot`（**单列 json**，主观表没有 `question_snapshot`/`group_snapshot`/`option_snapshot` 三列）存 `question.section_title` / `content` / `passage` / `question_group.content` / `passage` / `question.option_content`；正文落 `answer_text`、`grapheme_count`（不含空白字数）；`answer`（音频 URL）与 `duration_ms` 写作恒 `NULL`/`0`。**作答中另走草稿通道（G10）**：正文暂存 `answer_draft`，不写 `answer_text`、不置 `answered`。
 - **出结果**：**按 `question.has_standard_answer` 分流**（G3）：`1` → 交卷即出（🔴 该表**无 `is_correct` 列**，客观分落 `points`（满分或 0）+ `is_full_score`，`grading_state` 直接置 `1`）；`0` → 交 AI 评分（异步，CR 轮询，`grading_state`：`0` 待评 / `1` 已评 / `2` 未答或失败）。`current_question_number`（G5）；`idempotency_key` = `writing-{recordId}-submit`（G4，现状取客户端头）。
 
 | #   | 端点                                                                 | 标记  | 说明                                                                                                                             |
@@ -2640,7 +2629,7 @@ ALTER TABLE practice_subjective_answer
 | 2   | `GET /writing/records/{recordId}`                                  | ⚪   | 详情                                                                                                                             |
 | 2b  | `GET /writing/records/{recordId}/answer-card`                      | 🟡  | **新增端点（决策 25）**：只回 `answered`（按 answer 表有无记录），无对错/标记/收藏                                                                        |
 | 3   | `GET /writing/records/{recordId}/questions`                        | 🔴  | 数据源 `enabled_prac=1`（G1）+ `layout` 改读原值（B-04，已在 §4.0.5）+ **逐题携带 `answerDraft`（G10，重进恢复）**                                                        |
-| 3a  | `PUT /writing/records/{recordId}/questions/{questionId}/draft` `{text,expectedVersion?}` | 🟡 | **新增端点（决策 28 / G10）**：草稿保存，`answer_draft.text` 全量覆盖 + `answer_draft_version` 自增；**不写 `answer_text`、不置 `answered`、不判分**；交卷后仅读 |
+| 3a  | `PUT /writing/records/{recordId}/questions/{questionId}/draft` `{text,expectedVersion?}` | 🟡 | **新增端点（决策 28 / G10）**：草稿保存，`answer_draft` 全量覆盖 + `answer_draft_version` 自增；**不写 `answer_text`、不置 `answered`、不判分**；交卷后仅读 |
 | 4   | `PUT /writing/records/{recordId}/answers`                          | 🟡  | 批量保存 + 快照口径；**交卷前必须先调本端点把编辑器内容落答案，服务端不会拿草稿兜底（G10 边界 3）** |
 | 5   | ~~`POST /writing/records/{recordId}/sessions` ×3~~                 | 🔴  | **注释掉（决策 24）**：倒计时无心跳，`duration` = `end_time − start_time`                                                                     |
 | 6   | ~~`POST /writing/records/{recordId}/pause`~~                       | 🔴  | **注释掉（决策 24）**：倒计时无暂停                                                                                                          |
@@ -2653,7 +2642,7 @@ ALTER TABLE practice_subjective_answer
 **三段口径**：
 
 - **取题**：双源——① HSK7-9 口语模块：`question.enabled_prac=1`；② 口语试卷：`speaking_exam_paper_question.enabled_prac=1`（其 `section_mapping` 默认 `SEC_SPEAKING`，G7）。均按三元组定位。
-- **存储**：均落 `practice_subjective_answer` 的 **`snapshot` 单列**（① HSK7-9：`section_title` / `content` / `passage` / `question_group.content` / `passage` / `option_content`；② 口语试卷：`speaking_exam_paper_question.passage` / `practice_audio_url` / `reference_answer`），**均提交时冻结**（G2，2026-11-16 修订）；音频 URL 落 `answer`、转写落 `answer_text`、录音时长落 `duration_ms`（`grapheme_count` 恒 0）。**草稿（G10）对口语是刚需**：`answer_draft.text` 存提纲、`answer_draft.audioUrl` + `durationMs` 存试录音频——若把提纲写进 `answer_text`，会被当成「转写」参与 AI 评分，务必走草稿列。
+- **存储**：均落 `practice_subjective_answer` 的 **`snapshot` 单列**（① HSK7-9：`section_title` / `content` / `passage` / `question_group.content` / `passage` / `option_content`；② 口语试卷：`speaking_exam_paper_question.passage` / `practice_audio_url` / `reference_answer`），**均提交时冻结**（G2，2026-11-16 修订）；音频 URL 落 `answer`、转写落 `answer_text`、录音时长落 `duration_ms`（`grapheme_count` 恒 0）。**草稿（G10）对口语是刚需**：`answer_draft` 存**提纲文字**——若把提纲写进 `answer_text`，会被当成「转写」参与 AI 评分，务必走草稿列。
 - **出结果**：按 `has_standard_answer` 分流（G3，同写作，客观分落 `points` + `is_full_score`，无 `is_correct` 列）；`idempotency_key` = `speaking-{recordId}-submit`（G4，现状未落 key）。
 
 | # | 端点 | 标记 | 说明 |
@@ -2662,7 +2651,7 @@ ALTER TABLE practice_subjective_answer
 | 2 | `GET /speaking/records/{recordId}` | ⚪ | 详情 |
 | 3 | `GET /speaking/records/{recordId}/answer-card` | 🟡 | **新增端点（决策 25）**：只回 `answered`（= 录音上传完成），无对错/标记/收藏 |
 | 4 | `GET /speaking/records/{recordId}/questions` | 🔴 | 双源数据源改造；P0 恒 `record`；**逐题携带 `answerDraft`（G10：提纲 + 试录音频，重进恢复）** |
-| 4a | `PUT /speaking/records/{recordId}/questions/{questionId}/draft` `{text,audioUrl,durationMs,expectedVersion?}` | 🟡 | **新增端点（决策 28 / G10）**：草稿保存（提纲 + 试录音频），**不写 `answer` / `answer_text`、不置 `answered`、不判分**；试录音频走预签名直传后再把 key 带来（同 ③ 两步法，但不生成正式作答） |
+| 4a | `PUT /speaking/records/{recordId}/questions/{questionId}/draft` `{text,expectedVersion?}` | 🟡 | **新增端点（决策 28 / G10）**：草稿保存（**只存提纲文字**），**不写 `answer` / `answer_text`、不置 `answered`、不判分**；录音仍是正式作答通道的事（③ 两步法），草稿不碰音频 |
 | 5 | `POST /speaking/records/{recordId}/questions/{questionId}/recordings/prepare` | ⚪ | 录音两步·预签名 |
 | 6 | `POST /speaking/records/{recordId}/questions/{questionId}/answers` | 🟡 | 保存答案（G5） |
 | 7 | ~~`POST /speaking/records/{recordId}/sessions` ×3 / `pause`~~ | 🔴 | **注释掉（决策 24）**：倒计时无心跳/暂停，`duration` = `end_time − start_time` |
@@ -2675,7 +2664,7 @@ ALTER TABLE practice_subjective_answer
 **三段口径**：
 
 - **取题**：`(paper_id, section_mapping, section)` 取 `question.enabled_prac=1`（与写作同源，`section_mapping=SEC_TRANSLATION`）。
-- **存储**：提交时冻结（G2，2026-11-16 修订），落 `practice_subjective_answer`（与写作同表，靠 `section_mapping=SEC_TRANSLATION` 区分），快照进 **`snapshot` 单列**；笔译正文落 `answer_text` + `grapheme_count`，口译音频落 `answer` + `duration_ms`——**同一张表用列区分笔译/口译**，不再分表。**草稿（G10）同写作口径**：笔译译文暂存 `answer_draft.text`，口译试录音频暂存 `answer_draft.audioUrl` + `durationMs`。
+- **存储**：提交时冻结（G2，2026-11-16 修订），落 `practice_subjective_answer`（与写作同表，靠 `section_mapping=SEC_TRANSLATION` 区分），快照进 **`snapshot` 单列**；笔译正文落 `answer_text` + `grapheme_count`，口译音频落 `answer` + `duration_ms`——**同一张表用列区分笔译/口译**，不再分表。**草稿（G10）同写作口径**：笔译译文 / 口译提纲都暂存 `answer_draft`（纯文字）。
 - **出结果**：按 `has_standard_answer` 分流（G3）：`1` → 交卷即出（`points` + `is_full_score`，`grading_state=1`）；`0` → 交 AI（`grading_state` 0/1/2）。`idempotency_key` = `translation-{recordId}-submit`（G4，现状未落 key）。
 
 | # | 端点 | 标记 | 说明 |
@@ -2684,7 +2673,7 @@ ALTER TABLE practice_subjective_answer
 | 2 | `B6 GET /translation/records/{recordId}` | ⚪ | 详情 |
 | 2b | `GET /translation/records/{recordId}/answer-card` | 🟡 | **新增端点（决策 25）**：口径同写作 2b，只回 `answered`，无对错/标记/收藏 |
 | 3 | `B7 GET /translation/records/{recordId}/questions` | 🔴 | 数据源 `enabled_prac=1`（G1）+ **逐题携带 `answerDraft`（G10）** |
-| 3a | `PUT /translation/records/{recordId}/questions/{questionId}/draft` `{text,audioUrl,durationMs,expectedVersion?}` | 🟡 | **新增端点（决策 28 / G10）**：草稿保存（笔译译文 / 口译试录），**不写 `answer` / `answer_text`、不置 `answered`、不判分**；交卷后仅读 |
+| 3a | `PUT /translation/records/{recordId}/questions/{questionId}/draft` `{text,expectedVersion?}` | 🟡 | **新增端点（决策 28 / G10）**：草稿保存（笔译译文 / 口译提纲，均为文字），**不写 `answer` / `answer_text`、不置 `answered`、不判分**；交卷后仅读 |
 | 4 | `B8 PUT /translation/records/{recordId}/answers` | 🟡 | 快照口径（笔译 `TEXT` / 口译 `AUDIO`）；**交卷前必须先调本端点落答案，服务端不拿草稿兜底（G10 边界 3）** |
 | 5 | `B9 POST /translation/records/{recordId}/submissions` | 🔴 | **has_standard_answer 分流**（G3）——原「P0 无评分策略恒 UNAVAILABLE」**不再成立**，§4.3 翻译填充规则需按本口径重写（客观题交卷即出分）+ `idempotency_key` 落库（G4）+ **提交时冻结快照**（G2，与现状一致）+ AI 评分落 `grading_state`（决策 24） |
 | 6 | CR `?module=translation&section=` | 🔴 | 填充规则同步：`has_standard_answer=1` 的板块 `score` / 对错字段有值，不再全 `null`；`reportStatus` 按 `grading_state` |
@@ -2701,7 +2690,7 @@ ALTER TABLE practice_subjective_answer
 | 🔴 **G1 取题加 `enabled_prac=1` 过滤** | 各模块 questions（口语双源） | 五模块 |
 | 🟡 G5/G6/G7 口径对齐 | 答题保存、听/读 submit 统计写回、口语常量 | — |
 | 🟡 **决策 25：answer-card 端点 ×5 新增**（五模块同构、参考 CSCA，**只回已答/未答**，响应见 §4.7.0 G9） | `GET /{mod}/records/{recordId}/answer-card` | 五模块 |
-| 🟡 **决策 28：作答草稿**（`practice_subjective_answer` 加 3 列 + 保存端点 ×3 + ② 携带 `answerDraft`，口径见 §4.7.0 G10）：🔴 **仅写/译/说**，听/读不涉及 | `PUT /{mod}/records/{questionId}/draft`、`GET /{mod}/records/{recordId}/questions` | 写/译/说 |
+| 🟡 **决策 28：作答草稿**（`practice_subjective_answer` 加 3 列 + 保存端点 ×3 + ② 携带 `answerDraft`，口径见 §4.7.0 G10）：🔴 **仅写/译/说**，听/读不涉及 | `PUT /{mod}/records/{recordId}/questions/{questionId}/draft`、`GET /{mod}/records/{recordId}/questions` | 写/译/说 |
 
 > 快照冻结（G2）= **提交时**，与现状一致，无改造；仅需确认各模块 submit 实现覆盖了口径列出的全部快照字段（尤其听力的音频、口语试卷的 `practice_audio_url` / `reference_answer`）。
 
@@ -3012,7 +3001,7 @@ ALTER TABLE practice_module_part_config
 
 -- 决策 28 / G10：作答草稿三列（表当前 0 行，直接加、无回填）
 ALTER TABLE practice_subjective_answer
-  ADD COLUMN `answer_draft` json DEFAULT NULL COMMENT '作答草稿（答题端暂存，不参与判分）',
+  ADD COLUMN `answer_draft` mediumtext DEFAULT NULL COMMENT '作答草稿正文（答题端暂存，不参与判分）',
   ADD COLUMN `answer_draft_version` bigint NOT NULL DEFAULT '0' COMMENT '草稿版本（每次保存+1，乱序/多端冲突检测）',
   ADD COLUMN `answer_draft_saved_time` bigint DEFAULT NULL COMMENT '草稿最后保存时间（毫秒，服务端时钟）；NULL=从未存草稿';
 ```
