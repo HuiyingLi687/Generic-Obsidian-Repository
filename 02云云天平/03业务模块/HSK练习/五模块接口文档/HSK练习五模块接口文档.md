@@ -169,20 +169,20 @@ Authorization: Bearer <登录拿到的 token>
 
 ### 2.1 端点对照表
 
-| 动作 | 听力 | 阅读 | 写作 | 翻译 | 口语 |
-|---|---|---|---|---|---|
-| 开练 | `POST /listening/records/start` | `POST /reading/records/start` | `POST /writing/records/start` | `POST /translation/records/start` | `POST /speaking/records/start` |
-| 记录详情 | `GET /listening/records/{id}` | `GET /reading/records/{id}` | `GET /writing/records/{id}` | `GET /translation/records/{id}` | `GET /speaking/records/{id}` |
-| 拉题 | `GET …/{id}/questions` | 同 | 同 | 同 | 同 |
-| 答题 | `PUT …/{id}/answers/{qid}`<br>`PUT …/{id}/answers`（批） | `PUT …/{id}/answers/{qid}`<br>`PUT …/{id}/answers`（批） | `PUT …/{id}/answers`（批） | `PUT …/{id}/answers`（批） | `POST …/{id}/questions/{qid}/answers`（单题） |
-| 草稿 | — | — | `PUT …/{id}/questions/{qid}/draft` | 同 | 同（仅提纲） |
-| 暂停 | `POST …/{id}/pause` | `POST …/{id}/pause` | — | — | — |
-| 放弃 | — | `POST …/{id}/abandon` | — | — | — |
-| 交卷 | `POST /listening/records/{id}/submit` | `POST /reading/records/{id}/submit` | `POST /writing/records/{id}/submit` | `POST /translation/records/{id}/submit` | `POST /speaking/records/{id}/submit` |
-| 报告 | `GET …/{id}/report` | 同 | 同 | 同 | 同 |
-| 报告重试 | `POST …/{id}/report/retry` | 同 | 同 | **无此端点** | 同 |
-| 单题回顾 | `GET …/{id}/report/questions/{qid}` | 同 | 同 | 同 | 同 |
-| 答题卡 | `GET /listening/records/{id}/answer-card` | `/reading/…` | `/writing/…` | `/translation/…` | `/speaking/…` |
+| 动作   | 听力                                                    | 阅读                                                    | 写作                                  | 翻译                                      | 口语                                        |
+| ---- | ----------------------------------------------------- | ----------------------------------------------------- | ----------------------------------- | --------------------------------------- | ----------------------------------------- |
+| 开练   | `POST /listening/records/start`                       | `POST /reading/records/start`                         | `POST /writing/records/start`       | `POST /translation/records/start`       | `POST /speaking/records/start`            |
+| 记录详情 | `GET /listening/records/{id}`                         | `GET /reading/records/{id}`                           | `GET /writing/records/{id}`         | `GET /translation/records/{id}`         | `GET /speaking/records/{id}`              |
+| 拉题   | `GET …/{id}/questions`                                | 同                                                     | 同                                   | 同                                       | 同                                         |
+| 答题   | `PUT …/{id}/answers/{qid}`<br>`PUT …/{id}/answers`（批） | `PUT …/{id}/answers/{qid}`<br>`PUT …/{id}/answers`（批） | `PUT …/{id}/answers`（批）             | `PUT …/{id}/answers`（批）                 | `POST …/{id}/questions/{qid}/answers`（单题） |
+| 草稿   | —                                                     | —                                                     | `PUT …/{id}/questions/{qid}/draft`  | 同                                       | 同（仅提纲）                                    |
+| 暂停   | `POST …/{id}/pause`                                   | `POST …/{id}/pause`                                   | —                                   | —                                       | —                                         |
+| 放弃   | —                                                     | `POST …/{id}/abandon`                                 | —                                   | —                                       | —                                         |
+| 交卷   | `POST /listening/records/{id}/submit`                 | `POST /reading/records/{id}/submit`                   | `POST /writing/records/{id}/submit` | `POST /translation/records/{id}/submit` | `POST /speaking/records/{id}/submit`      |
+| 报告   | `GET …/{id}/report`                                   | 同                                                     | 同                                   | 同                                       | 同                                         |
+| 报告重试 | `POST …/{id}/report/retry`                            | 同                                                     | 同                                   | **无此端点**                                | 同                                         |
+| 单题回顾 | `GET …/{id}/report/questions/{qid}`                   | 同                                                     | 同                                   | 同                                       | 同                                         |
+| 答题卡  | `GET /listening/records/{id}/answer-card`             | `/reading/…`                                          | `/writing/…`                        | `/translation/…`                        | `/speaking/…`                             |
 
 表里 `…` 均指 `/records/{recordId}` 之前那段路径。
 
