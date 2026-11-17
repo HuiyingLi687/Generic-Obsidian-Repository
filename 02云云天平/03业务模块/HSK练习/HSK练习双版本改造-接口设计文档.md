@@ -58,7 +58,7 @@
 | 25  | **五模块各新增答题卡接口 `GET /{mod}/records/{recordId}/answer-card`**（2026-11-16；二次修订：定位收窄为「作答中答题卡」，参考 CSCA；三次修订：**本期只做「已答/未答」，标记/收藏/错题一律不写进设计**）                              | **只服务作答中场景**：回答「这道题答了没有」，参考 CSCA 答题卡（exam-service `CscaAnswerCardDTO`，文档 §2.7）的**结构**，功能面收窄到单一维度。五模块路径与响应同构：`{recordId, paperId, section, totalQuestions, answeredCount, unansweredCount, currentQuestionNumber, questions[]}`，`questions[]` 按 **`question_ids` 快照顺序**逐题 `{order, questionId, answered, current}`。🔴 **本期只此一项**：不下发 `correct`（对错只在 CR 报告页），**标记 / 收藏 / 错题都不在设计范围内**。`answered` 数据源 = `practice_answer.answered`（口语 = `practice_subjective_answer` 有无记录，即录音上传完成）。`current` 与入参 `currentQuestionNumber` 同值（缺省取记录进度，G5）。**作答中答题卡用本接口，报告页对错用 CR `answerCard[]`（题序同源）** |
 | 26  | **写/译/说作答存储层合并为 `practice_subjective_record` + `practice_subjective_answer`**（2026-11-16；DB 已改，接口层不变） | 🔴 **存储层已实测改造完成（TEST）**：`practice_subjective_record` / `practice_subjective_answer` 两表已建（各 0 行），原 `practice_writing_record` / `practice_writing_answer` / `practice_speaking_record` / `practice_speaking_answer` 四表已重命名为 `__bak20261116`。**写作 / 翻译 / 口语共用这一对表**，用 `section_mapping`（`SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAKING`）区分模块，靠 `section` 区分板块。**接口层零变化**：路径仍是 `/{mod}/records/...`、主键仍是 `recordId`、请求/响应结构不动，只把文档里的存储层表名指向新表。**关键 schema 变化**（实现必看）：① 答案表关联列 = **`practice_record_id`**；② 快照由三列合并为 **`snapshot` 单列 json**（主观表没有 `question_snapshot`/`group_snapshot`/`option_snapshot`）；③ **无 `is_correct` 列** → 客观判分落 `points` + `is_full_score`，主观评分落 `grading_state`（**三态：0 待评 / 1 已评 / 2 未答或失败**）；④ 音频与文本同表分列——`answer`（音频 URL）/ `answer_text`（正文或转写）/ `duration_ms` / `grapheme_count`，写作侧 `answer` 恒 NULL、口语侧 `grapheme_count` 恒 0；⑤ 统计列齐全（`objective_count` / `objective_correct_count` / `ai_question_count` / `ai_scored_count` / `final_score` / `total_score`），CR 扩展块直接读。⚠️ **PROD 尚未建这两张表**（实测 PROD 只有老结构表），上线前需 DDL + 存量迁移，见 §9.1 |
 | 27  | **写/译/说 AI 评分扣费（决策登记，详见 SDD）**（2026-11-16） | AI 评分收 `ai_analysis` 配额，口径两条：**按卷扣一次**（一次交卷 = 1 次配额，不按题）+ **评分成功才扣**（全卷 AI 题到终态且 `ai_scored_count > 0`；全失败不扣）。**它会改交卷接口行为**：交卷时无 AI 题直接置 `ai_deduct_state=3`；有 AI 题先 `GET /benefit/aiQuota` 软校验，**余额 0 → `4001` 拦住交卷**（查询异常一律放行），校验在交卷事务内、回滚得掉；评分线程用 CAS 抢「`ai_deduct_state=0`」后调 `POST /benefit/deductAi`（`sceneCode=ai_analysis`、`bizId=recordId`），失败转 `2` 记账 + WARN，**分数不回收**。开关 `subjective.grading.deduct-enabled`（默认 `true`）。🔴 前端需处理交卷 `4001`（引导充值，别当网络错误重试）。`ai_deduct_state` / `ai_deduct_time` TEST 已建，PROD 随 E19 一起上 |
-| 28  | **作答草稿：`practice_subjective_answer` 新增 3 列 + 保存/恢复通道**（2026-11-17，写/译/说） | **目标**：主观题作答中「服务端暂存、每次进来恢复」。🔴 **必须单独一列，不能复用 `answer_text`**——`answer_text` 是判分输入（写作正文 / 口语转写），草稿写进去会改变判分对象与 `grapheme_count`；而且口语草稿是**提纲**，混进 `answer_text` 会被当成转写参与评分。**DDL 三列**：`answer_draft mediumtext NULL`（正文，三个模块**都只存文字**：写作正文 / 笔译译文 / 口语·口译提纲）、`answer_draft_version bigint NOT NULL DEFAULT 0`（每次保存 +1，丢弃乱序旧写）、`answer_draft_saved_time bigint NULL`（服务端毫秒，供恢复提示与「草稿是否比答案新」判断）。**接口**：保存 `PUT /{mod}/records/{recordId}/questions/{questionId}/draft`（`PUT` 全量覆盖，`expectedVersion` 可选乐观锁 → 不匹配 `409`）；恢复**不单开端点**，挂在 ② `GET /{mod}/records/{recordId}/questions` 的每道题 `answerDraft` 字段（开场一次拿全）。🔴 **边界**：① 草稿**不置 `answered`**（答题卡仍显示未答，G9 不变）；② **不参与判分**（`grading_state`/`points` 不受影响）；③ 交卷**不自动拿草稿兜底**，改为交卷响应回显 `draftNotSubmitted:[questionId]` 提示前端返回保存；④ 交卷后草稿冻结只读、不清理；⑤ 不跨场次（新 record 新行）。⚠️ **命名勿混**：这里的「草稿」是**题目级**，与 `/parts[].draft`（**记录级**「未提交的那次 record」）不是一回事，接口字段一律用 **`answerDraft`**。详见 §4.7.0 G10 |
+| 29  | **交卷路名五模块统一为 `/submit`**（2026-11-17；翻译原 `/submissions` 废除） | 🔴 翻译的交卷路径原先沿用旧 `attempts` 链路的复数写法 `POST /translation/records/{recordId}/submissions`，与写作/口语/听力的 `/{recordId}/submit` 不同名。本次**统一为 `/submit`**，五模块一致；**老路径 `/submissions` 直接下线，不保留别名**（`TranslationPracticeController` 的 `@PostMapping` 已改）。🔴 **前端若接过翻译交卷接口，必须同步改路径**，否则 404。旧 `attempts` 链路（`TranslationSubmissionController` 等三个控制器）已于决策 24 摘掉 `@RestController`，不对外暴露，路径一并同步。|
 
 ---
 
@@ -149,7 +149,7 @@
 | B6  | GET    | `/translation/records/{recordId}`                          | 练习详情         | 新增   | 委托 `#get`                                                       |
 | B7  | GET    | `/translation/records/{recordId}/questions`                | 题目列表         | 新增   | 委托 `#listQuestions`；**逐题下发 `layout`**                        |
 | B8  | PUT    | `/translation/records/{recordId}/answers`                  | 批量保存答案       | 新增   | 委托 `WritingAnswerService#save`                                  |
-| B9  | POST   | `/translation/records/{recordId}/submissions`              | 交卷           | 新增   | 委托 `WritingSubmissionService#submit`                            |
+| B9  | POST   | `/translation/records/{recordId}/submit`                   | 交卷           | 新增   | 委托 `WritingSubmissionService#submit`                            |
 | B10 | GET    | `/translation/records/{recordId}/report`                     | 报告详情         | 改造   | 🔴 决策 24：原 `/translation/reports/{reportId}` 随报告表退场作废，对齐听/读改按 `recordId` 定位（§4.2 B10 段） |
 | E1  | GET    | `/hsk/modules`                                               | 首页模块卡聚合      | 新增   | 一次返回布局 + 卡片 + 可用性 + 进度                                          |
 | AC  | GET    | `/{module}/records/{recordId}/answer-card`                   | 五模块公用答题卡     | 新增   | **决策 25 + G9**：`module` ∈ `listening`/`reading`/`writing`/`speaking`/`translation`，五个路径响应完全一致；只回 `answered` + 当前题号，**无对错/标记/收藏**；题序按 `question_ids` 快照（与 CR `answerCard[]` 同源同序） |
@@ -193,7 +193,7 @@
 | `Authorization` | header | 是 | `Bearer <JWT>` |
 | `X-Client-Type` | header | 否 | 【无变更】`APP` / `WEB`，影响 `userId` 解析方式 |
 | `Accept-Language` | header | 否 | `zh` / `en` / `vi`。**本次起不再影响 `parts[]` 语言**（三语同发），仅影响题干等其它文案 |
-| `Idempotency-Key` | header | 提交类必填 | 【无变更】仅 `POST /submissions` 使用 |
+| `Idempotency-Key` | header | 提交类必填 | 【无变更】仅 `POST /submit` 使用 |
 
 #### 4.0.2 `version` 参数
 
@@ -1750,7 +1750,7 @@ Authorization: Bearer xxx
 
 ---
 
-#### B9 `POST /translation/records/{recordId}/submissions`
+#### B9 `POST /translation/records/{recordId}/submit`
 
 **用途**：交卷并触发评分
 **鉴权**：需要登录
@@ -1834,7 +1834,7 @@ Authorization: Bearer xxx
 
 | 层 | 落点 | 说明 |
 |---|---|---|
-| 控制器 | `hsk/translation/controller/Translation{Attempt,Answer,Submission,Report}Controller` | 6 个端点全部新增；交卷路径按契约用 `/submissions`（写作是 `/submit`） |
+| 控制器 | `hsk/translation/controller/Translation{Attempt,Answer,Submission,Report}Controller` | 6 个端点全部新增；交卷路径五模块统一 `/submit`（原 `/submissions`，2026-11-17 决策 29 改定） |
 | 服务 | `hsk/translation/service/impl/TranslationPracticeServiceImpl` | 只做四件事：解析板块 → 校验归属 → 委托写作链路 → 重映射契约 |
 | 板块解析 | `hsk/translation/support/TranslationPartResolver` | `(paperId, section)` → `practice_part_setting`；记录归属同样按 `section_mapping='SEC_TRANSLATION'` 判，**写作练习从翻译入口读不到**（404 而非串数据） |
 | 写作内核 | `WritingQuestionType.TRANSLATION_WRITTEN/ORAL`、`WritingLayoutType.INPUT/RECORD`、`WritingAnswerType.AUDIO` | 题型 / 布局 / 答案类型三处枚举扩容；布局以 `question.layout` 为准，枚举只作承载 |
@@ -2354,7 +2354,7 @@ E1 首页模块卡
 | 答题形态 | `PUT .../answers/{questionId}`（单题）+ `PUT .../answers`（批量） | 同听 | `PUT .../answers`（批量） | 录音两步（prepare → answers） | `PUT .../answers`（笔译 `TEXT` / 口译 `AUDIO`） |
 | 暂停 | `POST .../pause` | `POST .../pause` | ~~`POST .../pause`~~ **注释掉（决策 24：倒计时无暂停）** | 同写 | 无 |
 | 时长 | 无 session 端点（时长按记录时间戳累计） | `POST .../sessions` + heartbeat + `/end`（**听/读既有，暂不动**） | 🔴 **无会话端点（决策 24 删除）**：`duration` = `end_time` − `start_time`（`practice_subjective_record` 两列已有） | 🔴 同写（**同一张表**，`start_time`/`end_time`/`duration`） | 随写（同一张表） |
-| 交卷 | `POST .../records/{recordId}/submit` | 同听 | `POST /writing/records/{recordId}/submit` | `POST /speaking/records/{recordId}/submit` | `B9 POST /translation/records/{recordId}/submissions`（**注意与写作 `/submit` 不同名**） |
+| 交卷 | `POST .../records/{recordId}/submit` | 同听 | `POST /writing/records/{recordId}/submit` | `POST /speaking/records/{recordId}/submit` | `B9 POST /translation/records/{recordId}/submit`（五模块同名） |
 | 报告生成 | 同步 | 同步 | **异步 AI** | **异步 AI** | 异步 AI（随写作，`grading_state` 推进；原「P0 恒 UNAVAILABLE」随决策 24 作废） |
 | 报告详情 | `GET .../records/{recordId}/report`、`.../report/questions/{questionId}`、失败 `POST .../report/retry` | 同听 | 🔴 **对齐听（决策 24）**：`GET /writing/records/{recordId}/report` + `/report/questions/{q}`（`/reports/{reportId}` 系列随报告表退场） | 🔴 对齐听：`GET /speaking/records/{recordId}/report` + 逐题 + `/report/retry` | 随写：`GET /translation/records/{recordId}/report`（原 B10 改造） |
 
@@ -2389,7 +2389,7 @@ E1 首页模块卡
 | ③d  | `PUT /writing/records/{recordId}/questions/{questionId}/draft`                      | **草稿保存（决策 28 / G10）**：正文暂存 `answer_draft`，**不置 `answered`、不判分**；重进由 ② 的 `answerDraft` 恢复                                    |
 | ③b  | ~~`POST /writing/records/{recordId}/sessions` → `/{sessionId}/heartbeat` → `/end`~~ | 🔴 **删除（2026-11-16，决策 24）**：练习是**倒计时**制，无心跳必要；`durationSeconds` = `end_time` − `start_time`（`practice_subjective_record` 两列已有，零改造）。会话三端点实现代码**注释掉**，不删文件 |
 | ③c  | ~~`POST /writing/records/{recordId}/pause`~~                                        | 🔴 **注释掉（2026-11-16，决策 24）**：倒计时练习不需要暂停                                                                                                               |
-| ④   | `POST /writing/records/{recordId}/submit`                                           | 交卷，`Idempotency-Key` 必填。🔴 **路径是 `/submit`**，与翻译 B9 的 `/submissions` 不同名（历史原因，勿混）                                                                     |
+| ④   | `POST /writing/records/{recordId}/submit`                                           | 交卷，`Idempotency-Key` 必填。**路径是 `/submit`**，与翻译 B9 同名（2026-11-17 已统一）                                                                     |
 | ⑤   | `GET /papers/{paperId}/reports/latest?module=writing&section=`                      | **CR** 轮询：AI 评分未完成时 `reportStatus=GRADING`（`grading_state=0`），完成后 `READY` 并携带评分结果                                                                     |
 | ⑤b  | `GET /writing/records/{recordId}/report`                                            | 报告详情（**对齐听/读，2026-11-16 决策 24**）：reportId 已随报告表退场，报告数据由 `practice_subjective_record` + `practice_subjective_answer` 现拼                                      |
 | ⑤c  | `GET /writing/records/{recordId}/report/questions/{questionId}`                     | 逐题反馈：`has_standard_answer=1` → 客观判分结果；`=0` → 按 `practice_subjective_answer.grading_state` 取 AI 评分（`1`=`points`/`analysis` 已就绪，`0`=评分中）                   |
@@ -2423,7 +2423,7 @@ E1 首页模块卡
 | ② | `B7 GET /translation/records/{recordId}/questions` | 逐题下发 `layout`（笔译 `input` / 口译 `record`） |
 | ③ | `B8 PUT /translation/records/{recordId}/answers` | 批量保存（复用写作答案 DTO） |
 | ③a | `PUT /translation/records/{recordId}/questions/{questionId}/draft` | **草稿保存（决策 28 / G10）**：笔译译文 / 口译提纲 → `answer_draft`；**不置 `answered`、不判分** |
-| ④ | `B9 POST /translation/records/{recordId}/submissions` | 交卷，`Idempotency-Key` 必填 |
+| ④ | `B9 POST /translation/records/{recordId}/submit` | 交卷，`Idempotency-Key` 必填 |
 | ⑤ | `GET /papers/{paperId}/reports/latest?module=translation&section=` | **CR**（决策 20/21）：AI 评分未完成 `reportStatus=GRADING`，完成 `READY`；2.0 的卷 → 404（翻译仅 3.0 有数据） |
 | ⑤b | ~~`B10 GET /translation/reports/{reportId}`~~ → `GET /translation/records/{recordId}/report` | **报告详情（决策 24）**：reportId 随报告表退场，对齐听/读；逐题反馈 `/report/questions/{questionId}` 按 `grading_state` 取 AI 结果 |
 
@@ -2698,7 +2698,7 @@ ALTER TABLE practice_subjective_answer
 | 3 | `B7 GET /translation/records/{recordId}/questions` | 🔴 | 数据源 `enabled_prac=1`（G1）+ **逐题携带 `answerDraft`（G10）** |
 | 3a | `PUT /translation/records/{recordId}/questions/{questionId}/draft` `{text,expectedVersion?}` | 🟡 | **新增端点（决策 28 / G10）**：草稿保存（笔译译文 / 口译提纲，均为文字），**不写 `answer` / `answer_text`、不置 `answered`、不判分**；交卷后仅读 |
 | 4 | `B8 PUT /translation/records/{recordId}/answers` | 🟡 | 快照口径（笔译 `TEXT` / 口译 `AUDIO`）；**交卷前必须先调本端点落答案，服务端不拿草稿兜底（G10 边界 3）** |
-| 5 | `B9 POST /translation/records/{recordId}/submissions` | 🔴 | **has_standard_answer 分流**（G3）——原「P0 无评分策略恒 UNAVAILABLE」**不再成立**，§4.3 翻译填充规则需按本口径重写（客观题交卷即出分）+ `idempotency_key` 落库（G4）+ **提交时冻结快照**（G2，与现状一致）+ AI 评分落 `grading_state`（决策 24） |
+| 5 | `B9 POST /translation/records/{recordId}/submit` | 🔴 | **has_standard_answer 分流**（G3）——原「P0 无评分策略恒 UNAVAILABLE」**不再成立**，§4.3 翻译填充规则需按本口径重写（客观题交卷即出分）+ `idempotency_key` 落库（G4）+ **提交时冻结快照**（G2，与现状一致）+ AI 评分落 `grading_state`（决策 24） |
 | 6 | CR `?module=translation&section=` | 🔴 | 填充规则同步：`has_standard_answer=1` 的板块 `score` / 对错字段有值，不再全 `null`；`reportStatus` 按 `grading_state` |
 | 7 | ~~`B10 GET /translation/reports/{reportId}`~~ → `GET /translation/records/{recordId}/report` | 🔴 | **改造（决策 24）**：reportId 随报告表退场，对齐听/读按 `recordId` 定位 |
 
@@ -2843,7 +2843,7 @@ POST /translation/records/start {paperId, sectionMapping, section}
 ### 7.3 交卷（事务边界）
 
 ```
-POST /translation/records/{recordId}/submissions
+POST /translation/records/{recordId}/submit
  → 校验登录 + 记录归属
  → 校验 expectedAnswerVersion == record.answerVersion  （不等 → 409）
  → 校验 questionSetVersion                              （不等 → 409）
@@ -3076,7 +3076,7 @@ ALTER TABLE practice_subjective_answer
 | `hsk/catalog/mapper/PracticePartSettingMapper` + `mapper/catalog/PracticePartSettingMapper.xml`（新增 `selectStructureIdByPart`） | 三元组 → `structure_id`；`section_code IN (N, CONCAT('PART_', N))`，把口语历史 `PART_N` 与数字 `section` 在 SQL 侧归一（该表本期 drop，届时一并删除） |
 | `hsk/translation/controller/TranslationRecordController.java`（新增；**2026-11-16 决策 23 由 TranslationAttemptController 改名**） | **B5/B6/B7**：`POST /translation/records/start`、`GET /translation/records/{recordId}?section=`、`GET /translation/records/{recordId}/questions` |
 | `hsk/translation/controller/TranslationAnswerController.java`（新增） | **B8**：`PUT /translation/records/{recordId}/answers`，复用写作答案 DTO（笔译 `TEXT`、口译 `AUDIO`） |
-| `hsk/translation/controller/TranslationSubmissionController.java`（新增） | **B9**：`POST /translation/records/{recordId}/submissions`（写作是 `/submit`，按契约改名） |
+| `hsk/translation/controller/TranslationSubmissionController.java`（新增） | **B9**：`POST /translation/records/{recordId}/submit`（五模块同名；2026-11-17 决策 29 由 `/submissions` 改定） |
 | `hsk/translation/controller/TranslationReportController.java`（改造） | **B10**：🔴 决策 24 改为 `GET /translation/records/{recordId}/report`（原 `/translation/reports/{reportId}` 路径删除） |
 | `hsk/translation/support/TranslationPartResolver.java`（新增） | `(paperId, section)` → `practice_part_setting`（`section_mapping='SEC_TRANSLATION' AND enabled=1 AND deleted=0`）；题目存在性校验；记录归属校验（写作练习从翻译入口 404） |
 | `hsk/translation/service/impl/TranslationPracticeServiceImpl.java`（新增） | 6 个方法薄封装：委托 `WritingAttemptService` / `WritingAnswerService` / `WritingSubmissionFinalizer` / 报告查询（🔴 决策 24：改走 record + answer 现拼）；读模型重映射 `structureId→section`、`layoutType→layout`（小写）、`levelCode→level`（去 `HSK` 前缀）、`AI_REVIEW→AI`、`instruction→stem` |

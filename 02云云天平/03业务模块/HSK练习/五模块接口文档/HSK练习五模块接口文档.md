@@ -25,7 +25,7 @@
 | ⑧ 交卷 | `POST /{module}/records/{recordId}/submit` | 判分结果 / 报告状态 |
 | ⑨ 报告 | `GET /{module}/records/{recordId}/report` | 轮询直到非 `GRADING` |
 
-> 上表路径省略了网关前缀 `/api/practice`，查询参数也省略；完整写法见 [1.1](#11-地址与网关前缀) 与各模块章节。翻译的交卷是 `/submissions`（复数），见第 7 章。
+> 上表路径省略了网关前缀 `/api/practice`，查询参数也省略；完整写法见 [1.1](#11-地址与网关前缀) 与各模块章节。**交卷路名五模块统一为 `/submit`**（2026-11-17 起，翻译原先的 `/submissions` 已废除）。
 
 `{module}` 的取值与第 ⑦ ⑧ 步的差异见 [2. 五模块差异速查](#2-五模块差异速查)。
 
@@ -132,12 +132,10 @@ Authorization: Bearer <登录拿到的 token>
 | `listening`   | `SEC_LISTEN`      | `practice_record`            | `/listening/records/{id}/submit`               |
 | `reading`     | `SEC_READ`        | `practice_record`            | `/reading/records/{id}/submit`                 |
 | `writing`     | `SEC_WRITE`       | `practice_subjective_record` | `/writing/records/{id}/submit`                 |
-| `translation` | `SEC_TRANSLATION` | `practice_subjective_record` | `/translation/records/{id}/submissions` ⚠️ 复数 |
+| `translation` | `SEC_TRANSLATION` | `practice_subjective_record` | `/translation/records/{id}/submit`              |
 | `speaking`    | `SEC_SPEAKING`    | `practice_subjective_record` | `/speaking/records/{id}/submit`                |
 
-> ⚠️ **只有翻译的交卷路名是复数 `submissions`**，其余四个模块都是单数 `submit`。这是历史遗留，不是设计意图：翻译的旧 `attempts` 链路当初就写成了 `POST /translation/attempts/{attemptId}/submissions`，共表改造时新 `records` 端点直接沿用了老路径的后半段（`TranslationPracticeController` 里也留有注释「注意路名 `/submissions`」）。**前端按模块硬编码，不要试图用 `submit` 去拼翻译的地址**，会 404。
->
-> 后端不打算改：改路径没有业务收益，但会让已接入翻译的前端同步发版。将来若要统一，正确做法是**加别名**（同一方法上 `@PostMapping({"/{recordId}/submissions", "/{recordId}/submit"})`）而不是直接换掉。
+> ✅ **交卷路名五模块统一为 `/submit`**（2026-11-17 起）。历史包袱已清：翻译原本是复数 `/submissions`（沿用旧 `attempts` 链路的写法），现已改成 `/submit`，**老路径不再可用**。若前端之前接过翻译的老接口，需要同步修改。
 
 
 > 口语的 `SEC_SPEAK`（少一个 ING）是历史拼写错误，服务端仍放行，但**响应里返回的一律是 `SEC_SPEAKING`**。新代码请用 `SEC_SPEAKING`。
@@ -166,7 +164,7 @@ Authorization: Bearer <登录拿到的 token>
 | 草稿 | — | — | `PUT …/{id}/questions/{qid}/draft` | 同 | 同（仅提纲） |
 | 暂停 | `POST …/{id}/pause` | `POST …/{id}/pause` | — | — | — |
 | 放弃 | — | `POST …/{id}/abandon` | — | — | — |
-| 交卷 | `POST /listening/records/{id}/submit` | `POST /reading/records/{id}/submit` | `POST /writing/records/{id}/submit` | `POST /translation/records/{id}/submissions` | `POST /speaking/records/{id}/submit` |
+| 交卷 | `POST /listening/records/{id}/submit` | `POST /reading/records/{id}/submit` | `POST /writing/records/{id}/submit` | `POST /translation/records/{id}/submit` | `POST /speaking/records/{id}/submit` |
 | 报告 | `GET …/{id}/report` | 同 | 同 | 同 | 同 |
 | 报告重试 | `POST …/{id}/report/retry` | 同 | 同 | **无此端点** | 同 |
 | 单题回顾 | `GET …/{id}/report/questions/{qid}` | 同 | 同 | 同 | 同 |
@@ -1382,18 +1380,17 @@ GET /writing/records/{recordId}/answer-card
 
 ## 7. 翻译（translation）
 
-**与写作完全同构**，落同一张表，`section_mapping = SEC_TRANSLATION`。只有下面四处差异：
+**与写作完全同构**，落同一张表，`section_mapping = SEC_TRANSLATION`。只有下面三处差异：
 
 ### 7.1 差异清单
 
 | 项 | 写作 | 翻译 |
 |---|---|---|
 | 开练 `sectionMapping` | `SEC_WRITE` | `SEC_TRANSLATION` |
-| 交卷路名 | `POST /{id}/submit` | **`POST /{id}/submissions`**（复数） |
 | 报告重试 | 有 | **无此端点** |
 | 板块含义 | `section=1` 写作 | `section=1` 笔译（`layout=input`）<br>`section=2` 口译（`layout=record`） |
 
-⚠️ 交卷路名不一致是历史契约（写作 `/submit`、翻译 `/submissions`），**不是笔误**，前端不要统一。
+✅ 交卷路名两边都是 `POST /{id}/submit`（2026-11-17 起统一）。翻译原先的 `/submissions` 是旧 `attempts` 链路的历史写法，已废除，**老路径现在 404**。
 
 ### 7.2 端点清单
 
@@ -1404,7 +1401,7 @@ GET /writing/records/{recordId}/answer-card
 | 拉题 | `GET /translation/records/{recordId}/questions` |
 | 批量保存 | `PUT /translation/records/{recordId}/answers` |
 | 草稿 | `PUT /translation/records/{recordId}/questions/{questionId}/draft` |
-| 交卷 | `POST /translation/records/{recordId}/submissions` |
+| 交卷 | `POST /translation/records/{recordId}/submit` |
 | 报告 | `GET /translation/records/{recordId}/report` |
 | 单题详情 | `GET /translation/records/{recordId}/report/questions/{questionId}` |
 | 答题卡 | `GET /translation/records/{recordId}/answer-card` |
@@ -1425,7 +1422,7 @@ GET /writing/records/{recordId}/answer-card
 ### 7.4 交卷示例
 
 ```
-POST /translation/records/{recordId}/submissions
+POST /translation/records/{recordId}/submit
 ```
 
 ```json
@@ -1785,7 +1782,7 @@ JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 �
 - [ ] `module` 传小写（大小写不敏感，但别传 `LISTENING` 之外的怪值）
 - [ ] U3 的 `parts[].section`（数字）→ 开练的 `section`（字符串），中间转了一次
 - [ ] 主观模块开练传全三字段 `paperId + sectionMapping + section`
-- [ ] 翻译交卷是 `/submissions`（复数），写作是 `/submit`
+- [ ] 交卷路名五模块统一 `/submit`（翻译不再是 `/submissions`）
 - [ ] 听力取 `option_content`，阅读取 `optionContent.options`
 - [ ] 听力取 `audio_url`，阅读取 `audioUrl`
 - [ ] 19 位 ID 没有在 JS 里被当数字解析
@@ -1911,7 +1908,7 @@ JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 �
 | GET | `/translation/records/{recordId}/questions` |
 | PUT | `/translation/records/{recordId}/answers` |
 | PUT | `/translation/records/{recordId}/questions/{questionId}/draft` |
-| POST | `/translation/records/{recordId}/submissions` |
+| POST | `/translation/records/{recordId}/submit` |
 | GET | `/translation/records/{recordId}/report` |
 | GET | `/translation/records/{recordId}/report/questions/{questionId}` |
 | GET | `/translation/records/{recordId}/answer-card` |

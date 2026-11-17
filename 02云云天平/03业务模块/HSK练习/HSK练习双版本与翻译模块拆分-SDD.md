@@ -458,7 +458,7 @@ ALTER TABLE practice_record MODIFY COLUMN question_ids json NULL
 
 前端改拿目录响应里的 `partCode`（= `section`）+ 卷 `id`。**目录响应不再下发 `structureId`**——它随结构表一起消失，不留 deprecated 字段，避免前端继续依赖。
 
-> 🔴 **五模块答题流程全链路流转**（2026-11-11，接口设计文档 **§4.6** + 决策 21/23，只登记不改端点）：E1 → U1 → U2 → U3 → start（幂等，请求体统一 `{paperId, sectionMapping, section}` 三字段必填——综合卷同号共存，只传 `{paperId, section}` 推不出唯一板块）→ questions（逐题 `layout`，按 `question_ids` 快照）→ answers → pause/会话心跳（随模块）→ submit（`Idempotency-Key` 必填）→ 报告（统一入口 CR；写/说/译异步轮询）。**作答主键五模块统一 `recordId`**（听/读 = `practice_record`；**写/译/说 = `practice_subjective_record`，三模块 2026-11-16 起共表**，靠 `section_mapping` 区分）；写/译/说**链路以听/读为模板**，路径统一 `/{mod}/records/...`（决策 23，旧 `attempts` 路径 404）；**翻译交卷是 `/submissions`，写作是 `/submit`，不同名**。听/读作答端点沿用既有路径（不在 §3.1 保留端点清单内）。
+> 🔴 **五模块答题流程全链路流转**（2026-11-11，接口设计文档 **§4.6** + 决策 21/23，只登记不改端点）：E1 → U1 → U2 → U3 → start（幂等，请求体统一 `{paperId, sectionMapping, section}` 三字段必填——综合卷同号共存，只传 `{paperId, section}` 推不出唯一板块）→ questions（逐题 `layout`，按 `question_ids` 快照）→ answers → pause/会话心跳（随模块）→ submit（`Idempotency-Key` 必填）→ 报告（统一入口 CR；写/说/译异步轮询）。**作答主键五模块统一 `recordId`**（听/读 = `practice_record`；**写/译/说 = `practice_subjective_record`，三模块 2026-11-16 起共表**，靠 `section_mapping` 区分）；写/译/说**链路以听/读为模板**，路径统一 `/{mod}/records/...`（决策 23，旧 `attempts` 路径 404）；**交卷路径五模块统一 `/submit`**（2026-11-17 统一：翻译原为 `/submissions`，沿用旧 `attempts` 链路写法，已改为 `/submit`）。听/读作答端点沿用既有路径（不在 §3.1 保留端点清单内）。
 
 > 🔴 **attempt 表已退场（2026-11-16，决策 23/26）**：`writing_attempt` / `speaking_attempt` → **`practice_subjective_record`（写/译/说共用一张）**；答案侧 `practice_writing_answer` / `practice_speaking_answer` → **`practice_subjective_answer`**。四个旧表已重命名为 `__bak20261116`（实体已映射新表名）。本 SDD 中 §3.2.6 等处的 `writing_attempt` / `speaking_attempt` 为**当时实测的历史实录**，读到时一律按新表名理解；后续迁移脚本执行前需把目标表名替换为新名。
 
@@ -754,7 +754,7 @@ ALTER TABLE exam_paper
 | T6 | `GET /translation/records/{recordId}` | `#get` |
 | T7 | `GET /translation/records/{recordId}/questions` | `#listQuestions` |
 | T8 | `PUT /translation/records/{recordId}/answers` | `WritingAnswerService#save` |
-| T9 | `POST /translation/records/{recordId}/submissions` | `WritingSubmissionService#submit` |
+| T9 | `POST /translation/records/{recordId}/submit` | `WritingSubmissionService#submit`（原 `/submissions`，2026-11-17 统一为 `/submit`） |
 | T10 | `GET /translation/records/{recordId}/report` | 🔴 决策 24：原 `/translation/reports/{reportId}` + `WritingReportService#get` 随报告表退场，改 record + answer 现拼 |
 
 **统一前置校验**（每个封装方法第一行）：按 `(paperId, section)` 校验**内容侧的真实归属**——`question` 里该卷该板块的 `section_mapping` 必须为 `SEC_TRANSLATION`，否则 400 `SECTION_MAPPING_MISMATCH`。

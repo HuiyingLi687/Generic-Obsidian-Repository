@@ -629,7 +629,7 @@ Authorization: Bearer {{token}}
 %}
 
 ### ============================================================================
-### 四、翻译 translation（交卷路名是 /submissions）
+### 四、翻译 translation
 ### ============================================================================
 
 ### 41 翻译 · U3 取板块（section=1 笔译 / 2 口译）
@@ -707,8 +707,8 @@ Authorization: Bearer {{token}}
 %}
 
 
-### 45 翻译 · 交卷（⚠️ 是 /submissions，不是 /submit）
-POST {{practice}}/translation/records/{{trRecordId}}/submissions
+### 45 翻译 · 交卷
+POST {{practice}}/translation/records/{{trRecordId}}/submit
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
