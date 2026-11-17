@@ -85,7 +85,7 @@ td{min-width:64px}
   <nav id="toc"><a class="lvl2" href="#0-三分钟上手" data-t="0. 三分钟上手">0. 三分钟上手</a>
 <a class="lvl3" href="#01-调用链" data-t="0.1 调用链">0.1 调用链</a>
 <a class="lvl3" href="#02-一个必须知道的坑x-client-type" data-t="0.2 一个必须知道的坑：x-client-type">0.2 一个必须知道的坑：X-Client-Type</a>
-<a class="lvl3" href="#03-一个必须知道的坑业务错误也是-http-200" data-t="0.3 一个必须知道的坑：业务错误也是 http 200">0.3 一个必须知道的坑：业务错误也是 HTTP 200</a>
+<a class="lvl3" href="#03-错误响应真实-http-状态码-业务码2026-11-17-已改" data-t="0.3 错误响应：真实 http 状态码 + 业务码（2026-11-17 已改）">0.3 错误响应：真实 HTTP 状态码 + 业务码（2026-11-17 已改）</a>
 <a class="lvl2" href="#1-通用约定" data-t="1. 通用约定">1. 通用约定</a>
 <a class="lvl3" href="#11-地址与网关前缀" data-t="1.1 地址与网关前缀">1.1 地址与网关前缀</a>
 <a class="lvl3" href="#12-请求头" data-t="1.2 请求头">1.2 请求头</a>
@@ -198,10 +198,32 @@ td{min-width:64px}
 <div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>X-Client-Type: APP
 Authorization: Bearer &lt;登录拿到的 token&gt;</code></pre></div>
 <p>判断依据：<code>BaseController.getUserInfo()</code> 只在 <code>X-Client-Type=APP</code> 时才解析 JWT；其他取值一律回落模拟用户。带 <code>APP</code> 但 token 缺失/失效时，才会正常返回 <code>401</code>。</p>
-<h3 id="03-一个必须知道的坑业务错误也是-http-200">0.3 一个必须知道的坑：业务错误也是 HTTP 200<a class="anchor" href="#03-一个必须知道的坑业务错误也是-http-200">#</a></h3>
-<p><code>GlobalExceptionHandler</code> 对所有业务异常统一 <code>ResponseEntity.ok(...)</code>，所以：</p>
-<div class="table-wrap"><table><thead><tr><th>你以为</th><th>实际</th></tr></thead><tbody><tr><td><code>404</code> / <code>409</code> 走 HTTP 状态码</td><td>HTTP 状态码全是 <strong>200</strong>，错误在响应体的 <code>code</code> 字段</td></tr><tr><td><code>if (status === 200) 成功</code></td><td>必须 <code>if (body.code === 200) 成功</code></td></tr></tbody></table></div>
-<p><strong>前端只能按 <code>body.code</code> 判断成败</strong>，<code>response.ok</code> 永远为 <code>true</code>。唯一的例外是网关层面的错误（服务不可达、鉴权被网关拦截），那才是真的非 200。</p>
+<h3 id="03-错误响应真实-http-状态码-业务码2026-11-17-已改">0.3 错误响应：真实 HTTP 状态码 + 业务码（2026-11-17 已改）<a class="anchor" href="#03-错误响应真实-http-状态码-业务码2026-11-17-已改">#</a></h3>
+<blockquote><strong>本节 2026-11-17 变了。</strong> 旧行为是所有错误都回 HTTP 200、错误只写在 <code>body.code</code>，已修复。若你手上还是老版本文档，请以本节为准。</blockquote>
+<p>错误响应现在带<strong>真实的 4xx / 5xx 状态码</strong>，响应体结构不变：</p>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-http">HTTP/1.1 409 Conflict
+Content-Type: application/json
+
+{ "code": 409, "message": "DRAFT_VERSION_CONFLICT", "data": { "currentVersion": 7, "savedTime": 1789612800000 } }</code></pre></div>
+<p><strong>两个码各管一段，都要看</strong>：</p>
+<div class="table-wrap"><table><thead><tr><th></th><th>业务码 <code>body.code</code></th><th>HTTP 状态码</th></tr></thead><tbody><tr><td>谁用</td><td>前端业务逻辑分支（提示文案、跳转、重试按钮）</td><td>网关、APM、重试策略、<code>response.ok</code></td></tr><tr><td>值域</td><td><code>200</code> 成功；<code>400 / 401 / 403 / 404 / 409 / 5xx</code> 或业务码如 <code>1001</code>、<code>8104</code></td><td>标准 HTTP 状态</td></tr><tr><td>稳定性</td><td>稳定契约，前端按它分支</td><td>由业务码推导，见 <a href="#附录-a-错误码">附录 A</a></td></tr></tbody></table></div>
+<p><strong>前端要改的地方</strong>（这是本次唯一的破坏性变更）：</p>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-js">// 旧：所有响应都进 then，靠 body.code 判断
+service.interceptors.response.use(res =&gt; res.data.code === 200 ? res.data : Promise.reject(res.data))
+
+// 新：非 2xx 会进 error 分支，body 在 error.response.data 里
+service.interceptors.response.use(
+  res =&gt; res.data,
+  err =&gt; {
+    const body = err.response?.data            // ← 错误响应体在这里，不是 err.data
+    if (body?.code === 409 &amp;&amp; body.message === 'DRAFT_VERSION_CONFLICT') { /* 草稿冲突 */ }
+    return Promise.reject(body ?? err)
+  }
+)</code></pre></div>
+<blockquote>⚠️ axios / fetch 默认把非 2xx 当异常。如果旧代码只写了 <code>then</code> 而没写 <code>catch</code> / <code>reject</code> 分支，升级后会看到「请求失败」而拿不到错误文案 —— <strong>统一在拦截器里取 <code>error.response.data</code></strong>，业务层就能继续按 <code>body.code</code> 写，改动集中在一处。</blockquote>
+<p><strong>回退</strong>：后端配置 <code>app.error.always-http-200=true</code> 可一键退回「一切皆 200」的旧行为（body 结构完全一样），用于前端还没适配时的灰度回滚，不需要改代码。</p>
+<p><strong>仍然是 200 的情况</strong>：只有成功响应。另外网关侧的鉴权拦截、下游服务不可达本来就是真实的 401 / 502，与本次改动无关。</p>
+<div class="table-wrap"><table><thead><tr><th>场景</th><th>改前</th><th>改后</th></tr></thead><tbody><tr><td>参数错（<code>PARAM_ERROR</code>）</td><td>200 + <code>code:400</code></td><td><strong>400</strong> + <code>code:400</code></td></tr><tr><td>未登录 / token 过期</td><td>200 + <code>code:401</code></td><td><strong>401</strong> + <code>code:401</code></td></tr><tr><td>记录不属于当前用户</td><td>200 + <code>code:403</code></td><td><strong>403</strong> + <code>code:403</code></td></tr><tr><td>卷不存在 / 路由写错</td><td>200 + <code>code:404</code>（路由写错时甚至是 <code>code:500</code>）</td><td><strong>404</strong> + <code>code:404</code></td></tr><tr><td>草稿版本冲突 / 重复提交</td><td>200 + <code>code:409</code></td><td><strong>409</strong> + <code>code:409</code></td></tr><tr><td>服务端异常</td><td>200 + <code>code:500</code></td><td><strong>500</strong> + <code>code:500</code></td></tr><tr><td>上传文件超限</td><td>200 + <code>code:3002</code></td><td><strong>413</strong> + <code>code:3002</code></td></tr></tbody></table></div>
 <hr/>
 <h2 id="1-通用约定">1. 通用约定<a class="anchor" href="#1-通用约定">#</a></h2>
 <h3 id="11-地址与网关前缀">1.1 地址与网关前缀<a class="anchor" href="#11-地址与网关前缀">#</a></h3>
@@ -216,9 +238,14 @@ Authorization: Bearer &lt;登录拿到的 token&gt;</code></pre></div>
 <div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{ "code": 200, "message": "操作成功", "data": { } }</code></pre></div>
 <div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>code</code></td><td>Integer</td><td><code>200</code> 成功；其余为错误码，见 <a href="#附录-a-错误码">附录 A</a></td></tr><tr><td><code>message</code></td><td>String</td><td>成功固定 <code>操作成功</code>；失败时可能是错误码字符串（如 <code>DRAFT_LOCKED</code>）或中文提示</td></tr><tr><td><code>data</code></td><td>Object / Array / null</td><td>业务数据。无返回值的接口为 <code>null</code></td></tr></tbody></table></div>
 <h3 id="14-业务错误的表现形式">1.4 业务错误的表现形式<a class="anchor" href="#14-业务错误的表现形式">#</a></h3>
-<p><strong>HTTP 200 + body.code ≠ 200</strong>。典型的三种：</p>
-<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{ "code": 401, "message": "未登录或Token无效", "data": null }
+<p><strong>HTTP 状态码 ≠ 200，且 <code>body.code</code> ≠ 200</strong>。状态码由业务码推导（见 <a href="#附录-a-错误码">附录 A</a>），两者通常同值，但也可以不同（如上传超限是 <code>413</code> + <code>code:3002</code>）。典型的三种：</p>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-http">HTTP/1.1 401 Unauthorized
+{ "code": 401, "message": "未登录或Token无效", "data": null }
+
+HTTP/1.1 400 Bad Request
 { "code": 400, "message": "SECTION_MAPPING_MISMATCH", "data": null }
+
+HTTP/1.1 409 Conflict
 { "code": 409, "message": "DRAFT_VERSION_CONFLICT", "data": { "currentVersion": 7, "savedTime": 1789612800000 } }</code></pre></div>
 <p>注意 <code>message</code> 的两种形态：业务异常抛的是<strong>错误码字符串</strong>（<code>DRAFT_LOCKED</code>），参数校验失败给的是<strong>中文描述</strong>（<code>module: 不能为空</code>）。前端做提示时不要直接把 <code>message</code> 甩给用户，按 <code>code</code> 映射文案。</p>
 <h3 id="15-参数约定">1.5 参数约定<a class="anchor" href="#15-参数约定">#</a></h3>
@@ -1084,18 +1111,19 @@ GET /speaking/records/{recordId}/answer-card</code></pre></div>
 <hr/>
 <h2 id="12-联调-checklist">12. 联调 checklist<a class="anchor" href="#12-联调-checklist">#</a></h2>
 <p>按顺序过一遍，能覆盖 90% 的问题：</p>
-<ul><li class="check">☐ 请求带 <code>X-Client-Type: APP</code> 且 token 有效（否则会静默用 <code>userId=1</code> 的模拟用户）</li><li class="check">☐ 成功判定用 <code>body.code === 200</code>，不是 HTTP 状态码</li><li class="check">☐ <code>module</code> 传小写（大小写不敏感，但别传 <code>LISTENING</code> 之外的怪值）</li><li class="check">☐ U3 的 <code>parts[].section</code>（数字）→ 开练的 <code>section</code>（字符串），中间转了一次</li><li class="check">☐ 主观模块开练传全三字段 <code>paperId + sectionMapping + section</code></li><li class="check">☐ 翻译交卷是 <code>/submissions</code>（复数），写作是 <code>/submit</code></li><li class="check">☐ 听力取 <code>option_content</code>，阅读取 <code>optionContent.options</code></li><li class="check">☐ 听力取 <code>audio_url</code>，阅读取 <code>audioUrl</code></li><li class="check">☐ 19 位 ID 没有在 JS 里被当数字解析</li><li class="check">☐ 写/译/说交卷后轮询的是 <code>reportStatus</code>，不是 <code>status</code></li><li class="check">☐ 交卷前把草稿落成正式答案（否则 <code>draftNotSubmitted</code> 会点名）</li><li class="check">☐ 口语不再调 <code>/recordings/prepare</code>（已 404）</li></ul>
+<ul><li class="check">☐ 请求带 <code>X-Client-Type: APP</code> 且 token 有效（否则会静默用 <code>userId=1</code> 的模拟用户）</li><li class="check">☐ HTTP 拦截器的 error 分支从 <code>error.response.data</code> 取响应体（2026-11-17 起错误不再返回 200）</li><li class="check">☐ 业务分支仍按 <code>body.code</code> 判断（HTTP 状态码只用来分流「网络/未授权/服务端挂了」）</li><li class="check">☐ <code>module</code> 传小写（大小写不敏感，但别传 <code>LISTENING</code> 之外的怪值）</li><li class="check">☐ U3 的 <code>parts[].section</code>（数字）→ 开练的 <code>section</code>（字符串），中间转了一次</li><li class="check">☐ 主观模块开练传全三字段 <code>paperId + sectionMapping + section</code></li><li class="check">☐ 翻译交卷是 <code>/submissions</code>（复数），写作是 <code>/submit</code></li><li class="check">☐ 听力取 <code>option_content</code>，阅读取 <code>optionContent.options</code></li><li class="check">☐ 听力取 <code>audio_url</code>，阅读取 <code>audioUrl</code></li><li class="check">☐ 19 位 ID 没有在 JS 里被当数字解析</li><li class="check">☐ 写/译/说交卷后轮询的是 <code>reportStatus</code>，不是 <code>status</code></li><li class="check">☐ 交卷前把草稿落成正式答案（否则 <code>draftNotSubmitted</code> 会点名）</li><li class="check">☐ 口语不再调 <code>/recordings/prepare</code>（已 404）</li></ul>
 <hr/>
 <h2 id="附录-a-错误码">附录 A 错误码<a class="anchor" href="#附录-a-错误码">#</a></h2>
 <h3 id="a1-通用">A.1 通用<a class="anchor" href="#a1-通用">#</a></h3>
-<div class="table-wrap"><table><thead><tr><th>code</th><th>message</th><th>场景</th></tr></thead><tbody><tr><td><code>200</code></td><td>操作成功</td><td>成功</td></tr><tr><td><code>400</code></td><td>参数错误</td><td>参数校验失败，<code>message</code> 带字段名与中文说明</td></tr><tr><td><code>401</code></td><td>未登录或Token无效</td><td>缺 token / token 过期 / 未带 <code>X-Client-Type: APP</code> 且接口强制鉴权</td></tr><tr><td><code>403</code></td><td>FORBIDDEN</td><td>记录不属于当前用户、或用错模块的 recordId</td></tr><tr><td><code>404</code></td><td>试卷不存在 / 板块不存在</td><td><code>paperId</code> 查不到，或该模块在该卷下没有板块（<code>version</code> 与卷不符也走这条）</td></tr><tr><td><code>500</code></td><td>系统内部错误</td><td>服务端异常，需带上 traceId 找后端</td></tr></tbody></table></div>
+<div class="table-wrap"><table><thead><tr><th>code</th><th>HTTP</th><th>message</th><th>场景</th></tr></thead><tbody><tr><td><code>200</code></td><td>200</td><td>操作成功</td><td>成功</td></tr><tr><td><code>400</code></td><td>400</td><td>参数错误</td><td>参数校验失败，<code>message</code> 带字段名与中文说明</td></tr><tr><td><code>401</code></td><td>401</td><td>未登录或Token无效</td><td>缺 token / token 过期 / 未带 <code>X-Client-Type: APP</code> 且接口强制鉴权</td></tr><tr><td><code>403</code></td><td>403</td><td>FORBIDDEN</td><td>记录不属于当前用户、或用错模块的 recordId</td></tr><tr><td><code>404</code></td><td>404</td><td>试卷不存在 / 板块不存在</td><td><code>paperId</code> 查不到，或该模块在该卷下没有板块（<code>version</code> 与卷不符也走这条）</td></tr><tr><td><code>405</code></td><td>405</td><td>请求方法不支持</td><td>对只吃 GET 的端点发了 POST</td></tr><tr><td><code>413</code></td><td>413</td><td>上传文件大小超过限制</td><td>上传超限（<code>code</code> 是 <code>3002</code>）</td></tr><tr><td><code>415</code></td><td>415</td><td>不支持的 Content-Type</td><td>漏了 <code>Content-Type: application/json</code></td></tr><tr><td><code>500</code></td><td>500</td><td>系统内部错误</td><td>服务端异常，需带上 traceId 找后端</td></tr></tbody></table></div>
 <h3 id="a2-练习业务">A.2 练习业务<a class="anchor" href="#a2-练习业务">#</a></h3>
-<div class="table-wrap"><table><thead><tr><th>code</th><th>message</th><th>场景</th><th>前端处理</th></tr></thead><tbody><tr><td><code>2001</code></td><td>试题不存在</td><td>题目不在本次题集内</td><td>刷新题目列表</td></tr><tr><td><code>2003</code></td><td>记录版本冲突，请刷新后重试</td><td><code>baseVersion</code> 与云端不一致</td><td>重新拉记录，重放本地答案</td></tr><tr><td><code>2004</code></td><td>记录不在进行中，无法保存</td><td>记录已交卷 / 已放弃</td><td>跳报告页</td></tr><tr><td><code>2005</code></td><td>记录未提交，无法查看报告</td><td>未交卷就看报告</td><td>回答题页</td></tr><tr><td><code>2006</code></td><td>报告状态不允许重试</td><td>非 <code>FAILED_RETRYABLE</code> 调了 retry</td><td>隐藏重试按钮</td></tr></tbody></table></div>
+<div class="table-wrap"><table><thead><tr><th>code</th><th>HTTP</th><th>message</th><th>场景</th><th>前端处理</th></tr></thead><tbody><tr><td><code>2001</code></td><td>404</td><td>试题不存在</td><td>题目不在本次题集内</td><td>刷新题目列表</td></tr><tr><td><code>2003</code></td><td>409</td><td>记录版本冲突，请刷新后重试</td><td><code>baseVersion</code> 与云端不一致</td><td>重新拉记录，重放本地答案</td></tr><tr><td><code>2004</code></td><td>409</td><td>记录不在进行中，无法保存</td><td>记录已交卷 / 已放弃</td><td>跳报告页</td></tr><tr><td><code>2005</code></td><td>409</td><td>记录未提交，无法查看报告</td><td>未交卷就看报告</td><td>回答题页</td></tr><tr><td><code>2006</code></td><td>409</td><td>报告状态不允许重试</td><td>非 <code>FAILED_RETRYABLE</code> 调了 retry</td><td>隐藏重试按钮</td></tr></tbody></table></div>
 <h3 id="a3-目录与开练">A.3 目录与开练<a class="anchor" href="#a3-目录与开练">#</a></h3>
-<div class="table-wrap"><table><thead><tr><th>code</th><th>message</th><th>场景</th></tr></thead><tbody><tr><td><code>400</code></td><td><code>PRACTICE_VERSION_INVALID</code></td><td><code>version</code> 不是 <code>HSK2.0</code> / <code>HSK3.0</code></td></tr><tr><td><code>400</code></td><td><code>模块编码不合法（PRACTICE_MODULE_INVALID）：xxx</code></td><td>U1/U2/U3 的 <code>module</code> 缺失或不在五个取值内</td></tr><tr><td><code>400</code></td><td><code>SECTION_MAPPING_MISMATCH</code></td><td>开练的 <code>sectionMapping</code> 与入口模块不符（如拿写作的 mapping 打翻译入口）</td></tr><tr><td><code>400</code></td><td><code>section 不能为空</code></td><td><code>GET /papers/{paperId}/reports/latest</code> 没传 <code>section</code></td></tr></tbody></table></div>
+<div class="table-wrap"><table><thead><tr><th>code</th><th>HTTP</th><th>message</th><th>场景</th></tr></thead><tbody><tr><td><code>400</code></td><td>400</td><td><code>PRACTICE_VERSION_INVALID</code></td><td><code>version</code> 不是 <code>HSK2.0</code> / <code>HSK3.0</code></td></tr><tr><td><code>400</code></td><td>400</td><td><code>模块编码不合法（PRACTICE_MODULE_INVALID）：xxx</code></td><td>U1/U2/U3 的 <code>module</code> 缺失或不在五个取值内</td></tr><tr><td><code>400</code></td><td>400</td><td><code>SECTION_MAPPING_MISMATCH</code></td><td>开练的 <code>sectionMapping</code> 与入口模块不符（如拿写作的 mapping 打翻译入口）</td></tr><tr><td><code>400</code></td><td>400</td><td><code>section 不能为空</code></td><td><code>GET /papers/{paperId}/reports/latest</code> 没传 <code>section</code></td></tr></tbody></table></div>
 <h3 id="a4-草稿">A.4 草稿<a class="anchor" href="#a4-草稿">#</a></h3>
-<div class="table-wrap"><table><thead><tr><th>code</th><th>message</th><th>场景</th><th>data</th></tr></thead><tbody><tr><td><code>400</code></td><td><code>DRAFT_TOO_LONG</code></td><td>写作/笔译草稿超 5000 字素</td><td><code>null</code></td></tr><tr><td><code>409</code></td><td><code>DRAFT_LOCKED</code></td><td>交卷后再存草稿</td><td><code>null</code></td></tr><tr><td><code>409</code></td><td><code>DRAFT_VERSION_CONFLICT</code></td><td><code>expectedVersion</code> 与当前不符</td><td><code>{currentVersion, savedTime}</code></td></tr><tr><td><code>409</code></td><td>请求数据已存在，请勿重复提交</td><td>并发首存撞唯一键（服务端已自动退化为更新，正常不会出现）</td><td><code>null</code></td></tr></tbody></table></div>
+<div class="table-wrap"><table><thead><tr><th>code</th><th>HTTP</th><th>message</th><th>场景</th><th>data</th></tr></thead><tbody><tr><td><code>400</code></td><td>400</td><td><code>DRAFT_TOO_LONG</code></td><td>写作/笔译草稿超 5000 字素</td><td><code>null</code></td></tr><tr><td><code>409</code></td><td>409</td><td><code>DRAFT_LOCKED</code></td><td>交卷后再存草稿</td><td><code>null</code></td></tr><tr><td><code>409</code></td><td>409</td><td><code>DRAFT_VERSION_CONFLICT</code></td><td><code>expectedVersion</code> 与当前不符</td><td><code>{currentVersion, savedTime}</code></td></tr><tr><td><code>409</code></td><td>409</td><td>请求数据已存在，请勿重复提交</td><td>并发首存撞唯一键（服务端已自动退化为更新，正常不会出现）</td><td><code>null</code></td></tr></tbody></table></div>
 <blockquote><code>message</code> 是<strong>错误码字符串</strong>（如 <code>DRAFT_LOCKED</code>）而非中文，前端按 <code>code</code> + <code>message</code> 组合映射文案，不要把 <code>message</code> 直接展示给用户。</blockquote>
+<blockquote><strong>HTTP 列怎么来的</strong>：由业务码推导 —— 枚举里显式声明（如 <code>1001 → 404</code>、<code>4001 → 500</code>），或「本身就是 4xx/5xx 就沿用，否则按业务校验失败当 400」。改错误码时后端会同步维护这张表，前端不必自己猜。</blockquote>
 <hr/>
 <h2 id="附录-b-端点总表">附录 B 端点总表<a class="anchor" href="#附录-b-端点总表">#</a></h2>
 <p>共 57 个端点（不含内部接口）。</p>

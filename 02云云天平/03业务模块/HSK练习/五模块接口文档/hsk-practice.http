@@ -917,20 +917,23 @@ GET {{practice}}/hsk/levels?module=listening&version={{version}}&level={{level}}
 %}
 
 
-### 63 反向用例 · 不带 token 调需登录接口（应得 code=401）
+### 63 反向用例 · 不带 token 调需登录接口（应得 HTTP 401 + code=401）
 GET {{practice}}/hsk/papers/{{paperId}}/parts?module=listening&version={{version}}
 X-Client-Type: APP
 
 > {%
     client.test("未登录被拦", function () {
         client.assert(response.body.code === 401,
-                      "期望 401，实际 " + response.body.code + " " + response.body.message);
+                      "期望 body.code=401，实际 " + response.body.code + " " + response.body.message);
+        // 2026-11-17 起错误响应带真实状态码；若这里拿到 200，说明服务端开了
+        // app.error.always-http-200=true 的回退开关
+        client.assert(response.status === 401,
+                      "期望 HTTP 401，实际 " + response.status + "（检查回退开关是否被打开）");
     });
-    client.log("message=" + response.body.message + "（HTTP 状态码仍是 200）");
 %}
 
 
-### 64 反向用例 · 用错模块的 sectionMapping 开练（应得 SECTION_MAPPING_MISMATCH）
+### 64 反向用例 · 用错模块的 sectionMapping 开练（应得 HTTP 400 + SECTION_MAPPING_MISMATCH）
 POST {{practice}}/translation/records/start
 Content-Type: application/json
 X-Client-Type: APP
@@ -944,14 +947,15 @@ Authorization: Bearer {{token}}
 
 > {%
     client.test("板块归属校验生效", function () {
-        client.assert(response.body.code === 400, "期望 400，实际 " + response.body.code);
+        client.assert(response.body.code === 400, "期望 body.code=400，实际 " + response.body.code);
+        client.assert(response.status === 400, "期望 HTTP 400，实际 " + response.status);
         client.assert(response.body.message === "SECTION_MAPPING_MISMATCH",
                       "message=" + response.body.message);
     });
 %}
 
 
-### 65 反向用例 · 交卷后再存草稿（应得 DRAFT_LOCKED）
+### 65 反向用例 · 交卷后再存草稿（应得 HTTP 409 + DRAFT_LOCKED）
 PUT {{practice}}/writing/records/{{wrRecordId}}/questions/{{wrQuestionId}}/draft
 Content-Type: application/json
 X-Client-Type: APP
@@ -963,7 +967,8 @@ Authorization: Bearer {{token}}
 
 > {%
     client.test("交卷后草稿锁定", function () {
-        client.assert(response.body.code === 409, "期望 409，实际 " + response.body.code);
+        client.assert(response.body.code === 409, "期望 body.code=409，实际 " + response.body.code);
+        client.assert(response.status === 409, "期望 HTTP 409，实际 " + response.status);
         client.assert(response.body.message === "DRAFT_LOCKED",
                       "message=" + response.body.message);
     });

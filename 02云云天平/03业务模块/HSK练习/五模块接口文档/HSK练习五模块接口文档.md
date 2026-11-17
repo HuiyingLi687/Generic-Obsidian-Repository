@@ -40,16 +40,59 @@ Authorization: Bearer <登录拿到的 token>
 
 判断依据：`BaseController.getUserInfo()` 只在 `X-Client-Type=APP` 时才解析 JWT；其他取值一律回落模拟用户。带 `APP` 但 token 缺失/失效时，才会正常返回 `401`。
 
-### 0.3 一个必须知道的坑：业务错误也是 HTTP 200
+### 0.3 错误响应：真实 HTTP 状态码 + 业务码（2026-11-17 已改）
 
-`GlobalExceptionHandler` 对所有业务异常统一 `ResponseEntity.ok(...)`，所以：
+> **本节 2026-11-17 变了。** 旧行为是所有错误都回 HTTP 200、错误只写在 `body.code`，已修复。若你手上还是老版本文档，请以本节为准。
 
-| 你以为 | 实际 |
-|---|---|
-| `404` / `409` 走 HTTP 状态码 | HTTP 状态码全是 **200**，错误在响应体的 `code` 字段 |
-| `if (status === 200) 成功` | 必须 `if (body.code === 200) 成功` |
+错误响应现在带**真实的 4xx / 5xx 状态码**，响应体结构不变：
 
-**前端只能按 `body.code` 判断成败**，`response.ok` 永远为 `true`。唯一的例外是网关层面的错误（服务不可达、鉴权被网关拦截），那才是真的非 200。
+```http
+HTTP/1.1 409 Conflict
+Content-Type: application/json
+
+{ "code": 409, "message": "DRAFT_VERSION_CONFLICT", "data": { "currentVersion": 7, "savedTime": 1789612800000 } }
+```
+
+**两个码各管一段，都要看**：
+
+| | 业务码 `body.code` | HTTP 状态码 |
+|---|---|---|
+| 谁用 | 前端业务逻辑分支（提示文案、跳转、重试按钮） | 网关、APM、重试策略、`response.ok` |
+| 值域 | `200` 成功；`400 / 401 / 403 / 404 / 409 / 5xx` 或业务码如 `1001`、`8104` | 标准 HTTP 状态 |
+| 稳定性 | 稳定契约，前端按它分支 | 由业务码推导，见 [附录 A](#附录-a-错误码) |
+
+**前端要改的地方**（这是本次唯一的破坏性变更）：
+
+```js
+// 旧：所有响应都进 then，靠 body.code 判断
+service.interceptors.response.use(res => res.data.code === 200 ? res.data : Promise.reject(res.data))
+
+// 新：非 2xx 会进 error 分支，body 在 error.response.data 里
+service.interceptors.response.use(
+  res => res.data,
+  err => {
+    const body = err.response?.data            // ← 错误响应体在这里，不是 err.data
+    if (body?.code === 409 && body.message === 'DRAFT_VERSION_CONFLICT') { /* 草稿冲突 */ }
+    return Promise.reject(body ?? err)
+  }
+)
+```
+
+> ⚠️ axios / fetch 默认把非 2xx 当异常。如果旧代码只写了 `then` 而没写 `catch` / `reject` 分支，升级后会看到「请求失败」而拿不到错误文案 —— **统一在拦截器里取 `error.response.data`**，业务层就能继续按 `body.code` 写，改动集中在一处。
+
+**回退**：后端配置 `app.error.always-http-200=true` 可一键退回「一切皆 200」的旧行为（body 结构完全一样），用于前端还没适配时的灰度回滚，不需要改代码。
+
+**仍然是 200 的情况**：只有成功响应。另外网关侧的鉴权拦截、下游服务不可达本来就是真实的 401 / 502，与本次改动无关。
+
+| 场景 | 改前 | 改后 |
+|---|---|---|
+| 参数错（`PARAM_ERROR`） | 200 + `code:400` | **400** + `code:400` |
+| 未登录 / token 过期 | 200 + `code:401` | **401** + `code:401` |
+| 记录不属于当前用户 | 200 + `code:403` | **403** + `code:403` |
+| 卷不存在 / 路由写错 | 200 + `code:404`（路由写错时甚至是 `code:500`） | **404** + `code:404` |
+| 草稿版本冲突 / 重复提交 | 200 + `code:409` | **409** + `code:409` |
+| 服务端异常 | 200 + `code:500` | **500** + `code:500` |
+| 上传文件超限 | 200 + `code:3002` | **413** + `code:3002` |
 
 ---
 
@@ -92,11 +135,16 @@ Authorization: Bearer <登录拿到的 token>
 
 ### 1.4 业务错误的表现形式
 
-**HTTP 200 + body.code ≠ 200**。典型的三种：
+**HTTP 状态码 ≠ 200，且 `body.code` ≠ 200**。状态码由业务码推导（见 [附录 A](#附录-a-错误码)），两者通常同值，但也可以不同（如上传超限是 `413` + `code:3002`）。典型的三种：
 
-```json
+```http
+HTTP/1.1 401 Unauthorized
 { "code": 401, "message": "未登录或Token无效", "data": null }
+
+HTTP/1.1 400 Bad Request
 { "code": 400, "message": "SECTION_MAPPING_MISMATCH", "data": null }
+
+HTTP/1.1 409 Conflict
 { "code": 409, "message": "DRAFT_VERSION_CONFLICT", "data": { "currentVersion": 7, "savedTime": 1789612800000 } }
 ```
 
@@ -1774,7 +1822,8 @@ JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 �
 按顺序过一遍，能覆盖 90% 的问题：
 
 - [ ] 请求带 `X-Client-Type: APP` 且 token 有效（否则会静默用 `userId=1` 的模拟用户）
-- [ ] 成功判定用 `body.code === 200`，不是 HTTP 状态码
+- [ ] HTTP 拦截器的 error 分支从 `error.response.data` 取响应体（2026-11-17 起错误不再返回 200）
+- [ ] 业务分支仍按 `body.code` 判断（HTTP 状态码只用来分流「网络/未授权/服务端挂了」）
 - [ ] `module` 传小写（大小写不敏感，但别传 `LISTENING` 之外的怪值）
 - [ ] U3 的 `parts[].section`（数字）→ 开练的 `section`（字符串），中间转了一次
 - [ ] 主观模块开练传全三字段 `paperId + sectionMapping + section`
@@ -1792,44 +1841,49 @@ JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 �
 
 ### A.1 通用
 
-| code | message | 场景 |
-|---|---|---|
-| `200` | 操作成功 | 成功 |
-| `400` | 参数错误 | 参数校验失败，`message` 带字段名与中文说明 |
-| `401` | 未登录或Token无效 | 缺 token / token 过期 / 未带 `X-Client-Type: APP` 且接口强制鉴权 |
-| `403` | FORBIDDEN | 记录不属于当前用户、或用错模块的 recordId |
-| `404` | 试卷不存在 / 板块不存在 | `paperId` 查不到，或该模块在该卷下没有板块（`version` 与卷不符也走这条） |
-| `500` | 系统内部错误 | 服务端异常，需带上 traceId 找后端 |
+| code | HTTP | message | 场景 |
+|---|---|---|---|
+| `200` | 200 | 操作成功 | 成功 |
+| `400` | 400 | 参数错误 | 参数校验失败，`message` 带字段名与中文说明 |
+| `401` | 401 | 未登录或Token无效 | 缺 token / token 过期 / 未带 `X-Client-Type: APP` 且接口强制鉴权 |
+| `403` | 403 | FORBIDDEN | 记录不属于当前用户、或用错模块的 recordId |
+| `404` | 404 | 试卷不存在 / 板块不存在 | `paperId` 查不到，或该模块在该卷下没有板块（`version` 与卷不符也走这条） |
+| `405` | 405 | 请求方法不支持 | 对只吃 GET 的端点发了 POST |
+| `413` | 413 | 上传文件大小超过限制 | 上传超限（`code` 是 `3002`） |
+| `415` | 415 | 不支持的 Content-Type | 漏了 `Content-Type: application/json` |
+| `500` | 500 | 系统内部错误 | 服务端异常，需带上 traceId 找后端 |
 
 ### A.2 练习业务
 
-| code | message | 场景 | 前端处理 |
-|---|---|---|---|
-| `2001` | 试题不存在 | 题目不在本次题集内 | 刷新题目列表 |
-| `2003` | 记录版本冲突，请刷新后重试 | `baseVersion` 与云端不一致 | 重新拉记录，重放本地答案 |
-| `2004` | 记录不在进行中，无法保存 | 记录已交卷 / 已放弃 | 跳报告页 |
-| `2005` | 记录未提交，无法查看报告 | 未交卷就看报告 | 回答题页 |
-| `2006` | 报告状态不允许重试 | 非 `FAILED_RETRYABLE` 调了 retry | 隐藏重试按钮 |
+| code | HTTP | message | 场景 | 前端处理 |
+|---|---|---|---|---|
+| `2001` | 404 | 试题不存在 | 题目不在本次题集内 | 刷新题目列表 |
+| `2003` | 409 | 记录版本冲突，请刷新后重试 | `baseVersion` 与云端不一致 | 重新拉记录，重放本地答案 |
+| `2004` | 409 | 记录不在进行中，无法保存 | 记录已交卷 / 已放弃 | 跳报告页 |
+| `2005` | 409 | 记录未提交，无法查看报告 | 未交卷就看报告 | 回答题页 |
+| `2006` | 409 | 报告状态不允许重试 | 非 `FAILED_RETRYABLE` 调了 retry | 隐藏重试按钮 |
 
 ### A.3 目录与开练
 
-| code | message | 场景 |
-|---|---|---|
-| `400` | `PRACTICE_VERSION_INVALID` | `version` 不是 `HSK2.0` / `HSK3.0` |
-| `400` | `模块编码不合法（PRACTICE_MODULE_INVALID）：xxx` | U1/U2/U3 的 `module` 缺失或不在五个取值内 |
-| `400` | `SECTION_MAPPING_MISMATCH` | 开练的 `sectionMapping` 与入口模块不符（如拿写作的 mapping 打翻译入口） |
-| `400` | `section 不能为空` | `GET /papers/{paperId}/reports/latest` 没传 `section` |
+| code | HTTP | message | 场景 |
+|---|---|---|---|
+| `400` | 400 | `PRACTICE_VERSION_INVALID` | `version` 不是 `HSK2.0` / `HSK3.0` |
+| `400` | 400 | `模块编码不合法（PRACTICE_MODULE_INVALID）：xxx` | U1/U2/U3 的 `module` 缺失或不在五个取值内 |
+| `400` | 400 | `SECTION_MAPPING_MISMATCH` | 开练的 `sectionMapping` 与入口模块不符（如拿写作的 mapping 打翻译入口） |
+| `400` | 400 | `section 不能为空` | `GET /papers/{paperId}/reports/latest` 没传 `section` |
 
 ### A.4 草稿
 
-| code | message | 场景 | data |
-|---|---|---|---|
-| `400` | `DRAFT_TOO_LONG` | 写作/笔译草稿超 5000 字素 | `null` |
-| `409` | `DRAFT_LOCKED` | 交卷后再存草稿 | `null` |
-| `409` | `DRAFT_VERSION_CONFLICT` | `expectedVersion` 与当前不符 | `{currentVersion, savedTime}` |
-| `409` | 请求数据已存在，请勿重复提交 | 并发首存撞唯一键（服务端已自动退化为更新，正常不会出现） | `null` |
+| code | HTTP | message | 场景 | data |
+|---|---|---|---|---|
+| `400` | 400 | `DRAFT_TOO_LONG` | 写作/笔译草稿超 5000 字素 | `null` |
+| `409` | 409 | `DRAFT_LOCKED` | 交卷后再存草稿 | `null` |
+| `409` | 409 | `DRAFT_VERSION_CONFLICT` | `expectedVersion` 与当前不符 | `{currentVersion, savedTime}` |
+| `409` | 409 | 请求数据已存在，请勿重复提交 | 并发首存撞唯一键（服务端已自动退化为更新，正常不会出现） | `null` |
 
 > `message` 是**错误码字符串**（如 `DRAFT_LOCKED`）而非中文，前端按 `code` + `message` 组合映射文案，不要把 `message` 直接展示给用户。
+
+> **HTTP 列怎么来的**：由业务码推导 —— 枚举里显式声明（如 `1001 → 404`、`4001 → 500`），或「本身就是 4xx/5xx 就沿用，否则按业务校验失败当 400」。改错误码时后端会同步维护这张表，前端不必自己猜。
 
 ---
 
