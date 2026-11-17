@@ -176,8 +176,9 @@ Authorization: Bearer <登录拿到的 token>
 | 拉题   | `GET …/{id}/questions`                                | 同                                                     | 同                                   | 同                                       | 同                                         |
 | 答题   | `PUT …/{id}/answers/{qid}`<br>`PUT …/{id}/answers`（批） | `PUT …/{id}/answers/{qid}`<br>`PUT …/{id}/answers`（批） | `PUT …/{id}/answers`（批）             | `PUT …/{id}/answers`（批）                 | `POST …/{id}/questions/{qid}/answers`（单题） |
 | 草稿   | —                                                     | —                                                     | `PUT …/{id}/questions/{qid}/draft`  | 同                                       | 同（仅提纲）                                    |
-| 暂停   | `POST …/{id}/pause`                                   | `POST …/{id}/pause`                                   | —                                   | —                                       | —                                         |
-| 放弃   | —                                                     | `POST …/{id}/abandon`                                 | —                                   | —                                       | —                                         |
+| 暂停   | `POST …/{id}/pause`（时长服务端结算）                  | 同                                                    | `POST …/{id}/pause`                 | 同                                      | 同                                        |
+| 恢复   | `POST …/{id}/resume`                                  | 同                                                    | 同                                  | 同                                      | 同                                        |
+| 放弃   | —                                                     | ~~`POST …/{id}/abandon`~~（2026-11-17 退场，见附录 C） | —                                   | —                                       | —                                         |
 | 交卷   | `POST /listening/records/{id}/submit`                 | `POST /reading/records/{id}/submit`                   | `POST /writing/records/{id}/submit` | `POST /translation/records/{id}/submit` | `POST /speaking/records/{id}/submit`      |
 | 报告   | `GET …/{id}/report`                                   | 同                                                     | 同                                   | 同                                       | 同                                         |
 | 报告重试 | `POST …/{id}/report/retry`                            | 同                                                     | 同                                   | **无此端点**                                | 同                                         |
@@ -194,7 +195,7 @@ Authorization: Bearer <登录拿到的 token>
 | 交卷后能否改         | 否                                    | 否                                  | 否                              |
 | 答案形态           | `selectedOptionId`（A/B/C…）/ `answer` | `answerText` 文本                    | `answer` 音频 URL + `durationMs` |
 | 进度定位           | `currentQuestionId` + 题号             | 同                                  | 同                              |
-| 计时             | `durationSeconds` 客户端上报              | 同                                  | 同                              |
+| 计时             | 服务端结算（在场累计，见 4.7）            | 同                                  | 同                              |
 | 答题卡 `answered` | 该题选过                                 | 该题存过答案                             | 录音已上传完成                        |
 
 ### 2.3 内部接口（前端不要用）
@@ -442,7 +443,7 @@ GET /papers/{paperId}/reports/latest?module=reading&section=1&version=HSK3.0
 |---|---|
 | `listening` | 听力报告摘要，见 [4.10](#410-报告摘要) |
 | `reading` | 阅读报告，见 [5.8](#58-报告) |
-| `writing` / `translation` / `speaking` | 主观模块报告，见 [6.8](#68-报告) |
+| `writing` / `translation` / `speaking` | 主观模块报告，见 [6.9](#69-报告) |
 
 > 翻译也走这个端点，`module=translation` 时返回主观报告结构。
 
@@ -461,7 +462,8 @@ POST /start ──► recordId
    │
    ├─ PUT  /{recordId}/answers/{questionId}   单题防抖保存（选择即存）
    ├─ PUT  /{recordId}/answers                批量保存（切题/退出/锁屏/提交前）
-   ├─ POST /{recordId}/pause                  暂停（存进度 + 草稿答案）
+   ├─ POST /{recordId}/pause                  暂停（结算时长 + 存进度 + 草稿答案）
+   ├─ POST /{recordId}/resume                 恢复作答（幂等）
    │
 POST /{recordId}/submit ──► 判分 + 报告摘要
    │
@@ -510,6 +512,8 @@ GET /listening/records/{recordId}
     "currentQuestionNumber": 5,
     "currentPassageItemIndex": 0,
     "durationSeconds": 180,
+    "paused": false,
+    "pausedAt": null,
     "answeredCount": 4,
     "totalQuestions": 10,
     "answers": [
@@ -526,6 +530,9 @@ GET /listening/records/{recordId}
 | `currentQuestionId` | Long | 停在哪道题，用来定位「继续」 |
 | `currentQuestionNumber` | Integer | 题号 = 题集下标 + 1 |
 | `currentPassageItemIndex` | Integer | `passageGroup` 布局下当前子题索引，其他布局恒 `0` |
+| `paused` | Boolean | `true` = 暂停中（调过 pause 且未 resume）；已交卷恒 `false` |
+| `pausedAt` | Long | 上次离开时刻（毫秒）；`paused=false` 时为 `null` |
+| `durationSeconds` | Integer | 累计在场秒数（决策 30：服务端结算，客户端不再上报） |
 | `answers[].currentVersion` | Integer | 云端最新版本号，下次保存时作为 `baseVersion` 传回 |
 
 ### 4.4 拉题
@@ -607,7 +614,6 @@ PUT /listening/records/{recordId}/answers
     { "questionId": 2095405786495316202, "selectedOptionId": "C" }
   ],
   "currentQuestionId": 2095405786495316202,
-  "durationSeconds": 240,
   "clientSequence": 13,
   "baseVersion": 8
 }
@@ -617,32 +623,45 @@ PUT /listening/records/{recordId}/answers
 |---|---|---|
 | `answers[]` | Array | 每题 `questionId` + `selectedOptionId`，必填非空 |
 | `currentQuestionId` | Long | 当前停留题，服务端据此更新续练位置 |
-| `durationSeconds` | Integer | 本次保存累加的有效时长（秒），服务端**按累加**处理 |
 | `baseVersion` | Integer | 乐观锁版本 |
+
+🔴 **请求体没有 `durationSeconds`**（决策 30）：保存动作不结算时长 —— 时长只在 `pause` / `resume` / `submit` 三个点结算，否则段起点不推进会重复计时。
 
 响应 `data` 是完整记录（同 4.3），比单题接口多回一次全量，适合切题时刷新本地状态。
 
-### 4.7 暂停
+### 4.7 暂停 / 恢复
 
 ```
 POST /listening/records/{recordId}/pause
+POST /listening/records/{recordId}/resume
 ```
+
+暂停请求体：
 
 ```json
 {
   "currentQuestionId": 2095405786495316202,
-  "durationSeconds": 300,
   "draftAnswers": [
     { "questionId": 2095405786495316201, "answer": "A", "answered": 1 }
   ],
-  "clientSequence": 14,
-  "baseVersion": 8
+  "clientSequence": 14
 }
 ```
 
 与批量保存的区别：`draftAnswers` 只落**草稿**，不固化提交快照；`answered` 是 `Integer`（`0` 未答 / `1` 已答），注意与响应里的 Boolean `answered` 不是同一形态。
 
-响应 `data` 为完整记录。
+🔴 **请求体没有 `durationSeconds`、`baseVersion`**（决策 30）：暂停 = 服务端结算本段在场时长 + 记位置 + 存草稿，一次请求完成。时长一律服务端算，客户端时钟不准或刷时长都影响不到它。
+
+恢复无 body，幂等 —— 本来就在场（未 pause 过或已 resume）时直接返回当前记录，不写库。
+
+两端的响应 `data` 均为完整记录（含 `paused` / `pausedAt`）。
+
+**时长口径（五模块统一）**：
+
+- `durationSeconds` 是**累计在场秒数**：暂停/退出即停表，回来 resume 续算；`paused=true` 期间的时间一律不计。
+- 结算点只有三个：`pause`、`resume`（只推进段起点不累加）、`submit`。单题/批量保存不结算。
+- 单段上限 **1800 秒**：只兜「杀进程/断网很久才回来」，前端按每 5–10 分钟 pause 一次的频率远低于此。
+- 记录已交卷（`status=3`）再调两端点返回 `8103 练习已结束，无法继续作答`。
 
 ### 4.8 交卷
 
@@ -652,7 +671,6 @@ POST /listening/records/{recordId}/submit
 
 ```json
 {
-  "durationSeconds": 600,
   "idempotencyKey": "listening-2095405786495315999-submit",
   "finalAnswers": [
     { "questionId": 2095405786495316203, "selectedOptionId": "B" }
@@ -666,7 +684,6 @@ POST /listening/records/{recordId}/submit
 |---|---|---|
 | `finalAnswers` | Array | 交卷前最后一批答案，可为空（前面已逐题存过） |
 | `idempotencyKey` | String | 相同 key 重复提交直接返回已生成报告。**服务端按 `{module}-{recordId}-submit` 自拼，你传的值会被忽略** |
-| `durationSeconds` | Integer | 本次累加时长 |
 
 响应 `data` 为报告摘要：
 
@@ -784,14 +801,15 @@ GET /listening/records/{recordId}/answer-card?currentQuestionNumber=5
 
 ## 5. 阅读（reading）
 
-与听力同构，主键同为 `recordId`，交卷即判。**差异只有四处**：
+与听力同构，主键同为 `recordId`，交卷即判。**差异只有三处**：
 
 | 差异 | 听力 | 阅读 |
 |---|---|---|
 | 答题保存 | `selectedOptionId` | `answer`（自由文本/选项标识都走这个字段） |
-| 暂停 | `pause` + 草稿答案 | `pause` 只存当前题位置 |
-| 放弃草稿 | 无 | `POST /reading/records/{id}/abandon` |
+| 暂停 | `pause` + 草稿答案 | `pause` 只存当前题位置（时长结算两边一致） |
 | 题目结构 | 单题 + `share_audio_url` | 单题 + **题组 `group`**（共享材料 + 共享选项） |
+
+> 原「放弃草稿 `abandon`」端点 2026-11-17 退场（决策 30，见附录 C）；重新开始用 start 的 `restart=true`。
 
 ### 5.1 端点清单
 
@@ -802,8 +820,8 @@ GET /listening/records/{recordId}/answer-card?currentQuestionNumber=5
 | 拉题 | `GET /reading/records/{recordId}/questions` | 响应见 5.3 |
 | 单题保存 | `PUT /reading/records/{recordId}/answers/{questionId}` | body 是 `{questionId, answer}` |
 | 批量保存 | `PUT /reading/records/{recordId}/answers` | 返回**答案数组**，不是整条记录 |
-| 暂停 | `POST /reading/records/{recordId}/pause` | body 只有 `{currentQuestionId}` |
-| 放弃 | `POST /reading/records/{recordId}/abandon` | 无 body，返回 `data=null` |
+| 暂停 | `POST /reading/records/{recordId}/pause` | body 只有 `{currentQuestionId}`，时长服务端结算 |
+| 恢复 | `POST /reading/records/{recordId}/resume` | 无 body，幂等，返回记录详情 |
 | 交卷 | `POST /reading/records/{recordId}/submit` | 响应见 5.7 |
 | 报告 | `GET /reading/records/{recordId}/report` | 结构比听力多 `items[]` 逐题明细 |
 | 报告重试 | `POST /reading/records/{recordId}/report/retry` | 同 |
@@ -823,14 +841,16 @@ GET /listening/records/{recordId}/answer-card?currentQuestionNumber=5
   "currentQuestionNumber": 5,
   "answeredCount": 4,
   "totalQuestions": 10,
-  "resumeElapsedSeconds": 0,
+  "durationSeconds": 0,
+  "paused": false,
+  "pausedAt": null,
   "answers": [
     { "questionId": 2095405786495316201, "answer": "B", "answered": true }
   ]
 }
 ```
 
-与听力相比：没有 `currentPassageItemIndex`、没有 `durationSeconds`，多一个 `resumeElapsedSeconds`（本次恢复后重新计时的秒数）。阅读的时长由客户端自己算，服务端不累计。
+与听力相比：没有 `currentPassageItemIndex`。其余字段（含 `paused` / `pausedAt` / `durationSeconds`）同 4.3 —— 🔴 阅读旧口径「时长客户端自己算」（`resumeElapsedSeconds`）已作废（决策 30），现在同样是服务端在场累计。
 
 ### 5.3 拉题（含题组）
 
@@ -927,15 +947,17 @@ POST /reading/records/{recordId}/pause
 { "currentQuestionId": 2095405786495316201 }
 ```
 
-只存位置，不存草稿答案。响应为记录详情。
+只存位置，不存草稿答案；时长由服务端结算本段在场秒数后停表。响应为记录详情（含 `paused` / `pausedAt`）。
 
-### 5.6 放弃草稿
+### 5.6 恢复
 
 ```
-POST /reading/records/{recordId}/abandon
+POST /reading/records/{recordId}/resume
 ```
 
-无 body，`data` 为 `null`。用于「重新开始」前清掉旧草稿。
+无 body，幂等。把 `paused_time` 清掉回到「在场」，并推进时长结算段起点。响应为记录详情。
+
+> 原 5.6「放弃草稿 `abandon`」端点已退场（决策 30，见附录 C）。重新开始用 `POST /reading/records/start` 带 `restart=true`。
 
 ### 5.7 交卷
 
@@ -944,10 +966,10 @@ POST /reading/records/{recordId}/submit
 ```
 
 ```json
-{ "durationSeconds": 600, "idempotencyKey": "reading-2095405786495315999-submit" }
+{ "idempotencyKey": "reading-2095405786495315999-submit" }
 ```
 
-阅读的交卷请求里**没有 `finalAnswers`、`baseVersion`、`clientSequence`** —— 答案必须在交卷前已经保存过。响应为完整报告（同 5.8），不是摘要。
+阅读的交卷请求里**没有 `finalAnswers`、`durationSeconds`、`baseVersion`、`clientSequence`** —— 答案必须在交卷前已经保存过，时长由服务端结算。响应为完整报告（同 5.8），不是摘要。
 
 ### 5.8 报告
 
@@ -1027,6 +1049,8 @@ POST /start {paperId, sectionMapping, section} ──► recordId
    │
    ├─ PUT /{recordId}/questions/{questionId}/draft   草稿（每 2~5s 防抖，整份覆盖）
    ├─ PUT /{recordId}/answers                        正式保存（切题/离开页面时）
+   ├─ POST /{recordId}/pause                         暂停（结算时长 + 记位置，见 6.7）
+   ├─ POST /{recordId}/resume                        恢复作答（幂等）
    │
 POST /{recordId}/submit ──► 客观题即判，主观题入 AI 队列
    │
@@ -1080,6 +1104,8 @@ GET /writing/records/{recordId}
     "currentQuestionId": 2095405786495316201,
     "currentQuestionNumber": 1,
     "durationSeconds": 300,
+    "paused": false,
+    "pausedAt": null,
     "objectiveCount": 0,
     "objectiveCorrectCount": 0,
     "aiQuestionCount": 2,
@@ -1097,6 +1123,8 @@ GET /writing/records/{recordId}
 | `objectiveCount` / `objectiveCorrectCount` | Integer | 客观题数 / 客观题答对数 |
 | `aiQuestionCount` / `aiScoredCount` | Integer | AI 题数 / AI 已评出分的题数 |
 | `finalScore` / `totalScore` | BigDecimal | 得分 / 满分，评完才有值 |
+| `paused` / `pausedAt` | Boolean / Long | 暂停中标志 / 上次离开时刻；已交卷恒 `paused=false` |
+| `durationSeconds` | Integer | 累计在场秒数（决策 30：服务端结算） |
 
 轮询建议：`status=COMPLETED` 且 `reportStatus=GRADING` 时按 2s → 5s → 10s 退避轮询 `GET /{recordId}`，直到 `READY` 或 `FAILED`。
 
@@ -1231,7 +1259,26 @@ PUT /writing/records/{recordId}/answers
 
 返回里只回「存了哪些题 + 新版本号」，判分结果交卷后才可见。下次保存时把 `answerVersion` 带回来做冲突检测。
 
-### 6.7 交卷
+### 6.7 暂停 / 恢复（写 / 译 / 说三模块同构）
+
+```
+POST /writing/records/{recordId}/pause
+POST /writing/records/{recordId}/resume
+```
+
+暂停请求体（可整体省略）：
+
+```json
+{ "currentQuestionId": 2095405786495316201 }
+```
+
+- 暂停 = 服务端结算本段在场时长 + 记位置，一次请求完成；草稿另走 6.5 题目级草稿端点。
+- 🔴 请求体**没有 `durationSeconds`**：时长一律服务端结算（口径同 4.7，五模块统一）。
+- 恢复无 body，幂等 —— 本来就在场时直接返回当前记录，不写库。
+- 两端点都要求记录处于进行中；已交卷的记录调用返回 `8103 练习已结束，无法继续作答`。
+- 两端的响应 `data` 均为记录详情（含 `paused` / `pausedAt`）。
+
+### 6.8 交卷
 
 ```
 POST /writing/records/{recordId}/submit
@@ -1241,15 +1288,13 @@ POST /writing/records/{recordId}/submit
 {
   "finalAnswers": [
     { "questionId": 2095405786495316201, "answerText": "我上周去了公园……" }
-  ],
-  "durationSeconds": 900
+  ]
 }
 ```
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `finalAnswers` | Array | 交卷这一刻的最后一批作答，**可为空**（前面已逐题存过） |
-| `durationSeconds` | Integer | 客户端上报的答题秒数；缺省按 `end_time - start_time` 现算 |
 | `idempotencyKey` | String | 兼容旧前端的提示字段，**服务端忽略其值**，幂等键自拼为 `writing-{recordId}-submit` |
 
 body 整体可以省略（`@RequestBody(required=false)`）。
@@ -1282,7 +1327,7 @@ body 整体可以省略（`@RequestBody(required=false)`）。
 
 🔴 **`draftNotSubmitted`**：数组，列出「有草稿但没提交成答案」的题目 ID。非空时说明用户写了但没保存正式答案 —— 前端应提示，不要静默丢弃。
 
-### 6.8 报告
+### 6.9 报告
 
 ```
 GET /writing/records/{recordId}/report
@@ -1415,6 +1460,8 @@ GET /writing/records/{recordId}/answer-card
 | 拉题 | `GET /translation/records/{recordId}/questions` |
 | 批量保存 | `PUT /translation/records/{recordId}/answers` |
 | 草稿 | `PUT /translation/records/{recordId}/questions/{questionId}/draft` |
+| 暂停 | `POST /translation/records/{recordId}/pause` |
+| 恢复 | `POST /translation/records/{recordId}/resume` |
 | 交卷 | `POST /translation/records/{recordId}/submit` |
 | 报告 | `GET /translation/records/{recordId}/report` |
 | 单题详情 | `GET /translation/records/{recordId}/report/questions/{questionId}` |
@@ -1440,10 +1487,10 @@ POST /translation/records/{recordId}/submit
 ```
 
 ```json
-{ "finalAnswers": [ { "questionId": 2095405786495316201, "answerText": "译文内容……" } ], "durationSeconds": 600 }
+{ "finalAnswers": [ { "questionId": 2095405786495316201, "answerText": "译文内容……" } ] }
 ```
 
-响应结构同 6.7，`module` 为 `translation`。
+响应结构同 6.8，`module` 为 `translation`。
 
 ---
 ## 8. 口语（speaking）
@@ -1464,6 +1511,8 @@ POST /start ──► recordId
    │
    ├─ PUT /{recordId}/questions/{questionId}/draft      提纲草稿（可选，只存文字）
    ├─ POST /{recordId}/questions/{questionId}/answers   录音上传完成后落答案
+   ├─ POST /{recordId}/pause                            暂停（结算时长，见 6.7）
+   ├─ POST /{recordId}/resume                           恢复作答（幂等）
    │
 POST /{recordId}/submit ──► 全部入 AI 队列
    │
@@ -1593,16 +1642,16 @@ POST /speaking/records/{recordId}/submit
 ```
 
 ```json
-{ "finalAnswers": [ { "questionId": 2095405786495316201, "answer": "https://…", "durationMs": 45000 } ], "durationSeconds": 600 }
+{ "finalAnswers": [ { "questionId": 2095405786495316201, "answer": "https://…", "durationMs": 45000 } ] }
 ```
 
-body 可省略。响应同 6.7，`module` 为 `speaking`，`status=COMPLETED`、`reportStatus=GRADING`。
+body 可省略。响应同 6.8，`module` 为 `speaking`，`status=COMPLETED`、`reportStatus=GRADING`。
 
 交卷时**未录音的题**会被标记为未作答（`grading_state=2`），最终报告里计入未得分，不会阻塞其他题的评分。
 
 ### 8.8 报告
 
-`GET /speaking/records/{recordId}/report`，结构同 6.8，`module=speaking`。
+`GET /speaking/records/{recordId}/report`，结构同 6.9，`module=speaking`。
 
 口语的 `aiQuestionCount` = 全部题数，没有客观题。`questions[].correct` 恒 `null`。
 
@@ -1674,7 +1723,7 @@ GET /speaking/records/{recordId}/answer-card
 
 ```
 0 已创建 ──► 1 进行中 ──► 3 已提交
-                └──► 2 已放弃（仅阅读有 abandon）
+                └──► 2 已放弃（abandon 端点已退场，见附录 C；status=2 仅存量数据）
 ```
 
 **写作 / 翻译 / 口语**（`status` 是 String）：
@@ -1803,6 +1852,7 @@ JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 �
 - [ ] 写/译/说交卷后轮询的是 `reportStatus`，不是 `status`
 - [ ] 交卷前把草稿落成正式答案（否则 `draftNotSubmitted` 会点名）
 - [ ] 口语不再调 `/recordings/prepare`（已 404）
+- [ ] 暂停/恢复请求体不带 `durationSeconds`（时长服务端结算）；重新开始用 start 的 `restart=true`（阅读 abandon 已退场）
 
 ---
 
@@ -1967,7 +2017,7 @@ JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 �
 
 ## 附录 B 端点总表
 
-共 57 个端点（不含内部接口）。
+共 64 个端点（不含内部接口）。
 
 ### 目录（5）
 
@@ -1979,7 +2029,7 @@ JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 �
 | GET | `/hsk/papers/{paperId}/parts` | U3 卷内板块 + 进度 |
 | GET | `/papers/{paperId}/reports/latest` | CR 板块最近报告 |
 
-### 听力（11）
+### 听力（12）
 
 | 方法 | 路径 |
 |---|---|
@@ -1989,6 +2039,7 @@ JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 �
 | PUT | `/listening/records/{recordId}/answers/{questionId}` |
 | PUT | `/listening/records/{recordId}/answers` |
 | POST | `/listening/records/{recordId}/pause` |
+| POST | `/listening/records/{recordId}/resume` |
 | POST | `/listening/records/{recordId}/submit` |
 | GET | `/listening/records/{recordId}/report` |
 | POST | `/listening/records/{recordId}/report/retry` |
@@ -2005,14 +2056,14 @@ JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 �
 | PUT | `/reading/records/{recordId}/answers/{questionId}` |
 | PUT | `/reading/records/{recordId}/answers` |
 | POST | `/reading/records/{recordId}/pause` |
-| POST | `/reading/records/{recordId}/abandon` |
+| POST | `/reading/records/{recordId}/resume` |
 | POST | `/reading/records/{recordId}/submit` |
 | GET | `/reading/records/{recordId}/report` |
 | POST | `/reading/records/{recordId}/report/retry` |
 | GET | `/reading/records/{recordId}/report/questions/{questionId}` |
 | GET | `/reading/records/{recordId}/answer-card` |
 
-### 写作（9）
+### 写作（12）
 
 | 方法 | 路径 |
 |---|---|
@@ -2021,13 +2072,15 @@ JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 �
 | GET | `/writing/records/{recordId}/questions` |
 | PUT | `/writing/records/{recordId}/answers` |
 | PUT | `/writing/records/{recordId}/questions/{questionId}/draft` |
+| POST | `/writing/records/{recordId}/pause` |
+| POST | `/writing/records/{recordId}/resume` |
 | POST | `/writing/records/{recordId}/submit` |
 | GET | `/writing/records/{recordId}/report` |
 | GET | `/writing/records/{recordId}/report/questions/{questionId}` |
 | POST | `/writing/records/{recordId}/report/retry` |
 | GET | `/writing/records/{recordId}/answer-card` |
 
-### 翻译（9）
+### 翻译（11）
 
 | 方法 | 路径 |
 |---|---|
@@ -2036,12 +2089,14 @@ JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 �
 | GET | `/translation/records/{recordId}/questions` |
 | PUT | `/translation/records/{recordId}/answers` |
 | PUT | `/translation/records/{recordId}/questions/{questionId}/draft` |
+| POST | `/translation/records/{recordId}/pause` |
+| POST | `/translation/records/{recordId}/resume` |
 | POST | `/translation/records/{recordId}/submit` |
 | GET | `/translation/records/{recordId}/report` |
 | GET | `/translation/records/{recordId}/report/questions/{questionId}` |
 | GET | `/translation/records/{recordId}/answer-card` |
 
-### 口语（9）
+### 口语（12）
 
 | 方法 | 路径 |
 |---|---|
@@ -2050,20 +2105,22 @@ JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 �
 | GET | `/speaking/records/{recordId}/questions` |
 | POST | `/speaking/records/{recordId}/questions/{questionId}/answers` |
 | PUT | `/speaking/records/{recordId}/questions/{questionId}/draft` |
+| POST | `/speaking/records/{recordId}/pause` |
+| POST | `/speaking/records/{recordId}/resume` |
 | POST | `/speaking/records/{recordId}/submit` |
 | GET | `/speaking/records/{recordId}/report` |
 | GET | `/speaking/records/{recordId}/report/questions/{questionId}` |
 | POST | `/speaking/records/{recordId}/report/retry` |
 | GET | `/speaking/records/{recordId}/answer-card` |
 
-小计：目录 5、听力 11、阅读 12、写作 10、翻译 9、口语 10，合计 **57** 个（答题卡已算进各自模块）。
-写作、口语有重试端点而翻译没有；阅读多一条 `abandon`，口语与翻译的答题走单题接口。
+小计：目录 5、听力 12、阅读 12、写作 12、翻译 11、口语 12，合计 **64** 个（答题卡已算进各自模块）。
+写作、口语有重试端点而翻译没有；口语与翻译的答题走单题接口。阅读 `abandon` 已退场（附录 C），2026-11-17 起五模块均补齐 `pause` / `resume`。
 
 ---
 
 ## 附录 C 已退场端点（不要再调）
 
-以下端点在 2026-11-11 ~ 11-16 陆续退场，代码保留但 `@RestController` 已注释，**请求会 404**：
+以下端点在 2026-11-11 ~ 11-17 陆续退场，**请求会 404**：
 
 | 端点 | 退场时间 | 替代 |
 |---|---|---|
@@ -2074,5 +2131,6 @@ JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 �
 | `/writing/reports/**`、`/translation/reports/**`、`/speaking/reports/**` | 2026-11-16 | `/{mod}/records/{recordId}/report` |
 | `/speaking/recordings/**`（含 `prepare`） | 2026-11-13 | 客户端自传音频后调 `POST /speaking/records/{id}/questions/{qid}/answers` |
 | `/listening/parts/{structureId}/reports/latest` 等 4 条 | 2026-11-11 | `GET /papers/{paperId}/reports/latest` |
+| `/reading/records/{id}/abandon` | 2026-11-17 | 决策 30 下线；重新开始用 `POST /reading/records/start` 带 `restart=true` |
 
 没有兼容层，全部直接 404。如果前端代码里还有这些路径，需要同批改掉。
