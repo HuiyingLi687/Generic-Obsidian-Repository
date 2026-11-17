@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>HSK 练习 · 五模块全链路接口文档</title>
+<title>HSK 练习五模块接口文档</title>
 <style>
 :root{
   --bg:#fbfbfd; --fg:#1d2129; --muted:#6b7280; --line:#e5e7eb;
@@ -80,7 +80,7 @@ td{min-width:64px}
 <button id="menu" onclick="document.querySelector('aside').classList.toggle('open')">☰</button>
 <button id="theme" onclick="toggleTheme()" title="切换深浅色">◐</button>
 <aside>
-  <div class="brand">HSK 练习 · 五模块全链路接口文档<small>practice-service · 2026-11-17</small></div>
+  <div class="brand">HSK 练习五模块接口文档<small>practice-service · 2026-11-17</small></div>
   <input id="q" placeholder="筛选章节…" autocomplete="off"/>
   <nav id="toc"><a class="lvl2" href="#0-三分钟上手" data-t="0. 三分钟上手">0. 三分钟上手</a>
 <a class="lvl3" href="#01-调用链" data-t="0.1 调用链">0.1 调用链</a>
@@ -228,7 +228,8 @@ Authorization: Bearer &lt;登录拿到的 token&gt;</code></pre></div>
 <div class="table-wrap"><table><thead><tr><th>场景</th><th>字段名</th><th>类型</th><th>示例</th><th>来源</th></tr></thead><tbody><tr><td>首页模块卡</td><td><code>moduleCode</code></td><td>String</td><td><code>LISTENING</code>（<strong>大写</strong>）</td><td><code>GET /hsk/modules</code></td></tr><tr><td>目录接口入参</td><td><code>module</code></td><td>String</td><td><code>listening</code>（小写，大小写不敏感）</td><td>前端固定传</td></tr><tr><td>U3 板块列表</td><td><code>parts[].section</code></td><td><strong>Integer</strong></td><td><code>1</code></td><td><code>GET /hsk/papers/{id}/parts</code></td></tr><tr><td>U3 板块列表</td><td><code>parts[].partCode</code></td><td>String</td><td><code>"1"</code>；口语是 <code>PART_1</code></td><td>同上</td></tr><tr><td>主观模块开练</td><td><code>sectionMapping</code></td><td>String</td><td><code>SEC_WRITE</code> / <code>SEC_TRANSLATION</code> / <code>SEC_SPEAKING</code></td><td>前端按模块固定传</td></tr><tr><td>主观模块开练</td><td><code>section</code></td><td><strong>String</strong></td><td><code>"1"</code></td><td>取 U3 的 <code>parts[].section</code>，<code>.toString()</code></td></tr></tbody></table></div>
 <p>🔴 <strong>两个类型差异</strong>：U3 的 <code>section</code> 是数字，开练接口的 <code>section</code> 是字符串，中间要转一次。</p>
 <h3 id="17-模块-sectionmapping-对照">1.7 模块 ↔ <code>sectionMapping</code> 对照<a class="anchor" href="#17-模块-sectionmapping-对照">#</a></h3>
-<div class="table-wrap"><table><thead><tr><th>module</th><th>sectionMapping</th><th>记录表</th><th>交卷路名</th></tr></thead><tbody><tr><td><code>listening</code></td><td><code>SEC_LISTEN</code></td><td><code>practice_record</code></td><td><code>/listening/records/{id}/submit</code></td></tr><tr><td><code>reading</code></td><td><code>SEC_READ</code></td><td><code>practice_record</code></td><td><code>/reading/records/{id}/submit</code></td></tr><tr><td><code>writing</code></td><td><code>SEC_WRITE</code></td><td><code>practice_subjective_record</code></td><td><code>/writing/records/{id}/submit</code></td></tr><tr><td><code>translation</code></td><td><code>SEC_TRANSLATION</code></td><td><code>practice_subjective_record</code></td><td><code>/translation/records/{id}/submissions</code>（注意是复数）</td></tr><tr><td><code>speaking</code></td><td><code>SEC_SPEAKING</code></td><td><code>practice_subjective_record</code></td><td><code>/speaking/records/{id}/submit</code></td></tr></tbody></table></div>
+<div class="table-wrap"><table><thead><tr><th>module</th><th>sectionMapping</th><th>记录表</th><th>交卷路名</th></tr></thead><tbody><tr><td><code>listening</code></td><td><code>SEC_LISTEN</code></td><td><code>practice_record</code></td><td><code>/listening/records/{id}/submit</code></td></tr><tr><td><code>reading</code></td><td><code>SEC_READ</code></td><td><code>practice_record</code></td><td><code>/reading/records/{id}/submit</code></td></tr><tr><td><code>writing</code></td><td><code>SEC_WRITE</code></td><td><code>practice_subjective_record</code></td><td><code>/writing/records/{id}/submit</code></td></tr><tr><td><code>translation</code></td><td><code>SEC_TRANSLATION</code></td><td><code>practice_subjective_record</code></td><td><code>/translation/records/{id}/submissions</code> ⚠️ 复数</td></tr><tr><td><code>speaking</code></td><td><code>SEC_SPEAKING</code></td><td><code>practice_subjective_record</code></td><td><code>/speaking/records/{id}/submit</code></td></tr></tbody></table></div>
+<blockquote>⚠️ <strong>只有翻译的交卷路名是复数 <code>submissions</code></strong>，其余四个模块都是单数 <code>submit</code>。这是历史遗留，不是设计意图：翻译的旧 <code>attempts</code> 链路当初就写成了 <code>POST /translation/attempts/{attemptId}/submissions</code>，共表改造时新 <code>records</code> 端点直接沿用了老路径的后半段（<code>TranslationPracticeController</code> 里也留有注释「注意路名 <code>/submissions</code>」）。<strong>前端按模块硬编码，不要试图用 <code>submit</code> 去拼翻译的地址</strong>，会 404。  后端不打算改：改路径没有业务收益，但会让已接入翻译的前端同步发版。将来若要统一，正确做法是<strong>加别名</strong>（同一方法上 <code>@PostMapping({"/{recordId}/submissions", "/{recordId}/submit"})</code>）而不是直接换掉。</blockquote>
 <blockquote>口语的 <code>SEC_SPEAK</code>（少一个 ING）是历史拼写错误，服务端仍放行，但<strong>响应里返回的一律是 <code>SEC_SPEAKING</code></strong>。新代码请用 <code>SEC_SPEAKING</code>。</blockquote>
 <h3 id="18-免登录接口">1.8 免登录接口<a class="anchor" href="#18-免登录接口">#</a></h3>
 <p>只有两个：</p>

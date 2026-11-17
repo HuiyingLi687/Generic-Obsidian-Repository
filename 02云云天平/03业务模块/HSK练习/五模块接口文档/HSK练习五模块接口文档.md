@@ -132,8 +132,13 @@ Authorization: Bearer <登录拿到的 token>
 | `listening`   | `SEC_LISTEN`      | `practice_record`            | `/listening/records/{id}/submit`               |
 | `reading`     | `SEC_READ`        | `practice_record`            | `/reading/records/{id}/submit`                 |
 | `writing`     | `SEC_WRITE`       | `practice_subjective_record` | `/writing/records/{id}/submit`                 |
-| `translation` | `SEC_TRANSLATION` | `practice_subjective_record` | `/translation/records/{id}/submissions`（注意是复数） |
+| `translation` | `SEC_TRANSLATION` | `practice_subjective_record` | `/translation/records/{id}/submissions` ⚠️ 复数 |
 | `speaking`    | `SEC_SPEAKING`    | `practice_subjective_record` | `/speaking/records/{id}/submit`                |
+
+> ⚠️ **只有翻译的交卷路名是复数 `submissions`**，其余四个模块都是单数 `submit`。这是历史遗留，不是设计意图：翻译的旧 `attempts` 链路当初就写成了 `POST /translation/attempts/{attemptId}/submissions`，共表改造时新 `records` 端点直接沿用了老路径的后半段（`TranslationPracticeController` 里也留有注释「注意路名 `/submissions`」）。**前端按模块硬编码，不要试图用 `submit` 去拼翻译的地址**，会 404。
+>
+> 后端不打算改：改路径没有业务收益，但会让已接入翻译的前端同步发版。将来若要统一，正确做法是**加别名**（同一方法上 `@PostMapping({"/{recordId}/submissions", "/{recordId}/submit"})`）而不是直接换掉。
+
 
 > 口语的 `SEC_SPEAK`（少一个 ING）是历史拼写错误，服务端仍放行，但**响应里返回的一律是 `SEC_SPEAKING`**。新代码请用 `SEC_SPEAKING`。
 
