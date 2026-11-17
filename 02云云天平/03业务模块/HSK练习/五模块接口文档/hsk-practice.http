@@ -621,7 +621,7 @@ Authorization: Bearer {{token}}
 
 > {%
     client.test("重试接口可调", function () {
-        client.assert(response.body.code === 200 || response.body.code === 400,
+        client.assert(response.body.code === 200 || response.body.code === 8106,
                       "code=" + response.body.code);
     });
     client.log("reportStatus=" + (response.body.data || {}).reportStatus +
@@ -930,7 +930,7 @@ X-Client-Type: APP
 %}
 
 
-### 64 反向用例 · 用错模块的 sectionMapping 开练（应得 SECTION_MAPPING_MISMATCH）
+### 64 反向用例 · 用错模块的 sectionMapping 开练（应得 8108 板块映射不一致）
 POST {{practice}}/translation/records/start
 Content-Type: application/json
 X-Client-Type: APP
@@ -944,14 +944,14 @@ Authorization: Bearer {{token}}
 
 > {%
     client.test("板块归属校验生效", function () {
-        client.assert(response.body.code === 400, "期望 400，实际 " + response.body.code);
-        client.assert(response.body.message === "SECTION_MAPPING_MISMATCH",
+        client.assert(response.body.code === 8108, "期望 8108，实际 " + response.body.code);
+        client.assert(response.body.message === "板块映射与练习内容不一致",
                       "message=" + response.body.message);
     });
 %}
 
 
-### 65 反向用例 · 交卷后再存草稿（应得 DRAFT_LOCKED）
+### 65 反向用例 · 交卷后再存草稿（应得 8109 草稿已冻结）
 PUT {{practice}}/writing/records/{{wrRecordId}}/questions/{{wrQuestionId}}/draft
 Content-Type: application/json
 X-Client-Type: APP
@@ -963,8 +963,8 @@ Authorization: Bearer {{token}}
 
 > {%
     client.test("交卷后草稿锁定", function () {
-        client.assert(response.body.code === 409, "期望 409，实际 " + response.body.code);
-        client.assert(response.body.message === "DRAFT_LOCKED",
+        client.assert(response.body.code === 8109, "期望 8109，实际 " + response.body.code);
+        client.assert(response.body.message === "已交卷，草稿不能再修改",
                       "message=" + response.body.message);
     });
 %}

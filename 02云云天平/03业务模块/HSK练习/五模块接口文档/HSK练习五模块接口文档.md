@@ -88,26 +88,40 @@ Authorization: Bearer <登录拿到的 token>
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `code` | Integer | `200` 成功；其余为错误码，见 [附录 A](#附录-a-错误码) |
-| `message` | String | 成功固定 `操作成功`；失败时可能是错误码字符串（如 `DRAFT_LOCKED`）或中文提示 |
+| `code` | Integer | `200` 成功；其余为**唯一业务码**（8101–8299，一类错误一个码），见 [附录 A](#附录-a-错误码) |
+| `message` | String | 成功固定 `操作成功`；失败时是**中文提示**，可直接展示给用户 |
 | `data` | Object / Array / null | 业务数据。无返回值的接口为 `null` |
 
 ### 1.4 业务错误的表现形式
 
-**HTTP 200 + body.code ≠ 200**。典型的三种：
+**HTTP 200 + body.code ≠ 200**。`code` 是**唯一业务码**，`message` 是**可直接上屏的中文**：
 
 ```json
-{ "code": 401, "message": "未登录或Token无效", "data": null }
-{ "code": 400, "message": "SECTION_MAPPING_MISMATCH", "data": null }
-{ "code": 409, "message": "DRAFT_VERSION_CONFLICT", "data": { "currentVersion": 7, "savedTime": 1789612800000 } }
+{ "code": 8103, "message": "练习已结束，无法继续作答", "data": null }
+{ "code": 8108, "message": "板块映射与练习内容不一致", "data": null }
+{ "code": 8111, "message": "草稿已在别处修改，请刷新后重试", "data": { "currentVersion": 7, "savedTime": 1789612800000 } }
 ```
 
-注意 `message` 的两种形态：业务异常抛的是**错误码字符串**（`DRAFT_LOCKED`），参数校验失败给的是**中文描述**（`module: 不能为空`）。前端做提示时不要直接把 `message` 甩给用户，按 `code` 映射文案。
+> 🔴 **2026-11-17 起业务码全面细分**。改造前 `code` 只有 `400 / 404 / 409` 三个值（光 `400` 就挂了 45 种不同错误），`message` 里塞的是英文错误码（`DRAFT_LOCKED`、`SECTION_MAPPING_MISMATCH`），前端既没法分支也没法直接展示。现在：
+>
+> - **`code`** = 唯一业务码，号段 **8101–8299**，一类错误一个码
+> - **`message`** = 中文提示，**可以直接展示给用户**
+>
+> 前端请**按 `code` 分支、按 `message` 展示**，不要再写 `message === 'DRAFT_LOCKED'` 这种判断（老码已全部下线）。
+
+**仍有两种 `message` 形态，注意区分**：
+
+| 来源 | `code` | `message` 形态 | 例子 |
+|---|---|---|---|
+| 业务异常（`BusinessException`） | 8101–8299 | 中文业务提示 | `练习已结束，无法继续作答` |
+| 参数校验失败（`@Valid` 拦下） | `400` | `字段名: 中文说明` | `module: 不能为空` |
+
+**完整码表**：94 个业务码见 [附录 A](#附录-a-错误码)。
 
 ### 1.5 参数约定
 
 - **`module`**：`listening` / `reading` / `writing` / `speaking` / `translation`，**大小写不敏感**（服务端 `toLowerCase`），建议小写。
-- **`version`**：`HSK2.0` / `HSK3.0`，缺省 `HSK2.0`；白名单外返回 `400 PRACTICE_VERSION_INVALID`。
+- **`version`**：`HSK2.0` / `HSK3.0`，缺省 `HSK2.0`；白名单外返回 `8131 版本参数不合法，仅支持 HSK2.0 / HSK3.0`。
 - **`level`**：数字字符串 `"1"`–`"7"`，`"7"` 代表 HSK 7-9 整级。
 - **`section`**：板块号，各模块统一为数字 `1`、`2`、`3`…；口语同为数字，但**板块编码叫 `PART_1`**（见 1.6）。
 - **`recordId`**：练习记录主键。听力/阅读是 `practice_record.id`，写作/翻译/口语是 `practice_subjective_record.id`。**两个模块体系的 ID 不通用**，把听力的 recordId 传给写作必然 403。
@@ -247,7 +261,7 @@ GET /hsk/levels?module=reading&version=HSK3.0&level=3
 
 | 参数 | 位置 | 必填 | 说明 |
 |---|---|---|---|
-| `module` | query | **是** | 缺省或非法 → `400 模块编码不合法（PRACTICE_MODULE_INVALID）` |
+| `module` | query | **是** | 缺省或非法 → `8133 模块编码不合法` |
 | `version` | query | 否 | 缺省 `HSK2.0` |
 | `level` | query | 否 | 缺省 `"1"` |
 
@@ -730,7 +744,7 @@ GET /listening/records/{recordId}/report
 POST /listening/records/{recordId}/report/retry
 ```
 
-无 body。**仅对 `FAILED_RETRYABLE` 状态生效**，其他状态返回 `2006 REPORT_NOT_RETRYABLE`。响应为最新报告摘要。
+无 body。**仅对 `FAILED_RETRYABLE` 状态生效**，其他状态返回 `8106 报告当前状态不允许重试`。响应为最新报告摘要。
 
 ### 4.12 单题回顾
 
@@ -1037,7 +1051,7 @@ POST /writing/records/start
 | `sectionMapping` | String | **是** | 写作 `SEC_WRITE`、翻译 `SEC_TRANSLATION`、口语 `SEC_SPEAKING` |
 | `section` | String | **是** | 板块号，取 U3 的 `parts[].section`（**要转成字符串**） |
 
-🔴 **三个字段缺一不可**。只传 `paperId + section` 不够：HSK 3.0 综合卷上同一张卷的 `section=1` 同时存在听力、阅读、写作、翻译、口语五个板块，必须靠 `sectionMapping` 定位。传错 mapping（比如拿写作的 mapping 打翻译入口）返回 `400 SECTION_MAPPING_MISMATCH`。
+🔴 **三个字段缺一不可**。只传 `paperId + section` 不够：HSK 3.0 综合卷上同一张卷的 `section=1` 同时存在听力、阅读、写作、翻译、口语五个板块，必须靠 `sectionMapping` 定位。传错 mapping（比如拿写作的 mapping 打翻译入口）返回 `8108 板块映射与练习内容不一致`。
 
 **幂等**：同一 `(paperId, sectionMapping, section)` 已有进行中记录时直接返回，不新建。
 
@@ -1167,16 +1181,16 @@ PUT /writing/records/{recordId}/questions/{questionId}/draft
 
 1. **同内容重复保存不增版本、不写库** —— 返回的 `version` 与上次相同，可以放心按 2~5s 防抖调。
 2. **草稿不等于答案**。存草稿不置 `answered`、不判分。**交卷前必须再走一次 6.6 批量保存**，把编辑器内容落成正式答案。服务端不拿草稿兜底，只会在交卷响应里回 `draftNotSubmitted` 点名哪些题有草稿但没提交。
-3. **字数上限**：写作与笔译 5000 字素（不含空白），超了返回 `400 DRAFT_TOO_LONG`，不会静默截断。口语与口译的草稿（提纲）不限。
+3. **字数上限**：写作与笔译 5000 字素（不含空白），超了返回 `8110 草稿超过最大字数限制`，不会静默截断。口语与口译的草稿（提纲）不限。
 
 失败形态：
 
 | 情况 | code | message | data |
 |---|---|---|---|
-| 记录已交卷 | `409` | `DRAFT_LOCKED` | `null` |
-| 版本冲突 | `409` | `DRAFT_VERSION_CONFLICT` | `{currentVersion, savedTime}` |
-| 题不在本次题集 | `2001` | `试题不存在` | `null` |
-| 超字数 | `400` | `DRAFT_TOO_LONG` | `null` |
+| 记录已交卷 | `8109` | `已交卷，草稿不能再修改` | `null` |
+| 版本冲突 | `8111` | `草稿已在别处修改，请刷新后重试` | `{currentVersion, savedTime}` |
+| 题不在本次题集 | `8107` | `题目不存在` | `null` |
+| 超字数 | `8110` | `草稿超过最大字数限制` | `null` |
 
 ### 6.6 批量保存答案
 
@@ -1769,7 +1783,7 @@ JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 �
 
 ### 11.6 recordId 不通用
 
-听力/阅读的 `recordId` 来自 `practice_record`，写作/翻译/口语的来自 `practice_subjective_record`。两套 ID 空间独立，拿错了返回 `403 FORBIDDEN`（不是 404）。
+听力/阅读的 `recordId` 来自 `practice_record`，写作/翻译/口语的来自 `practice_subjective_record`。两套 ID 空间独立，拿错了返回 `8102 无权访问该资源`（不是记录不存在）。
 
 ---
 
@@ -1794,46 +1808,152 @@ JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 �
 
 ## 附录 A 错误码
 
-### A.1 通用
+> 🔴 **2026-11-17 起，HSK 练习的业务错误码统一为 8101–8299 的唯一码，`message` 为可直接展示的中文。**
+> 改造前 `code` 只有 400/404/409，`message` 是英文错误码字符串（`DRAFT_LOCKED` 之类），现已全部下线。
+>
+> **号段规划**：通用 8101–8119｜目录 8131–8150｜听力 8141–8160｜阅读 8161–8199｜写作 8201–8240｜翻译 8251–8270｜口语 8281–8299。
+> 与 CSCA（8001–8099）、写字课 / 拼音课（7001–7099）互不冲突。
+
+### A.0 框架级（不属于业务码段）
 
 | code | message | 场景 |
 |---|---|---|
-| `200` | 操作成功 | 成功 |
-| `400` | 参数错误 | 参数校验失败，`message` 带字段名与中文说明 |
-| `401` | 未登录或Token无效 | 缺 token / token 过期 / 未带 `X-Client-Type: APP` 且接口强制鉴权 |
-| `403` | FORBIDDEN | 记录不属于当前用户、或用错模块的 recordId |
-| `404` | 试卷不存在 / 板块不存在 | `paperId` 查不到，或该模块在该卷下没有板块（`version` 与卷不符也走这条） |
-| `500` | 系统内部错误 | 服务端异常，需带上 traceId 找后端 |
+| `200` | 操作成功 | 请求成功 |
+| `400` | `字段名: 中文说明` | 参数校验失败（`@Valid` 拦下），**这是唯一还会出现 400 的地方** |
+| `401` | 未登录或登录已过期 | 缺 token / token 过期 / 未带 `X-Client-Type: APP` 且接口要求鉴权 |
+| `403` | 无权限访问 | 网关或鉴权层拦截 |
+| `500` | 系统内部错误 | 未捕获的服务端异常，需带 traceId 找后端 |
 
-### A.2 练习业务
+### A.1 通用（参数 / 权限 / 记录状态 / 草稿 / AI 配额）
 
-| code | message | 场景 | 前端处理 |
+| code | 常量 | message | 触发场景 |
 |---|---|---|---|
-| `2001` | 试题不存在 | 题目不在本次题集内 | 刷新题目列表 |
-| `2003` | 记录版本冲突，请刷新后重试 | `baseVersion` 与云端不一致 | 重新拉记录，重放本地答案 |
-| `2004` | 记录不在进行中，无法保存 | 记录已交卷 / 已放弃 | 跳报告页 |
-| `2005` | 记录未提交，无法查看报告 | 未交卷就看报告 | 回答题页 |
-| `2006` | 报告状态不允许重试 | 非 `FAILED_RETRYABLE` 调了 retry | 隐藏重试按钮 |
+| `8101` | `PRACTICE_PARAM_INVALID` | 参数不合法 | 通用参数不合法（兜底，优先用更具体的码）。 |
+| `8102` | `PRACTICE_FORBIDDEN` | 无权访问该资源 | 无权限访问该资源（记录 / 报告不属于当前用户）。 |
+| `8103` | `PRACTICE_RECORD_NOT_IN_PROGRESS` | 练习已结束，无法继续作答 | 练习已提交或已废弃，不能再作答。 |
+| `8104` | `PRACTICE_RECORD_VERSION_CONFLICT` | 答案已在别处修改，请刷新后重试 | 答案版本号与库里不一致（乐观锁失败），客户端应刷新后重发。 |
+| `8105` | `PRACTICE_RECORD_NOT_SUBMITTED` | 练习尚未交卷，无法查看报告 | 练习尚未交卷，报告不存在。 |
+| `8106` | `PRACTICE_REPORT_NOT_RETRYABLE` | 报告当前状态不允许重试 | 报告状态不允许重试（已在生成中，或已终态）。 |
+| `8107` | `PRACTICE_QUESTION_NOT_FOUND` | 题目不存在 | 题目不存在，或不属于当前试卷 / 板块。 |
+| `8108` | `SECTION_MAPPING_MISMATCH` | 板块映射与练习内容不一致 | 开练时传入的 sectionMapping 与题库内容归属不一致。 |
+| `8109` | `SUBJECTIVE_DRAFT_LOCKED` | 已交卷，草稿不能再修改 | 草稿已随交卷冻结，只读。 |
+| `8110` | `SUBJECTIVE_DRAFT_TOO_LONG` | 草稿超过最大字数限制 | 草稿字数超限（具体上限按模块与板块不同，调用处传 detail 补充）。 |
+| `8111` | `SUBJECTIVE_DRAFT_VERSION_CONFLICT` | 草稿已在别处修改，请刷新后重试 | 草稿乐观锁冲突：expectedVersion 与库里版本不一致。 |
+| `8112` | `PRACTICE_RECORD_NOT_FOUND` | 练习记录不存在 | 练习记录不存在，或不属于当前用户。 |
+| `8113` | `SUBJECTIVE_AI_QUOTA_INSUFFICIENT` | AI 评分次数不足，请前往权益中心购买后交卷 | 写 / 译 / 说交卷时 AI 评分配额不足（拦在交卷事务内）。 |
+| `8114` | `PRACTICE_PART_NO_QUESTIONS` | 该板块没有可练习的题目 | 板块下没有可练习的题目（写 / 译共用，文案由调用处补模块名）。 |
+| `8115` | `PRACTICE_QUESTION_TYPE_NOT_FOUND` | 题型不存在 | 题型不存在（写 / 译共用）。 |
 
-### A.3 目录与开练
+### A.2 目录（版本 / 等级 / 模块 / 试卷 / 板块）
 
-| code | message | 场景 |
-|---|---|---|
-| `400` | `PRACTICE_VERSION_INVALID` | `version` 不是 `HSK2.0` / `HSK3.0` |
-| `400` | `模块编码不合法（PRACTICE_MODULE_INVALID）：xxx` | U1/U2/U3 的 `module` 缺失或不在五个取值内 |
-| `400` | `SECTION_MAPPING_MISMATCH` | 开练的 `sectionMapping` 与入口模块不符（如拿写作的 mapping 打翻译入口） |
-| `400` | `section 不能为空` | `GET /papers/{paperId}/reports/latest` 没传 `section` |
-
-### A.4 草稿
-
-| code | message | 场景 | data |
+| code | 常量 | message | 触发场景 |
 |---|---|---|---|
-| `400` | `DRAFT_TOO_LONG` | 写作/笔译草稿超 5000 字素 | `null` |
-| `409` | `DRAFT_LOCKED` | 交卷后再存草稿 | `null` |
-| `409` | `DRAFT_VERSION_CONFLICT` | `expectedVersion` 与当前不符 | `{currentVersion, savedTime}` |
-| `409` | 请求数据已存在，请勿重复提交 | 并发首存撞唯一键（服务端已自动退化为更新，正常不会出现） | `null` |
+| `8131` | `PRACTICE_VERSION_INVALID` | 版本参数不合法，仅支持 HSK2.0 / HSK3.0 | 版本参数不合法，仅支持 HSK2.0 / HSK3.0。 |
+| `8132` | `PRACTICE_LEVEL_INVALID` | 等级参数不合法 | 等级参数不合法。 |
+| `8133` | `PRACTICE_MODULE_INVALID` | 模块编码不合法 | 模块编码不合法（调用处传 detail 带上实际入参）。 |
+| `8134` | `PRACTICE_PAPER_ID_REQUIRED` | 试卷 ID 不能为空 | 缺少 paperId。 |
+| `8135` | `PRACTICE_PAPER_NOT_FOUND` | 试卷不存在 | 试卷不存在或已下架。 |
+| `8136` | `PRACTICE_PAPER_VERSION_MISMATCH` | 练习卷不属于该版本 | 试卷不属于所请求的版本（2.0 / 3.0）。 |
+| `8137` | `PRACTICE_SECTION_REQUIRED` | 板块号不能为空 | 缺少 section。 |
+| `8138` | `PRACTICE_PART_NOT_FOUND` | 板块不存在 | 板块不存在（试卷下没有该 section）。 |
+| `8140` | `PRACTICE_REPORT_PAPER_NOT_FOUND` | 练习卷不存在 | 报告查询时试卷不存在。 |
+| `8141` | `LISTENING_PAPER_CONTENT_OFFLINE` | 试卷内容已下架，无法作答 | 听力开练时试卷内容已下架。 |
+| `8142` | `LISTENING_PART_CONFIG_OFFLINE` | 板块配置已下架，无法作答 | 听力开练时板块配置已下架。 |
 
-> `message` 是**错误码字符串**（如 `DRAFT_LOCKED`）而非中文，前端按 `code` + `message` 组合映射文案，不要把 `message` 直接展示给用户。
+### A.3 听力
+
+| code | 常量 | message | 触发场景 |
+|---|---|---|---|
+| `8141` | `LISTENING_PAPER_CONTENT_OFFLINE` | 试卷内容已下架，无法作答 | 听力开练时试卷内容已下架。 |
+| `8142` | `LISTENING_PART_CONFIG_OFFLINE` | 板块配置已下架，无法作答 | 听力开练时板块配置已下架。 |
+
+### A.4 阅读
+
+| code | 常量 | message | 触发场景 |
+|---|---|---|---|
+| `8161` | `READING_RECORD_NOT_FOUND` | 阅读练习记录不存在 | 阅读练习记录不存在。 |
+| `8162` | `READING_RECORD_NOT_EDITABLE` | 阅读练习已结束，无法保存答案 | 阅读练习已结束，不能保存答案。 |
+| `8163` | `READING_RECORD_NOT_READABLE` | 阅读练习已结束，无法查看详情 | 阅读练习已结束，不能查看详情。 |
+| `8164` | `READING_RECORD_NOT_SUBMITTABLE` | 阅读练习当前状态不可交卷 | 阅读练习当前状态不可交卷（已交卷或已废弃）。 |
+| `8165` | `READING_QUESTIONS_NOT_AVAILABLE` | 仅进行中的阅读练习可以拉取题目 | 只有进行中的阅读练习才能拉题。 |
+| `8166` | `READING_PAPER_NOT_AVAILABLE` | 该试卷暂不可练习 | 试卷不可练习（未上架 / 未开放该版本）。 |
+| `8167` | `READING_PART_NOT_AVAILABLE` | 该板块暂不可练习 | 板块不可练习（板块开关关闭 / 无内容）。 |
+| `8168` | `READING_PART_NO_QUESTIONS` | 该板块没有可练习的题目 | 板块下没有已启用的题目。 |
+| `8169` | `READING_ANSWER_BATCH_DUPLICATED` | 批量答案中题目重复 | 批量保存时题目 ID 重复。 |
+| `8170` | `READING_ANSWER_BATCH_REQUIRED` | 批量答案不能为空 | 批量保存时答案列表为空。 |
+| `8171` | `READING_ANSWER_ITEM_REQUIRED` | 批量答案中存在空项 | 批量保存时存在空项。 |
+| `8172` | `READING_ANSWER_QUESTION_REQUIRED` | 题目 ID 不能为空 | 单题保存时 questionId 为空。 |
+| `8173` | `READING_ANSWER_QUESTION_MISMATCH` | 题目不属于当前阅读练习 | 题目不属于当前阅读练习的题集。 |
+| `8174` | `READING_QUESTION_GROUP_INVALID` | 题目分组数据不合法 | 题目分组数据不合法（快照解析失败）。 |
+| `8175` | `READING_PATH_QUESTION_MISMATCH` | 路径中的题目与答案中的题目不一致 | 路径里的题目与请求体里的题目不一致。 |
+| `8176` | `READING_REPORT_NOT_FOUND` | 阅读报告不存在 | 阅读报告不存在。 |
+| `8177` | `READING_REPORT_QUESTION_NOT_FOUND` | 报告题目不存在 | 报告里没有该题目。 |
+| `8178` | `READING_REPORT_GENERATION_FAILED` | 阅读报告生成失败，请稍后重试 | 阅读报告生成失败（服务端异常）。 |
+| `8179` | `READING_REPORT_NOT_SUBMITTED` | 阅读报告只能在交卷后生成 | 阅读报告只能在交卷后生成。 |
+| `8180` | `READING_SUBMISSION_SNAPSHOT_INCOMPLETE` | 交卷快照数据不完整，请重新交卷 | 交卷快照数据不完整（题目 / 题组缺失）。 |
+| `8181` | `READING_REPORT_NOT_READY` | 阅读报告尚未生成完成，请稍后再试 | 阅读报告尚未生成完成。 |
+| `8182` | `READING_REPORT_SNAPSHOT_INCOMPLETE` | 报告数据不完整，请联系管理员 | 报告侧快照数据不完整（已交卷但题库数据变更）。 |
+
+### A.5 写作
+
+| code | 常量 | message | 触发场景 |
+|---|---|---|---|
+| `8201` | `WRITING_RECORD_NOT_FOUND` | 写作练习不存在 | 写作练习不存在。 |
+| `8202` | `WRITING_RECORD_NOT_EDITABLE` | 写作练习已结束，无法修改答案 | 写作练习已结束，不能修改答案。 |
+| `8203` | `WRITING_RECORD_ALREADY_SUBMITTED` | 写作练习已提交，请勿重复交卷 | 写作练习已提交，不能重复交卷。 |
+| `8204` | `WRITING_RECORD_NOT_SUBMITTABLE` | 写作练习当前状态不可交卷 | 写作练习当前状态不可交卷。 |
+| `8205` | `WRITING_ANSWER_VERSION_CONFLICT` | 答案已在别处修改，请刷新后重试 | 答案版本号冲突（乐观锁）。 |
+| `8206` | `WRITING_QUESTION_SET_VERSION_CONFLICT` | 题目集已变更，请返回重新进入 | 题集版本变更，需重新进入练习。 |
+| `8207` | `WRITING_IDEMPOTENCY_KEY_REQUIRED` | 请求头 Idempotency-Key 不能为空 | 交卷缺少 Idempotency-Key 请求头。 |
+| `8208` | `WRITING_IDEMPOTENCY_KEY_TOO_LONG` | 请求头 Idempotency-Key 长度不能超过 128 个字符 | Idempotency-Key 过长。 |
+| `8209` | `WRITING_IDEMPOTENCY_KEY_REUSED` | 该 Idempotency-Key 已被其他写作练习使用 | Idempotency-Key 已被其他写作练习占用。 |
+| `8210` | `WRITING_QUESTION_DATA_INVALID` | 题目数据异常，请联系管理员 | 题目数据异常（快照缺字段 / 题型不认识），服务端数据问题。 |
+| `8211` | `WRITING_RULE_EVALUATOR_UNSUPPORTED` | 暂不支持该题型的评分规则 | 评分规则不支持该题型。 |
+| `8212` | `WRITING_REPORT_NOT_FOUND` | 写作报告不存在 | 写作报告不存在。 |
+| `8213` | `WRITING_REPORT_NOT_READY` | 写作报告仍在生成中，请稍后再试 | 写作报告仍在生成中。 |
+| `8214` | `WRITING_REPORT_ABSENT` | 该练习还没有生成报告 | 该练习还没有生成过报告。 |
+| `8215` | `WRITING_REPORT_QUESTION_NOT_FOUND` | 报告题目不存在 | 报告里没有该题目。 |
+| `8216` | `WRITING_ANSWER_QUESTION_NOT_IN_RECORD` | 当前题目不属于该写作练习 | 当前题目不属于该写作练习。 |
+| `8217` | `WRITING_ANSWER_QUESTION_MISMATCH` | 答案中的题目不属于当前练习 | 答案里的题目不属于当前练习。 |
+| `8218` | `WRITING_ANSWER_QUESTION_DUPLICATE` | 答案题目重复或缺失 | 答案题目重复或缺失。 |
+| `8219` | `WRITING_ANSWER_TYPE_MISMATCH` | 答案类型与题型不匹配 | 答案类型与题型不匹配（如给文本题传音频）。 |
+| `8220` | `WRITING_ANSWER_PAYLOAD_INCOMPLETE` | 答案保存参数不完整 | 答案保存参数不完整。 |
+| `8221` | `WRITING_TEXT_TOO_LONG` | 文本超过最大字数限制 | 文本超过最大字数。 |
+| `8222` | `WRITING_TRANSLATION_TOO_LONG` | 译文超过最大字数限制 | 译文超过最大字数。 |
+| `8223` | `WRITING_SUMMARY_TITLE_TOO_LONG` | 缩写标题超过最大字数限制 | 缩写标题超过最大字数。 |
+| `8224` | `WRITING_SUMMARY_TEXT_TOO_LONG` | 缩写正文超过最大字数限制 | 缩写正文超过最大字数。 |
+| `8225` | `WRITING_ANSWER_TEXT_INVALID` | 文本答案格式无效 | 文本答案格式无效。 |
+| `8226` | `WRITING_RECORDING_URL_INVALID` | 录音地址格式无效 | 录音地址格式无效。 |
+| `8227` | `WRITING_DURATION_INVALID` | 录音时长格式无效 | 录音时长格式无效。 |
+| `8228` | `WRITING_DURATION_NEGATIVE` | 录音时长不能为负数 | 录音时长为负数。 |
+| `8229` | `WRITING_HANZI_SINGLE_CHAR` | 汉字书写只能填写一个字 | 汉字书写题只能填一个字。 |
+| `8230` | `WRITING_TOKEN_INVALID` | 选项 token 格式无效 | 选项 token 格式无效。 |
+| `8231` | `WRITING_TOKEN_NOT_FOUND` | 选项 token 不存在或重复 | 选项 token 不存在或重复。 |
+| `8232` | `WRITING_TOKEN_SELECTION_INVALID` | selectedTokenIds 格式无效 | selectedTokenIds 格式无效。 |
+| `8233` | `WRITING_CONFLICT_STRATEGY_INVALID` | 冲突解决策略无效 | 冲突解决策略无效。 |
+| `8234` | `WRITING_LOCAL_OVERRIDE_INCOMPLETE` | 本机覆盖参数不完整 | 本机覆盖参数不完整。 |
+| `8235` | `WRITING_CURRENT_POSITION_REQUIRED` | currentQuestionId 和 currentQuestionNumber 不能同时为空 | 当前题号的两个入参同时为空。 |
+| `8236` | `WRITING_REPORT_MISSING_AFTER_SUBMIT` | 交卷后未找到对应报告，请稍后重试 | 交卷后未找到刚生成的报告（服务端数据不一致）。 |
+
+### A.6 翻译
+
+| code | 常量 | message | 触发场景 |
+|---|---|---|---|
+| `8251` | `TRANSLATION_RECORD_NOT_FOUND` | 翻译练习不存在 | 翻译练习不存在。 |
+| `8252` | `TRANSLATION_PART_NOT_FOUND` | 翻译板块不存在 | 翻译板块不存在。 |
+| `8253` | `TRANSLATION_PART_NO_QUESTIONS` | 翻译板块没有可练习的题目 | 翻译板块没有可练习的题目。 |
+| `8254` | `TRANSLATION_REPORT_NOT_FOUND` | 翻译报告不存在 | 翻译报告不存在。 |
+| `8255` | `TRANSLATION_PARAM_INCOMPLETE` | 试卷 ID 和板块号不能为空 | 翻译开练缺少 paperId 或 section。 |
+
+### A.7 口语
+
+| code | 常量 | message | 触发场景 |
+|---|---|---|---|
+| `8281` | `SPEAKING_REPORT_NOT_FOUND` | 口语报告不存在 | 口语报告不存在。 |
+| `8282` | `SPEAKING_REPORT_FORBIDDEN` | 无权查看该口语报告 | 无权查看该口语报告。 |
+| `8283` | `SPEAKING_REPORT_OPERATE_FORBIDDEN` | 无权操作该口语报告 | 无权操作该口语报告（解锁 / 重试）。 |
+| `8284` | `SPEAKING_UNLOCK_STATE_CONFLICT` | 解锁状态更新冲突，请稍后重试 | 解锁状态并发更新冲突。 |
+| `8285` | `SPEAKING_QUOTA_INSUFFICIENT` | 权益不足，请前往权益中心购买点数包后重试 | 口语报告解锁所需权益不足。 |
 
 ---
 

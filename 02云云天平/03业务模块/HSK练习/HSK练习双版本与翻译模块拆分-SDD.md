@@ -883,16 +883,31 @@ POST /translation/records/start {paperId, section}
 
 ## 4. 错误码
 
-沿用 `BusinessException(code, message)`（code 为 HTTP 语义码）。新增错误码**只在新增端点使用**，存量端点文案不动。
+🔴 **2026-11-17 起全面改造**：原来 `code` 是 HTTP 语义码（400/404/409，光 400 就挂了 45 种不同错误），`message` 里塞的是英文错误码字符串（`DRAFT_LOCKED`、`SECTION_MAPPING_MISMATCH`），前端既没法分支也没法直接展示。现在统一为：
 
-| code | message | 触发 |
+- **`code`** = 唯一业务码，号段 **8101–8299**，一类错误一个码，定义在
+  `com.hsktreasure.practice.hsk.support.HskPracticeErrorCode`（枚举，94 个，带中文 message 与 `toException()`）
+- **`message`** = 中文提示，可直接上屏
+- **HTTP 状态码恒 200**，业务码只在响应体里（`GlobalExceptionHandler` 统一处理）
+
+**号段规划**：通用 8101–8119｜目录 8131–8150｜听力 8141–8160｜阅读 8161–8199｜写作 8201–8240｜翻译 8251–8270｜口语 8281–8299。与 CSCA（8001–8099）、写字课 / 拼音课（7001–7099）互不冲突。
+
+**写法约定**：`throw HskPracticeErrorCode.XXX.toException()`，**禁止**再写 `new BusinessException(400, "SOME_CODE")`——后者会把机器码当人读文案返回。需要补充细节（如具体 ID、上限值）用 `toException("...")`，需要回传数据（如草稿冲突的 `{currentVersion, savedTime}`）用 `toException(data)`。
+
+**几个容易踩的码**：
+
+| code | 常量 | 说明 |
 |---|---|---|
-| 400 | `PRACTICE_VERSION_INVALID` | `version` 不在白名单 |
-| 400 | `SECTION_MAPPING_MISMATCH` | `(paperId, section)` 的实际模块不属于该接口 |
-| 404 | `TRANSLATION_NOT_IN_VERSION` | 2.0 调翻译写链路（目录接口返回空数组不报错） |
-| 409 | `TRANSLATION_NOT_SCORABLE` | 翻译交卷但无评分策略（P0 不报错，仅 P1 使用） |
+| 8108 | `SECTION_MAPPING_MISMATCH` | 开练的 `sectionMapping` 与题库实际归属不符 |
+| 8109 | `SUBJECTIVE_DRAFT_LOCKED` | 交卷后草稿冻结，不可再写 |
+| 8111 | `SUBJECTIVE_DRAFT_VERSION_CONFLICT` | 草稿乐观锁冲突，`data` 带当前版本 |
+| 8113 | `SUBJECTIVE_AI_QUOTA_INSUFFICIENT` | 写/译/说交卷时 AI 配额为 0，拦在交卷事务内 |
 
-数据异常（`parseInt("7-9")` 一类）本次要消灭：全部改走 `PracticeLevelCode`，改不净的包成 500 `QUESTION_DATA_INVALID`。
+🔴 **改码后必须复查「用 code 做分支」的地方**：`PracticeReportQueryServiceImpl` 原来靠 `e.getCode() == 404` 把「尚无报告」降级成 `data=null`，改成 8xxx 后这个判断会永远不成立、把无报告错报成异常。已改为按 `NO_REPORT_CODES` 集合判断；**以后新增「报告不存在」类码必须同步登记**。
+
+**数据异常**（`parseInt("7-9")` 一类）一律消灭，全走 `PracticeLevelCode`，改不净的包成 `WRITING_QUESTION_DATA_INVALID`(8210)。
+
+⚠️ **口语模块尚未并入**：`hsk/speaking/exception/SpeakingException` 仍是一套独立的异常（`responseCode + 英文 errorCode`，22 种码 / 58 处），未纳入 `HskPracticeErrorCode`。前端若调用口语接口，仍需按 `responseCode` + 英文字符串处理。
 
 ---
 
