@@ -99,9 +99,9 @@
 | `practice_paper_setting` | 【删除】整表 drop（卷级上下架由 `exam_paper.enabled_prac` 替代） |
 | `practice_paper_structure` | 【删除】整表 drop |
 | `practice_part_setting` | 【删除】整表 drop |
-| `practice_record` | 【删除】`structure_id`、`practice_name`；【启用】`question_ids` 快照 |
+| `practice_record` | 【删除】`structure_id`、`practice_name`；【启用】`question_ids` 快照；【新增 · 决策 30】`paused_time`（`bigint NULL`，离开时刻毫秒，`NULL`=在场）——时长改按在场累计（DDL 见 §4.7.0 G11） |
 | `practice_report` | 【删除】`structure_id` |
-| `practice_subjective_record` | 【**合并新表**】2026-11-16 起**写作 / 翻译 / 口语共用这一张表**（原 `practice_writing_record` / `practice_speaking_record` 已重命名为 `__bak20261116`）：列取两者并集，`section_mapping` 为 `SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAKING` 区分模块；`section_mapping` / `section` / `level_code` 已就位，`structure_id` 不再需要 |
+| `practice_subjective_record` | 【**合并新表**】2026-11-16 起**写作 / 翻译 / 口语共用这一张表**（原 `practice_writing_record` / `practice_speaking_record` 已重命名为 `__bak20261116`）：列取两者并集，`section_mapping` 为 `SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAKING` 区分模块；`section_mapping` / `section` / `level_code` 已就位，`structure_id` 不再需要。【新增 · 决策 30】**`paused_time`**（`bigint NULL`，离开时刻毫秒，`NULL`=在场）——`duration` 改按在场累计（DDL 见 §4.7.0 G11） |
 | `practice_subjective_answer` | 【**合并新表**】同上，三模块共用（原 `practice_writing_answer` / `practice_speaking_answer` 已 `__bak20261116`）：`practice_record_id` 关联记录、`snapshot` 单列存题目快照、`answer`（音频 URL）+ `answer_text`（文本/转写）、`duration_ms` / `grapheme_count`、`grading_state` / `points` / `max_score` / `is_full_score` / `analysis`；**无 `is_correct` 列**（主观题不判对错）。【新增 · 决策 28】**草稿三列** `answer_draft`（`mediumtext`，纯文字）、`answer_draft_version`（bigint 默认 0）、`answer_draft_saved_time`（bigint 毫秒）：位在 `answer_version` 之后，承载「作答中服务端暂存、重进恢复」，**不参与判分、不置 `answered`**（DDL 见 §4.7.0 G10） |
 | `sys_dict` / `sys_dict_item` | 【仅数据，不改表结构】新增 `hsk_practice_module_v2`（1007，4 项）/ `hsk_practice_module_v3`（1008，5 项），作为 `/hsk/modules` 的模块卡数据源 |
 
