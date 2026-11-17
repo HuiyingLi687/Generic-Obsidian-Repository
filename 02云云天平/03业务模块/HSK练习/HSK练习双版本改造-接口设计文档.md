@@ -2423,12 +2423,14 @@ E1 首页模块卡
 
 | 步 | 端点 | 说明 |
 |---|---|---|
-| ① | `B5 POST /translation/records/start` `{paperId, sectionMapping, section}` | 委托 `WritingAttemptService#start`（`sectionMapping` 必须为 `SEC_TRANSLATION`；`section=1` 笔译 / `2` 口译） |
+| ① | `B5 POST /translation/records/start` `{paperId, sectionMapping, section}` | 委托 `WritingAttemptService#start`（`sectionMapping` 必须为 `SEC_TRANSLATION`；`section=1` 笔译 / `2` 口译）；响应补 `durationSeconds` / `paused`（G11） |
 | ①b | `B6 GET /translation/records/{recordId}` | 练习详情 |
 | ①c | `GET /translation/records/{recordId}/answer-card` | 答题卡（决策 25，口径同写作）：只回「已答/未答」，`answered` 按 `practice_subjective_answer` 有无记录；**无对错/标记/收藏** |
 | ② | `B7 GET /translation/records/{recordId}/questions` | 逐题下发 `layout`（笔译 `input` / 口译 `record`） |
 | ③ | `B8 PUT /translation/records/{recordId}/answers` | 批量保存（复用写作答案 DTO） |
 | ③a | `PUT /translation/records/{recordId}/questions/{questionId}/draft` | **草稿保存（决策 28 / G10）**：笔译译文 / 口译提纲 → `answer_draft`；**不置 `answered`、不判分** |
+| ③b | `POST /translation/records/{recordId}/pause` | **暂停（决策 30 / G11，新增）**：结算本段 + 记位置；请求体无 `durationSeconds`；返回 `{durationSeconds, paused:true}` |
+| ③c | `POST /translation/records/{recordId}/resume` | **恢复（决策 30，新增）**：`paused_time = NULL`，幂等 |
 | ④ | `B9 POST /translation/records/{recordId}/submit` | 交卷，`Idempotency-Key` 必填 |
 | ⑤ | `GET /papers/{paperId}/reports/latest?module=translation&section=` | **CR**（决策 20/21）：AI 评分未完成 `reportStatus=GRADING`，完成 `READY`；2.0 的卷 → 404（翻译仅 3.0 有数据） |
 | ⑤b | ~~`B10 GET /translation/reports/{reportId}`~~ → `GET /translation/records/{recordId}/report` | **报告详情（决策 24）**：reportId 随报告表退场，对齐听/读；逐题反馈 `/report/questions/{questionId}` 按 `grading_state` 取 AI 结果 |
@@ -2628,6 +2630,7 @@ paused_time = now                            // pause 与 submit 都置；resume
 | `start_time` | 保持「首次开始」语义不动，**不拿它当段起点**（否则首次开始时间丢失） |
 | `MAX_SEGMENT` | **30 分钟（1800s）**。前端每 5–10 分钟 `pause` 一次 + `visibilitychange` 一次，单段远低于上界；该上界只兜「杀进程 / 断网」，正常不触发 |
 | 客户端上报 | 🔴 **字段移除**。`pause` 请求体不再有 `durationSeconds`（听力前端同步改，**不保留兼容字段**），时长一律服务端自算——防客户端时钟不准与刷时长；`start_time` 为 NULL 的历史脏数据不累加、保持原 `duration` |
+| `baseVersion` | 听力现有 `ListeningRecordPauseRequest` 带 `@NotNull baseVersion`，但**乐观锁校验早已被注释掉**（`ListeningRecordServiceImpl#pause` 里那段 `if` 是注释），无实际作用 → 本次一并去掉；前端若仍传，服务端忽略 |
 
 **两个端点（五模块同构）**：
 
@@ -3215,6 +3218,9 @@ ALTER TABLE practice_subjective_record
 | `core/entity/PracticeLevelConfig.java` / `core/mapper/PracticeLevelConfigMapper.java` | **整文件删除** —— 练习侧不再映射 `hsk_level_config`（该表归 HSK 考试侧 exam-service） |
 | `core/entity/PracticePaperStructure.java` / `PracticePartSetting.java` / `PracticePaperSetting.java` | **整文件删除** |
 | `core/mapper/PracticePaperStructureMapper.java` / `PracticePartSettingMapper.java` / `PracticePaperSettingMapper.java` | **整文件删除** |
+| `hsk/listening/service/impl/ListeningRecordServiceImpl` + `ListeningSubmissionFinalizer` | **决策 30**：`pause` 由「累加客户端上报值」改为服务端时间戳结算；`submit` 去掉二次累加上报值；新增 `resume`；`ListeningRecordPauseRequest` **删 `durationSeconds`** 字段 |
+| `hsk/reading/service/impl/ReadingRecordServiceImpl` + `ReadingSubmissionFinalizer` | **决策 30**：`pause` 补结算（原来只记位置）；`submit` 改累计口径；新增 `resume`；`ReadingRecordController#abandon` 摘 `@PostMapping`（**保留方法体**） |
+| `hsk/subjective/service/impl/SubjectivePracticeServiceImpl#resolveDuration` | **决策 30**：由 `now − start_time` 墙钟差改为累加结算 —— 写/译/说**唯一**时长口径入口 |
 
 **其它服务（仅实体加字段，无逻辑改动，已完成）**：`exam-service` 与 `manage` 各 5 个实体加 `enabledPrac` / `enabledExam`。
 
@@ -3230,7 +3236,8 @@ ALTER TABLE practice_subjective_record
 | **模块字典**（`/hsk/modules` 数据源） | ✅ 已铺 9 项：`hsk_practice_module_v2`（id 1007，4 项）/ `hsk_practice_module_v3`（id 1008，5 项）；`item_value` 全部命中 `practice_module_level_config`；`description` = `moduleCode`；`item_properties` = `{moduleCode,nameEn,nameVi}` |
 | 代码侧 `enabled_prac` 过滤 | ✅ 已改完并编译通过 |
 | 写/译/说作答表（决策 26） | ✅ 已合并为 `practice_subjective_record` + `practice_subjective_answer`（2026-11-16 新建，各 0 行）；原 `practice_writing_record/answer`、`practice_speaking_record/answer` 四表已改名 `__bak20261116`（保留回滚） |
-| 待补 | `uk_module_part` 唯一键；清 `SEC_SPEAKING` 残留 4 行（§9.1.1） |
+| 作答草稿三列（决策 28 / G10） | ✅ 已加（`db/109-subjective-answer-draft.sql`，实测 `answer_draft` / `_version` / `_saved_time` 三列在位） |
+| 待补 | `uk_module_part` 唯一键；`practice_record` / `practice_subjective_record` 的 **`paused_time`** 列（决策 30 / G11，见 §9.1.1）；清 `SEC_SPEAKING` 残留 4 行 |
 | 生产库 | 差异见 §9.1，**本期不处理** |
 
 ---
