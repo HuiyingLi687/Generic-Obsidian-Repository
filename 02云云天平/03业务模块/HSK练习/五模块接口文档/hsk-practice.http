@@ -199,8 +199,7 @@ Authorization: Bearer {{token}}
   "answers": [
     { "questionId": {{lisQuestionId}}, "selectedOptionId": "{{lisOption}}" }
   ],
-  "currentQuestionId": {{lisQuestionId}},
-  "durationSeconds": 30
+  "currentQuestionId": {{lisQuestionId}}
 }
 
 > {%
@@ -212,7 +211,7 @@ Authorization: Bearer {{token}}
 %}
 
 
-### 15 听力 · 暂停（存进度 + 草稿答案）
+### 15 听力 · 暂停（服务端结算在场时长 + 草稿答案，决策 30：请求体没有 durationSeconds）
 POST {{practice}}/listening/records/{{lisRecordId}}/pause
 Content-Type: application/json
 X-Client-Type: APP
@@ -220,7 +219,6 @@ Authorization: Bearer {{token}}
 
 {
   "currentQuestionId": {{lisQuestionId}},
-  "durationSeconds": 60,
   "draftAnswers": [
     { "questionId": {{lisQuestionId}}, "answer": "{{lisOption}}", "answered": 1 }
   ]
@@ -229,6 +227,21 @@ Authorization: Bearer {{token}}
 > {%
     client.test("暂停成功", function () {
         client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    client.log("durationSeconds=" + response.body.data.durationSeconds +
+               " paused=" + response.body.data.paused);
+%}
+
+
+### 15b 听力 · 恢复（决策 30 新增，幂等）
+POST {{practice}}/listening/records/{{lisRecordId}}/resume
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    client.test("恢复成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+        client.assert(response.body.data.paused === false, "paused=" + response.body.data.paused);
     });
 %}
 
