@@ -60,7 +60,7 @@
 | 27  | **写/译/说 AI 评分扣费（决策登记，详见 SDD）**（2026-11-16） | AI 评分收 `ai_analysis` 配额，口径两条：**按卷扣一次**（一次交卷 = 1 次配额，不按题）+ **评分成功才扣**（全卷 AI 题到终态且 `ai_scored_count > 0`；全失败不扣）。**它会改交卷接口行为**：交卷时无 AI 题直接置 `ai_deduct_state=3`；有 AI 题先 `GET /benefit/aiQuota` 软校验，**余额 0 → `4001` 拦住交卷**（查询异常一律放行），校验在交卷事务内、回滚得掉；评分线程用 CAS 抢「`ai_deduct_state=0`」后调 `POST /benefit/deductAi`（`sceneCode=ai_analysis`、`bizId=recordId`），失败转 `2` 记账 + WARN，**分数不回收**。开关 `subjective.grading.deduct-enabled`（默认 `true`）。🔴 前端需处理交卷 `4001`（引导充值，别当网络错误重试）。`ai_deduct_state` / `ai_deduct_time` TEST 已建，PROD 随 E19 一起上 |
 | 28  | **作答草稿：`practice_subjective_answer` 新增 3 列 + 保存/恢复通道**（2026-11-17，写/译/说） | **目标**：主观题作答中「服务端暂存、每次进来恢复」。🔴 **必须单独一列，不能复用 `answer_text`**——`answer_text` 是判分输入（写作正文 / 口语转写），草稿写进去会改变判分对象与 `grapheme_count`；而且口语草稿是**提纲**，混进 `answer_text` 会被当成转写参与评分。**DDL 三列**：`answer_draft mediumtext NULL`（正文，三个模块**都只存文字**：写作正文 / 笔译译文 / 口语·口译提纲）、`answer_draft_version bigint NOT NULL DEFAULT 0`（每次保存 +1，丢弃乱序旧写）、`answer_draft_saved_time bigint NULL`（服务端毫秒，供恢复提示与「草稿是否比答案新」判断）。**接口**：保存 `PUT /{mod}/records/{recordId}/questions/{questionId}/draft`（`PUT` 全量覆盖，`expectedVersion` 可选乐观锁 → 不匹配 `409`）；恢复**不单开端点**，挂在 ② `GET /{mod}/records/{recordId}/questions` 的每道题 `answerDraft` 字段（开场一次拿全）。🔴 **边界**：① 草稿**不置 `answered`**（答题卡仍显示未答，G9 不变）；② **不参与判分**（`grading_state`/`points` 不受影响）；③ 交卷**不自动拿草稿兜底**，改为交卷响应回显 `draftNotSubmitted:[questionId]` 提示前端返回保存；④ 交卷后草稿冻结只读、不清理；⑤ 不跨场次（新 record 新行）。⚠️ **命名勿混**：这里的「草稿」是**题目级**，与 `/parts[].draft`（**记录级**「未提交的那次 record」）不是一回事，接口字段一律用 **`answerDraft`**。详见 §4.7.0 G10 |
 | 29  | **交卷路名五模块统一为 `/submit`**（2026-11-17；翻译原 `/submissions` 废除） | 🔴 翻译的交卷路径原先沿用旧 `attempts` 链路的复数写法 `POST /translation/records/{recordId}/submissions`，与写作/口语/听力的 `/{recordId}/submit` 不同名。本次**统一为 `/submit`**，五模块一致；**老路径 `/submissions` 直接下线，不保留别名**（`TranslationPracticeController` 的 `@PostMapping` 已改）。🔴 **前端若接过翻译交卷接口，必须同步改路径**，否则 404。旧 `attempts` 链路（`TranslationSubmissionController` 等三个控制器）已于决策 24 摘掉 `@RestController`，不对外暴露，路径一并同步。|
-| 30  | **作答时长改「在场累计」（顺计时 + 可退出）**（2026-11-17；部分推翻决策 24 的时长口径） | **背景**：练习是**顺计时**、允许中途退出，但现状五模块四种口径——听力累加 `pause` 上报值、阅读只认交卷上报、写/译/说按 `end_time − start_time` **墙钟差**（退出吃饭三小时回来交卷，报告就显示「答题时间 3 小时」）。**目标**：`durationSeconds` = **累计在场秒数**，退出不计、回来续算。**DDL 一列**（两表各一）：`paused_time bigint NULL`（离开时刻毫秒；`NULL` = 在场）——存量 `NULL` 等价旧口径、零回填。🔴 **结算公式唯一入口**（`pause` / `submit` / 任何保存动作都走它）：`delta = now − (paused_time ?? start_time)` → `duration += clamp(delta, 0, 1800)` → `paused_time = now`；`resume` 只把 `paused_time` 置 `NULL`。🔴 **五模块同构两端点**：`POST /{mod}/records/{recordId}/pause`（结算 + 存草稿 + 记位置，**退出时一次请求完成**）、`POST /{mod}/records/{recordId}/resume`（幂等置 `NULL`，返回 `durationSeconds`）。🔴 **时长只由服务端时间戳算**：客户端上报的 `durationSeconds` 降级为「`start_time` 缺失时兜底」（听力现有上报值不再采信，有 `start_time` 就一定自算，防客户端时钟与刷时长）。🔴 **续练要能续上计时器**：① start 与 ①b 记录详情必须下发 `durationSeconds` + `paused`，前端据此把正计时器恢复到已累计值，不能从 0 起。**上界 `clamp` 30 分钟**只兜崩溃/杀进程（前端每 5–10 分钟 `pause` 一次即远低于此），正常不触发。**与判分/时限无关**：不影响 `grading_state`；`durationMinutes` 只是**建议时长**，顺计时不限时、不强制交卷。详见 §4.7.0 G11 |
+| 30  | **作答时长改「在场累计」（顺计时 + 可退出）**（2026-11-17；部分推翻决策 24 的时长口径） | **背景**：练习是**顺计时**、允许中途退出，但现状五模块四种口径——听力累加 `pause` 上报值、阅读只认交卷上报、写/译/说按 `end_time − start_time` **墙钟差**（退出吃饭三小时回来交卷，报告就显示「答题时间 3 小时」）。**目标**：`durationSeconds` = **累计在场秒数**，退出不计、回来续算。**DDL 一列**（两表各一）：`paused_time bigint NULL`（离开时刻毫秒；`NULL` = 在场）——存量 `NULL` 等价旧口径、零回填。🔴 **结算公式唯一入口**（`pause` / `submit` / 任何保存动作都走它）：`delta = now − (paused_time ?? start_time)` → `duration += clamp(delta, 0, 1800)` → `paused_time = now`；`resume` 只把 `paused_time` 置 `NULL`。🔴 **五模块同构两端点**：`POST /{mod}/records/{recordId}/pause`（结算 + 存草稿 + 记位置，**退出时一次请求完成**）、`POST /{mod}/records/{recordId}/resume`（幂等置 `NULL`，返回 `durationSeconds`）。🔴 **时长只由服务端时间戳算**：`pause` 请求体**直接删掉 `durationSeconds` 字段**（听力现有前端同步改，不做兼容），一律服务端自算——防客户端时钟不准，也防刷时长；`start_time` 为 NULL 的历史脏数据不累加、保持原值。🔴 **续练要能续上计时器**：① start 与 ①b 记录详情必须下发 `durationSeconds` + `paused`，前端据此把正计时器恢复到已累计值，不能从 0 起。**上界 `clamp` 30 分钟**只兜崩溃/杀进程（前端每 5–10 分钟 `pause` 一次即远低于此），正常不触发。**与判分/时限无关**：不影响 `grading_state`；`durationMinutes` 只是**建议时长**，顺计时不限时、不强制交卷。详见 §4.7.0 G11 |
 | 30  | **业务错误码全面细分 + message 中文化**（2026-11-17） | 🔴 **问题**：改造前 `code` 只有 `400 / 404 / 409 / 500` 四个 HTTP 语义值（光 `400` 就挂了 45 种不同错误），`message` 里塞的是英文错误码字符串（`DRAFT_LOCKED`、`SECTION_MAPPING_MISMATCH`，阅读模块甚至直接返回整句英文 `Reading practice record does not exist`）。前端既无法按 `code` 分支（409 下 12 种错误处理方式完全不同），也不能把 `message` 直接展示。**改法**：新建 `HskPracticeErrorCode` 枚举（`hsk/support/`），**号段 8101–8299**，一类错误一个码，共 94 个；`code` 改为唯一业务码、`message` 改为中文可上屏文案。号段：通用 8101–8119 / 目录 8131–8150 / 听力 8141–8160 / 阅读 8161–8199 / 写作 8201–8240 / 翻译 8251–8270 / 口语 8281–8299，与 CSCA（8001–8099）不冲突。**替换量**：150 处 `new BusinessException` + 30 处测试断言。**写法**：`throw HskPracticeErrorCode.XXX.toException()`，禁再写 `new BusinessException(400, "CODE")`。🔴 **改码引发的隐性 bug**：`PracticeReportQueryServiceImpl` 靠 `e.getCode() == 404` 判断「板块尚无报告」并降级为 `data=null`，码改后该判断永不成立 → 已改为 `NO_REPORT_CODES` 集合判断，**新增「报告不存在」类码必须同步登记**。⚠️ **口语未并入**：`SpeakingException`（22 种码 / 58 处）是独立体系，未纳入本次改造，前端调口语接口仍需按 `responseCode` + 英文字符串处理 |
 
 ---
@@ -1825,7 +1825,7 @@ Authorization: Bearer xxx
 | `reportStatus` | `GRADING`（`grading_state=0`，AI 还在评分）/ `READY`（全部 `grading_state=1`）/ `FAILED` |
 | `score` / `maxScore` | = record 表 `final_score` / `total_score`；未评完时 `score=null` |
 | `objective*` 统计 | = record 表 `objective_count` / `objective_correct_count`（翻译通常无客观题 → `null`） |
-| `durationSeconds` | = `end_time − start_time`（决策 24，不再有 `accumulatedActiveSeconds` 会话累计） |
+| `durationSeconds` | = **累计在场秒**（决策 30 / G11：`pause` 分段结算进 record 的 `duration` / `duration_seconds`，**不是** `end_time − start_time`） |
 | `questions[]` | 逐题明细：每题带 `gradingState` / `points` / `analysis`（来自 `practice_subjective_answer`，快照列取题目题干） |
 
 **本接口抛出错误码**：401 / 404
@@ -1939,7 +1939,7 @@ Authorization: Bearer xxx
 | `recordId` | Long | — | **五模块全有**（2026-11-16）：听/读 = `practice_record.id`；**写/译/说 = `practice_subjective_record.id`（三模块共表）**。**`answerCard` 就按该 ID 查各自 record 表的 `question_ids` 构造**；报告详情也走 `GET /{mod}/records/{recordId}/report` |
 | `reportStatus` | String | — | `READY` / `GRADING` / `FAILED`。听/读交卷即 `READY`；写/译/说按 AI 评分进度：**`grading_state=1`（全部题目评完）→ `READY`，`=0`（还在评分中）→ `GRADING`，`=2`（未答或评分失败）→ `FAILED`**。⚠️ 口语原字段名是 `status`，统一改 `reportStatus`（§6.1 #14） |
 | `submittedTime` / `generatedTime` | Long | — | 交卷时间（= record 表 `end_time`）/ 评分完成时间；未完成时 `generatedTime = null` |
-| `durationSeconds` | Integer | **答题时间** `05:42:30` | 本次作答时长（秒），前端格式化 `HH:MM:SS`。**口径（决策 24）**：一律取 record 表的 `end_time − start_time` 间隔（写/译/说 = `practice_subjective_record`，其 `duration` 列已缓存秒数可直接取），不再用会话心跳累计 |
+| `durationSeconds` | Integer | **答题时间** `05:42:30` | 本次作答**累计在场**时长（秒），前端格式化 `HH:MM:SS`。**口径（决策 30 / G11）**：直接读 record 表的累计列（听/读 `practice_record.duration_seconds`，写/译/说 `practice_subjective_record.duration`）——`pause` 分段结算、退出期间不计；🔴 **不再用 `end_time − start_time`**，那是墙钟差、会把离线时间算进去 |
 | `totalQuestions` | Integer | **答对情况** `3/5` 分母 | 板块总题数。⚠️ 阅读原字段名 `totalQuestionCount`，统一改 `totalQuestions`（§6.1 #14） |
 | `answeredCount` / `correctCount` / `wrongCount` | Integer | **答对情况** `3/5` 分子 | 答题数 / 答对 / 答错；`correctCount + wrongCount = answeredCount` |
 | `accuracyRate` | BigDecimal | **正确率** `25%` | 0–100 两位小数，= `correctCount / totalQuestions × 100`（分母用总题数，未答视作错） |
@@ -1961,8 +1961,8 @@ Authorization: Bearer xxx
 | `module` | 填充口径 |
 |---|---|
 | `listening` / `reading` | 全量填充，交卷即 `READY`。**`answerCard` 构造：拿 record 表 `question_ids` 放进数组**——数组顺序即 `order`（下标 +1，与题目下发顺序一致）；每题 `correct` 取交卷快照的 `is_correct`（HSK 不判分，以交卷时前端传值为准），**不现查题库** |
-| `writing` | `durationSeconds` = `end_time − start_time`（决策 24）；`totalQuestions` / 客观统计（`objectiveCount` / `objectiveCorrectCount`）交卷即填；AI 部分（`aiScoredCount` / 逐题 `points`）随 `grading_state` 推进：全 `1` → `reportStatus=READY`，有 `0` → `GRADING` |
-| `speaking` | 同写作口径：`durationSeconds` = `end_time − start_time`；`scoredCount` 随 `grading_state` 推进，未评完 → `GRADING` |
+| `writing` | `durationSeconds` = record 表**累计在场秒**（决策 30）；`totalQuestions` / 客观统计（`objectiveCount` / `objectiveCorrectCount`）交卷即填；AI 部分（`aiScoredCount` / 逐题 `points`）随 `grading_state` 推进：全 `1` → `reportStatus=READY`，有 `0` → `GRADING` |
+| `speaking` | 同写作口径：`durationSeconds` = **累计在场秒**（决策 30）；`scoredCount` 随 `grading_state` 推进，未评完 → `GRADING` |
 | `translation` | 同写作口径（同一对 record/answer 表）。🔴 原「P0 恒 `UNAVAILABLE`」随报告表退场**作废**——评分进度一律按 `grading_state` 回报。⚠️ 翻译仅 3.0 有数据（决策 9）：2.0 的卷查不到 `SEC_TRANSLATION` 板块 → **404**，不是 `data=null` |
 
 > ⚠️ **C1–C4 原字段登记已被本节取代**：下方原 C1–C4 小节的「返回完整示例」仅作迁移对照（旧字段名 / 旧形状），**不要再按它们开发**。字段名差异：阅读 `totalQuestionCount` → `totalQuestions`；口语 `status` → `reportStatus`；写作/口语原平铺字段 → 收进 `writing` / `speaking` 扩展块。
@@ -2391,8 +2391,9 @@ E1 首页模块卡
 | ②   | `GET /writing/records/{recordId}/questions`                                         | **修 B-04 后逐题下发 `layout`**（改读 `layout` 原样透传，弃 `type_id_mapping` switch）                                                                                |
 | ③   | `PUT /writing/records/{recordId}/answers`                                           | 批量保存答案                                                                                                                                                |
 | ③d  | `PUT /writing/records/{recordId}/questions/{questionId}/draft`                      | **草稿保存（决策 28 / G10）**：正文暂存 `answer_draft`，**不置 `answered`、不判分**；重进由 ② 的 `answerDraft` 恢复                                    |
-| ③b  | ~~`POST /writing/records/{recordId}/sessions` → `/{sessionId}/heartbeat` → `/end`~~ | 🔴 **删除（2026-11-16，决策 24）**：练习是**倒计时**制，无心跳必要；`durationSeconds` = `end_time` − `start_time`（`practice_subjective_record` 两列已有，零改造）。会话三端点实现代码**注释掉**，不删文件 |
-| ③c  | ~~`POST /writing/records/{recordId}/pause`~~                                        | 🔴 **注释掉（2026-11-16，决策 24）**：倒计时练习不需要暂停                                                                                                               |
+| ③b  | ~~`POST /writing/records/{recordId}/sessions` → `/{sessionId}/heartbeat` → `/end`~~ | 🔴 **删除（2026-11-16，决策 24）**：顺计时只需进出时间戳、无心跳必要；会话三端点实现代码**注释掉**，不删文件（决策 30 **未**恢复） |
+| ③c  | `POST /writing/records/{recordId}/pause`                                            | 🟡 **恢复（决策 30 / G11）**：服务端结算 `duration += now − (paused_time ?? start_time)` + 存草稿 + 记位置；**请求体无 `durationSeconds`**；返回 `{durationSeconds, paused:true}` |
+| ③c2 | `POST /writing/records/{recordId}/resume`                                           | 🟡 **新增（决策 30）**：`paused_time = NULL`，返回 `{durationSeconds, paused:false}`；幂等 |
 | ④   | `POST /writing/records/{recordId}/submit`                                           | 交卷，`Idempotency-Key` 必填。**路径是 `/submit`**，与翻译 B9 同名（2026-11-17 已统一）                                                                     |
 | ⑤   | `GET /papers/{paperId}/reports/latest?module=writing&section=`                      | **CR** 轮询：AI 评分未完成时 `reportStatus=GRADING`（`grading_state=0`），完成后 `READY` 并携带评分结果                                                                     |
 | ⑤b  | `GET /writing/records/{recordId}/report`                                            | 报告详情（**对齐听/读，2026-11-16 决策 24**）：reportId 已随报告表退场，报告数据由 `practice_subjective_record` + `practice_subjective_answer` 现拼                                      |
@@ -2408,8 +2409,9 @@ E1 首页模块卡
 | ②   | `GET /speaking/records/{recordId}/questions`                                  | **P0 恒 `layout=record`**（`speaking_exam_paper_question` 无 `layout` 列，决策见 §4.0.5）            |
 | ③   | `POST /speaking/records/{recordId}/questions/{questionId}/recordings/prepare` | **录音两步·第 1 步**：拿预签名直传凭证                                                                     |
 | ③b  | `POST /speaking/records/{recordId}/questions/{questionId}/answers`            | **录音两步·第 2 步**：上传完成后保存答案（音频 key + 时长）                                                       |
-| ③c  | ~~`POST /speaking/records/{recordId}/sessions` → heartbeat → end~~            | 🔴 **删除（决策 24）**：同写作——倒计时制无心跳，时长 = `end_time` − `start_time`；会话端点注释掉                        |
-| ③d  | ~~`POST /speaking/records/{recordId}/pause`~~                                 | 🔴 **注释掉（决策 24）**：倒计时练习不需要暂停                                                                |
+| ③c  | ~~`POST /speaking/records/{recordId}/sessions` → heartbeat → end~~            | 🔴 **删除（决策 24）**：顺计时无心跳必要；会话端点注释掉（决策 30 **未**恢复）                        |
+| ③d  | `POST /speaking/records/{recordId}/pause`                                     | 🟡 **恢复（决策 30 / G11）**：结算 `duration += now − (paused_time ?? start_time)` + 记位置；请求体无 `durationSeconds` |
+| ③d2 | `POST /speaking/records/{recordId}/resume`                                    | 🟡 **新增（决策 30）**：`paused_time = NULL`；幂等 |
 | ③e  | `PUT /speaking/records/{recordId}/questions/{questionId}/draft`               | **草稿保存（决策 28 / G10）**：提纲文字 → `answer_draft`；**不写 `answer`/`answer_text`、不置 `answered`**；重进由 ② 恢复 |
 | ④   | `POST /speaking/records/{recordId}/submit`                                    | 交卷，`Idempotency-Key` 必填；**异步 AI 判分**                                                        |
 | ⑤   | `GET /papers/{paperId}/reports/latest?module=speaking&section=`               | **CR** 轮询：AI 判分未完成 `reportStatus=GRADING`（`grading_state=0`），完成 `READY`                     |
@@ -2431,7 +2433,7 @@ E1 首页模块卡
 | ⑤ | `GET /papers/{paperId}/reports/latest?module=translation&section=` | **CR**（决策 20/21）：AI 评分未完成 `reportStatus=GRADING`，完成 `READY`；2.0 的卷 → 404（翻译仅 3.0 有数据） |
 | ⑤b | ~~`B10 GET /translation/reports/{reportId}`~~ → `GET /translation/records/{recordId}/report` | **报告详情（决策 24）**：reportId 随报告表退场，对齐听/读；逐题反馈 `/report/questions/{questionId}` 按 `grading_state` 取 AI 结果 |
 
-> 翻译**没有** pause / sessions 端点（决策 24 后写作同款也已注释掉）；`durationSeconds` = `practice_subjective_record.end_time − start_time`（§4.3 填充规则）。
+> 翻译的 `pause` / `resume` 随决策 30 新增（原「翻译无 pause」作废），委托写作链路；`durationSeconds` = **累计在场秒**（`practice_subjective_record.duration`，G11），**不是** `end_time − start_time`。
 
 ### 4.6.7 前端对接清单（一页速查）
 
@@ -2497,7 +2499,7 @@ E1 首页模块卡
 
 > 🔴 **本期只做「已答/未答」**：`questions[]` 只有 `order` / `questionId` / `answered` / `current` 四个字段；标记、收藏、错题都不在设计内（对错只在 CR 报告页）。
 
-> 与 CSCA 的差异：仅参考其**结构**。CSCA 是**考试**（一整卷 + `remainingSeconds` 倒计时）；练习是**板块粒度**——入参已有 `recordId`，卷/板块信息从记录快照取，倒计时由前端按板块时长自理。
+> 与 CSCA 的差异：仅参考其**结构**。CSCA 是**考试**（一整卷 + `remainingSeconds` 倒计时 + 到时强制交卷）；练习是**顺计时**（正计时、可退出、退出停表）——入参已有 `recordId`、卷/板块信息从记录快照取，`durationMinutes` 只是**建议时长**、不强制交卷。
 
 **G10 作答草稿（决策 28，写/译/说三模块同构，服务端暂存 + 重进恢复）**：
 
@@ -2624,7 +2626,7 @@ paused_time = now                            // pause 与 submit 都置；resume
 | `paused_time` | `NULL` = 在场；非 `NULL` = 上次离开时刻，同时充当「本段起点」 |
 | `start_time` | 保持「首次开始」语义不动，**不拿它当段起点**（否则首次开始时间丢失） |
 | `MAX_SEGMENT` | **30 分钟（1800s）**。前端每 5–10 分钟 `pause` 一次 + `visibilitychange` 一次，单段远低于上界；该上界只兜「杀进程 / 断网」，正常不触发 |
-| 客户端上报 | 🔴 **不采信**。听力现有 `pause.durationSeconds` 降级为「`start_time` 为空时兜底」，前端可逐步停传；只要有 `start_time` 一律服务端自算（防客户端时钟不准与刷时长） |
+| 客户端上报 | 🔴 **字段移除**。`pause` 请求体不再有 `durationSeconds`（听力前端同步改，**不保留兼容字段**），时长一律服务端自算——防客户端时钟不准与刷时长；`start_time` 为 NULL 的历史脏数据不累加、保持原 `duration` |
 
 **两个端点（五模块同构）**：
 
@@ -2658,7 +2660,7 @@ paused_time = now                            // pause 与 submit 都置；resume
 
 | 模块 | 现有实现 | 改什么 |
 |---|---|---|
-| 听 | `ListeningRecordServiceImpl#pause` 累加**客户端上报值**；`ListeningSubmissionFinalizer` 交卷再累加一次上报值 | 改服务端时间戳结算；上报值降为兜底；新增 `resume`；start/详情补 `durationSeconds` + `paused` |
+| 听 | `ListeningRecordServiceImpl#pause` 累加**客户端上报值**；`ListeningSubmissionFinalizer` 交卷再累加一次上报值 | 改服务端时间戳结算；**删掉 DTO 的 `durationSeconds` 字段**（前端同步改）；新增 `resume`；start/详情补 `durationSeconds` + `paused` |
 | 读 | `ReadingRecordServiceImpl#pause` **只记位置不记时长**；`ReadingSubmissionFinalizer` 只认交卷上报值 | `pause` 补结算；submit 改口径；新增 `resume`；`abandon` 下线 |
 | 写 / 译 / 说 | `SubjectivePracticeServiceImpl#resolveDuration` = `now − start_time` 墙钟差 | 改累加结算（**仅此一处**）；`pause` 路径 `/attempts`→`/records` 并补结算；新增 `resume`（翻译的 `pause` 原「无」→ 新增） |
 
@@ -2678,7 +2680,7 @@ paused_time = now                            // pause 与 submit 都置；resume
 | 3   | `GET /listening/records/{recordId}/questions`                        | 🔴  | 数据源改三元组 + `enabled_prac=1`（G1）；共享音频走 `question_shared_audio`（G8）；逐题 `layout`                                    |
 | 4   | `PUT /listening/records/{recordId}/answers/{questionId}`             | 🟡  | 单题保存；`current_question_number` 口径（G5）                                                                           |
 | 5   | `PUT /listening/records/{recordId}/answers`                          | 🟡  | 批量保存；同上                                                                                                         |
-| 6   | `POST /listening/records/{recordId}/pause`                           | 🟡  | **改口径（决策 30 / G11）**：服务端结算 `duration += now − (paused_time ?? start_time)`；**客户端上报的 `durationSeconds` 降级为 `start_time` 缺失时兜底、不再采信**；返回 `{durationSeconds, paused:true}` |
+| 6   | `POST /listening/records/{recordId}/pause`                           | 🟡  | **改口径（决策 30 / G11）**：服务端结算 `duration += now − (paused_time ?? start_time)`；🔴 **请求体删掉 `durationSeconds` 字段**（前端同步改，不做兼容）；返回 `{durationSeconds, paused:true}` |
 | 6b  | `POST /listening/records/{recordId}/resume`                          | 🟡  | **新增（决策 30）**：`paused_time = NULL`，返回 `{durationSeconds, paused:false}`；幂等 |
 | 7   | `POST /listening/records/{recordId}/submit`                          | 🔴  | `idempotency_key` 拼法改 `{module}-{recordId}-submit`（G4，去 `-1`）；判分口径 G6 对齐；**提交时冻结题目快照**（G2，与现状一致，确认实现覆盖音频快照字段）   |
 | 8   | `GET /papers/{paperId}/reports/latest?module=listening&section=`（CR） | ⚪   | `answerCard` 按 `question_ids` 构造（§4.3）                                                                          |
@@ -2743,14 +2745,16 @@ paused_time = now                            // pause 与 submit 都置；resume
 
 | # | 端点 | 标记 | 说明 |
 |---|---|---|---|
-| 1 | `POST /speaking/records/start` | ⚪ | 开卷幂等；双源取题口径在 questions 侧落地，快照在 submit 冻结（G2） |
+| 1 | `POST /speaking/records/start` | ⚪ | 开卷幂等；双源取题口径在 questions 侧落地，快照在 submit 冻结（G2）；**响应补 `durationSeconds` / `paused`**（G11） |
 | 2 | `GET /speaking/records/{recordId}` | ⚪ | 详情 |
 | 3 | `GET /speaking/records/{recordId}/answer-card` | 🟡 | **新增端点（决策 25）**：只回 `answered`（= 录音上传完成），无对错/标记/收藏 |
 | 4 | `GET /speaking/records/{recordId}/questions` | 🔴 | 双源数据源改造；P0 恒 `record`；**逐题携带 `answerDraft`（G10：提纲 + 试录音频，重进恢复）** |
 | 4a | `PUT /speaking/records/{recordId}/questions/{questionId}/draft` `{text,expectedVersion?}` | 🟡 | **新增端点（决策 28 / G10）**：草稿保存（**只存提纲文字**），**不写 `answer` / `answer_text`、不置 `answered`、不判分**；录音仍是正式作答通道的事（③ 两步法），草稿不碰音频 |
 | 5 | `POST /speaking/records/{recordId}/questions/{questionId}/recordings/prepare` | ⚪ | 录音两步·预签名 |
 | 6 | `POST /speaking/records/{recordId}/questions/{questionId}/answers` | 🟡 | 保存答案（G5） |
-| 7 | ~~`POST /speaking/records/{recordId}/sessions` ×3 / `pause`~~ | 🔴 | **注释掉（决策 24）**：倒计时无心跳/暂停，`duration` = `end_time − start_time` |
+| 7 | ~~`POST /speaking/records/{recordId}/sessions` ×3~~ | 🔴 | **仍注释（决策 24）**：顺计时只需进出时间戳，不需要心跳（决策 30 **未**恢复） |
+| 7b | `POST /speaking/records/{recordId}/pause` | 🟡 | **恢复并补结算（决策 30 / G11）**：现有实现只存位置不记时长 → 加 `duration += now − (paused_time ?? start_time)`；路径 `/attempts`→`/records`；返回 `{durationSeconds, paused:true}` |
+| 7c | `POST /speaking/records/{recordId}/resume` | 🟡 | **新增（决策 30）**：`paused_time = NULL`，返回 `{durationSeconds, paused:false}`；幂等 |
 | 8 | `POST /speaking/records/{recordId}/submit` | 🔴 | has_standard_answer 分流（G3）+ `idempotency_key` 落库（G4）+ **提交时冻结快照**（口语试卷快照字段另一套：`passage` / `practice_audio_url` / `reference_answer`）+ AI 评分落 `grading_state`（决策 24） |
 | 9 | CR `?module=speaking&section=` | 🔴 | `speaking` 扩展块重设计（决策 24）：数据源改 `practice_subjective_record` + `practice_subjective_answer`，`reportStatus` 按 `grading_state` |
 | 10 | `GET /speaking/records/{recordId}/report` + `/report/questions/{q}` + `/report/retry` | 🔴 | **改造（决策 24）**：原 `/speaking/reports/{reportId}` 系列随报告表退场作废，对齐听/读按 `recordId` 定位；逐题评分按 `grading_state` / `points` / `analysis` |
@@ -2765,12 +2769,14 @@ paused_time = now                            // pause 与 submit 都置；resume
 
 | # | 端点 | 标记 | 说明 |
 |---|---|---|---|
-| 1 | `B5 POST /translation/records/start` | ⚪ | 快照在 B9 submit 冻结（G2），start 不动 |
+| 1 | `B5 POST /translation/records/start` | ⚪ | 快照在 B9 submit 冻结（G2），start 不动；**响应补 `durationSeconds` / `paused`**（G11） |
 | 2 | `B6 GET /translation/records/{recordId}` | ⚪ | 详情 |
 | 2b | `GET /translation/records/{recordId}/answer-card` | 🟡 | **新增端点（决策 25）**：口径同写作 2b，只回 `answered`，无对错/标记/收藏 |
 | 3 | `B7 GET /translation/records/{recordId}/questions` | 🔴 | 数据源 `enabled_prac=1`（G1）+ **逐题携带 `answerDraft`（G10）** |
 | 3a | `PUT /translation/records/{recordId}/questions/{questionId}/draft` `{text,expectedVersion?}` | 🟡 | **新增端点（决策 28 / G10）**：草稿保存（笔译译文 / 口译提纲，均为文字），**不写 `answer` / `answer_text`、不置 `answered`、不判分**；交卷后仅读 |
 | 4 | `B8 PUT /translation/records/{recordId}/answers` | 🟡 | 快照口径（笔译 `TEXT` / 口译 `AUDIO`）；**交卷前必须先调本端点落答案，服务端不拿草稿兜底（G10 边界 3）** |
+| 4a | `POST /translation/records/{recordId}/pause` | 🟡 | **新增（决策 30 / G11，原文「翻译无 pause」作废）**：委托写作 `pause`，服务端结算 `duration += now − (paused_time ?? start_time)`；请求体**不含 `durationSeconds`**；返回 `{durationSeconds, paused:true}` |
+| 4b | `POST /translation/records/{recordId}/resume` | 🟡 | **新增（决策 30）**：`paused_time = NULL`；幂等 |
 | 5 | `B9 POST /translation/records/{recordId}/submit` | 🔴 | **has_standard_answer 分流**（G3）——原「P0 无评分策略恒 UNAVAILABLE」**不再成立**，§4.3 翻译填充规则需按本口径重写（客观题交卷即出分）+ `idempotency_key` 落库（G4）+ **提交时冻结快照**（G2，与现状一致）+ AI 评分落 `grading_state`（决策 24） |
 | 6 | CR `?module=translation&section=` | 🔴 | 填充规则同步：`has_standard_answer=1` 的板块 `score` / 对错字段有值，不再全 `null`；`reportStatus` 按 `grading_state` |
 | 7 | ~~`B10 GET /translation/reports/{reportId}`~~ → `GET /translation/records/{recordId}/report` | 🔴 | **改造（决策 24）**：reportId 随报告表退场，对齐听/读按 `recordId` 定位 |
@@ -2781,7 +2787,8 @@ paused_time = now                            // pause 与 submit 都置；resume
 |---|---|---|
 | 🔴 **G3 `question.has_standard_answer` 新列 + 回填 + 判分分流** | 写 / 说 / 译的 submit + CR 填充规则 | 写/说/译 |
 | 🔴 **决策 24：报告表退场，报告 = record + answer 现拼**（`reportId` 退场；`reportStatus` 按 `grading_state`；详情端点对齐听/读改 `/records/{recordId}/report`） | 写/说/译报告详情端点 ×3 + CR 扩展块 + U1/U3 `report` 块 | 写/说/译 |
-| 🔴 **决策 24：会话/暂停端点注释掉**（`duration` = `end_time − start_time`） | 写 `/sessions` ×3 + `/pause`、说 `/sessions` ×3 + `/pause`（听/读既有端点暂不动） | 写/说 |
+| 🔴 **决策 24：会话心跳端点注释掉**（顺计时只需进出时间戳，不需要心跳） | 写 `/sessions` ×3、说 `/sessions` ×3（`pause` 已由决策 30 恢复，见下行） | 写/说 |
+| 🔴 **决策 30：作答时长改「在场累计」**（两表各加 `paused_time` 一列；`pause` ×5 改服务端结算、`resume` ×5 新增；`pause` 请求体删 `durationSeconds`；`abandon` 下线；start/详情补 `durationSeconds` + `paused`，口径见 §4.7.0 G11） | `POST /{mod}/records/{recordId}/pause`、`POST /{mod}/records/{recordId}/resume`、~~`POST /reading/records/{recordId}/abandon`~~（下线）、五模块 start / ①b 详情 | 五模块 |
 | 🔴 **G4 `idempotency_key` 统一 `{module}-{recordId}-submit`**（去 `-1`、服务端拼、说/译补落库） | 听/读/写/说/译 submit ×5 | 五模块 |
 | 🔴 **G1 取题加 `enabled_prac=1` 过滤** | 各模块 questions（口语双源） | 五模块 |
 | 🟡 G5/G6/G7 口径对齐 | 答题保存、听/读 submit 统计写回、口语常量 | — |
@@ -2839,7 +2846,8 @@ paused_time = now                            // pause 与 submit 都置；resume
 | **15** | **写/译/说作答路径 `attempts` → `records`，`attemptId` → `recordId`** | 写作 / 翻译 / 口语全部作答端点（决策 23） | attempt 表已退场，**写/译/说三模块合并到一张 `practice_subjective_record`**（2026-11-16，原写作表/口语表已 `__bak20261116`），**链路以听/读为模板**：`/writing/records/...`、`/speaking/records/...`、`/translation/records/...`（含 B5–B10），路径变量、请求/响应字段统一 `recordId`。旧 `attempts` 路径全部 404，前端同批改 |
 | **16** | **start 请求体统一 `{paperId, sectionMapping, section}` 三字段必填** | 全部 5 个模块的 start（决策 23） | 综合卷同号共存（`section=1` 同卷命中五个 `section_mapping`），只传 `{paperId, section}` 推不出唯一板块 → 可能重复开卷；入参三元组直接定位。旧 `{paperId, section}` 请求体 → **400**（缺 `sectionMapping`） |
 | **17** | **报告详情端点对齐听/读，`reportId` 退场**（决策 24） | 写 / 说 / 翻译的报告详情 | `GET /writing/reports/{reportId}`（含 `/status` / `/questions/{q}`）、`GET /speaking/reports/{reportId}` 系列、`B10 GET /translation/reports/{reportId}` **全部作废 404**，改 **`GET /{mod}/records/{recordId}/report`** + `/report/questions/{q}`（+ 说/读风格 `/report/retry`）。响应里无 `reportId`；`reportStatus` = `READY` / `GRADING` / `FAILED`（写/译/说按 `grading_state`：0=评分中、1=评完）。CR 通用块也**不再返回 `reportId`**，报告详情一律以 `recordId` 定位 |
-| **18** | **写/说会话与暂停端点退场**（决策 24） | 写作 / 口语作答链路 | `POST /writing/records/{recordId}/sessions`（+heartbeat/`end`）、`POST /speaking/records/{recordId}/sessions` 系列与两者的 `/pause` **注释掉**（倒计时制无心跳/暂停）。CR / 报告详情的 `durationSeconds` 一律 = record 表 `end_time − start_time`，不再有会话累计时长字段（`accumulatedActiveSeconds` 等） |
+| **18** | **会话心跳端点退场（`pause` 已由决策 30 恢复）** | 写作 / 口语作答链路 | `POST /writing/records/{recordId}/sessions`（+heartbeat/`end`）、`POST /speaking/records/{recordId}/sessions` 系列 **注释掉**（顺计时不需要心跳）。🔴 `/pause` **不退场**——决策 30 恢复并升级为「结算 + 存草稿 + 记位置」；`durationSeconds` = 累计在场秒，不再有会话累计字段（`accumulatedActiveSeconds` 等） |
+| **19** | **`pause` 请求体删 `durationSeconds` + 阅读 `abandon` 下线**（决策 30） | 听 / 读 / 写 / 说 / 译 作答链路 | ① 五模块 `POST /{mod}/records/{recordId}/pause` 的请求体**不再接受 `durationSeconds`**（服务端按进出时间戳自算），听力原上报字段**直接删、不保留兼容**；② **新增** `POST /{mod}/records/{recordId}/resume`；③ 阅读 `POST /reading/records/{recordId}/abandon` **下线**，调用得 `404`（不想做就是不交卷，不必「放弃」）；④ `start` 与 `①b` 详情响应**新增** `durationSeconds` + `paused`（增量字段，续练时恢复计时器） |
 
 > 第 5–13 条是**本轮新增的破坏性变更**，与 1–4 一起构成「前端必须同批上线」的完整清单。**没有灰度通道**：任一条漏改都会导致白屏或空列表。
 
@@ -3044,7 +3052,7 @@ POST /translation/records/{recordId}/submit
 | 42 | CR「只看错题」数据支撑 | `answerCard[]` 中 `correct=false` 的题号与交卷时的错题一致；`correct=null` 的题不出现在错题过滤结果里 |
 | 43 | CR `module=translation` | 3.0 翻译卷 `section=1` → 200；AI 评分中 → `reportStatus=GRADING`（`grading_state=0`）、`score=null`，评完 → `READY`（决策 24：原「恒 UNAVAILABLE」作废）；2.0 的卷 → **404**（`SEC_TRANSLATION` 板块不存在，不是 `data=null`）；`section=2`（口译）在补齐板块配置前 → 404（§4.2 已知缺口） |
 | 44 | 决策 24 旧报告端点回归 | `GET /writing/reports/{id}`、`GET /speaking/reports/{id}`、`GET /translation/reports/{id}` → **404**；`GET /writing/records/{recordId}/report` → 200（AI 未评完时 `reportStatus=GRADING`） |
-| 45 | 写/说会话端点回归 | `POST /writing/records/{id}/sessions`、`/pause`（口语同）→ **404**（注释掉后路由不存在）；CR 的 `durationSeconds` = `end_time − start_time` |
+| 45 | 会话心跳 404 + 暂停结算 | `POST /writing/records/{id}/sessions`（口语同）→ **404**；`POST /writing/records/{id}/pause` → **200**，连续两次 `durationSeconds` 递增且不重复累加；退出 10 分钟再 `resume`，报告时长**不含**这 10 分钟 |
 
 ---
 
