@@ -15,17 +15,18 @@
 
 | 步骤 | 请求 | 拿到什么 |
 |---|---|---|
-| ① 首页 | `GET /hsk/modules` | 模块卡（免登录） |
-| ② 等级概览 | `GET /hsk/levels` | 该等级的卷列表 |
-| ③ 备考说明 | `GET /hsk/levels/{level}/intro` | 板块结构（可选，展示用） |
-| ④ 卷内板块 | `GET /hsk/papers/{paperId}/parts` | 板块 + 进度（点进去必调） |
-| ⑤ 开练 | `POST /{module}/records/start` | `recordId` |
+| ① 首页 | `GET /hsk/modules` | 模块卡（免登录，无进度） |
+| ② 等级概览 | `GET /hsk/levels` | 该等级的卷列表（免登录；未登录不返回进度） |
+| ③ 备考说明 | `GET /hsk/levels/{level}/intro` | 板块结构（免登录，本来无进度） |
+| ④ 卷内板块 | `GET /hsk/papers/{paperId}/parts` | 板块 + 进度（免登录；未登录不返回进度，点进去必调） |
+| ⑤ 开新练 | `POST /{module}/records/start` | `recordId`（只开新练） |
+| ⑤b 继续练习 | `POST /{module}/records/{recordId}/resume` | 用 ④ 的 `draft.id` 恢复现场 + 计时 |
 | ⑥ 拉题 | `GET /{module}/records/{recordId}/questions` | 题目列表 |
 | ⑦ 答题 | 见各模块 | 逐题或批量存答案 |
 | ⑧ 交卷 | `POST /{module}/records/{recordId}/submit` | 判分结果 / 报告状态 |
 | ⑨ 报告 | `GET /{module}/records/{recordId}/report` | 轮询直到非 `GRADING` |
 
-> 上表路径省略了网关前缀 `/api/practice`，查询参数也省略；完整写法见 [1.1](#11-地址与网关前缀) 与各模块章节。**交卷路名五模块统一为 `/submit`**（2026-11-17 起，翻译原先的 `/submissions` 已废除）。
+> 上表路径省略了网关前缀 `/api/practice`，查询参数也省略；完整写法见 [1.1](#11-地址与网关前缀) 与各模块章节。**交卷路名五模块统一为 `/submit`**（2026-11-17 起，翻译原先的 `/submissions` 已废除）。**目录三跳 ②③④ 免登录；⑤ 开新练与 ⑤b 继续练习是两个不同入口**，见 [1.8](#18-免登录接口) 与 [4.2](#42-开始--恢复练习)。
 
 `{module}` 的取值与第 ⑦ ⑧ 步的差异见 [2. 五模块差异速查](#2-五模块差异速查)。
 
@@ -39,6 +40,8 @@ Authorization: Bearer <登录拿到的 token>
 ```
 
 判断依据：`BaseController.getUserInfo()` 只在 `X-Client-Type=APP` 时才解析 JWT；其他取值一律回落模拟用户。带 `APP` 但 token 缺失/失效时，才会正常返回 `401`。
+
+> 例外：目录三跳（`levels` / `intro` / `parts`）与首页 `modules` **免登录**——不带 `X-Client-Type` 时按「未登录」处理、不返回进度，见 [1.8](#18-免登录接口)。
 
 ### 0.3 一个必须知道的坑：业务错误也是 HTTP 200
 
@@ -156,12 +159,30 @@ Authorization: Bearer <登录拿到的 token>
 
 ### 1.8 免登录接口
 
-只有两个：
+共五类（2026-11-17 起目录三跳也放开）：
 
-- `GET /api/practice/hsk/modules`（首页卡片，响应不含任何用户数据）
-- `GET /api/practice/csca/catalog`（CSCA 目录，不在本文范围）
+| 接口 | 说明 | 进度数据 |
+|---|---|---|
+| `GET /api/practice/hsk/modules` | 首页卡片 | 无 |
+| `GET /api/practice/hsk/levels` | U1 等级概览 + 卷列表 | 不登录则不带 |
+| `GET /api/practice/hsk/levels/{level}/intro` | U2 备考说明 | 本来就没有 |
+| `GET /api/practice/hsk/papers/{paperId}/parts` | U3 卷内板块 | 不登录则不带 |
+| `GET /api/practice/csca/catalog` | CSCA 目录（不在本文范围） | 无 |
 
-其余接口都要求 `X-Client-Type: APP` + 有效 token。`GET /hsk/levels` 等虽然名字像目录，但返回里带用户进度，**属于需登录接口**。
+**免登录接口不传 `X-Client-Type` / token 也能调**（不会 401），此时按「未登录」处理、不返回进度。想要进度就**两个一起带**：`X-Client-Type: APP` + `Authorization: Bearer <token>`；只带 token 不带 `X-Client-Type: APP` 时 JWT 不会被解析，仍按未登录算（见 [0.2](#02-一个必须知道的坑x-client-type)）。
+
+🔴 **「需要进度的不登录不传进度」**：U1 / U3 的进度块依赖用户身份。未登录（无有效 token）时服务端按 `userId=null` 处理，进度字段返回**空值而不是报错**——
+
+| 接口 | 未登录时的进度字段 |
+|---|---|
+| U1 `levels` | `papers[].status = "not_started"`、`completedCount = 0` |
+| U3 `parts` | `parts[].status = "not_started"`、`doneCount = 0`、`correctCount` / `wrongCount` / `draft` / `report` / `stats` 全为 `null` |
+
+前端把这些空值当「没有进度」即可，别当成 0 分或已做过。
+
+🔴 **实现注意（后端）**：`BaseController.getCurrentUserId()` 在 `X-Client-Type != APP` 时会回退到模拟用户 `id=1`。免登录接口**不能直接用它**，必须仅在 `X-Client-Type=APP` 且 token 有效时取 userId，否则显式传 `null` 给 service。service 层已支持 `userId == null` → 空进度，**无需改 service**。
+
+其余接口（开练、答题、暂停、交卷、报告等）仍要求 `X-Client-Type: APP` + 有效 token，缺一个返回 `401`。
 
 ---
 
@@ -177,7 +198,7 @@ Authorization: Bearer <登录拿到的 token>
 | 答题   | `PUT …/{id}/answers/{qid}`<br>`PUT …/{id}/answers`（批） | `PUT …/{id}/answers/{qid}`<br>`PUT …/{id}/answers`（批） | `PUT …/{id}/answers`（批）             | `PUT …/{id}/answers`（批）                 | `POST …/{id}/questions/{qid}/answers`（单题） |
 | 草稿   | —                                                     | —                                                     | `PUT …/{id}/questions/{qid}/draft`  | 同                                       | 同（仅提纲）                                    |
 | 暂停   | `POST …/{id}/pause`（时长服务端结算）                  | 同                                                    | `POST …/{id}/pause`                 | 同                                      | 同                                        |
-| 恢复   | `POST …/{id}/resume`                                  | 同                                                    | 同                                  | 同                                      | 同                                        |
+| 恢复 / 继续练习 | `POST …/{id}/resume`（id 取 U3 的 `draft.id`） | 同 | 同 | 同 | 同 |
 | 放弃   | —                                                     | ~~`POST …/{id}/abandon`~~（2026-11-17 退场，见附录 C） | —                                   | —                                       | —                                         |
 | 交卷   | `POST /listening/records/{id}/submit`                 | `POST /reading/records/{id}/submit`                   | `POST /writing/records/{id}/submit` | `POST /translation/records/{id}/submit` | `POST /speaking/records/{id}/submit`      |
 | 报告   | `GET …/{id}/report`                                   | 同                                                     | 同                                   | 同                                       | 同                                         |
@@ -206,6 +227,8 @@ Authorization: Bearer <登录拿到的 token>
 ## 3. 目录三跳（五模块共用）
 
 这一组接口与具体模块无关，靠 `module` 参数区分。三跳都 **必须带 `module`**：HSK 2.0 综合卷上听力第 1 部分和阅读第 1 部分共用同一个 `paperId` 和 `section`，光靠后两者无法定位板块。
+
+🔴 **三跳全部免登录**（2026-11-17 起）：未登录也能看目录，但**不带用户进度**；带有效 token 才返回 status / 进度 / draft。这是「先浏览目录、登录后继续练」的固定用法。
 
 ### 3.1 E1 首页模块卡
 
@@ -266,6 +289,8 @@ GET /hsk/levels?module=reading&version=HSK3.0&level=3
 | `version` | query | 否 | 缺省 `HSK2.0` |
 | `level` | query | 否 | 缺省 `"1"` |
 
+**免登录**。带有效 token 时返回该用户的进度；未登录时 `papers[].status = "not_started"`、`completedCount = 0`（不报错）。见 [1.8](#18-免登录接口)。
+
 ```json
 {
   "code": 200,
@@ -306,6 +331,8 @@ GET /hsk/levels/3/intro?module=reading&version=HSK3.0
 | `level` | path | 是 | 数字串 |
 | `module` | query | **是** | |
 | `version` | query | 否 | |
+
+**免登录**，且本来就没有进度字段（能力描述 + 板块结构都是静态配置）。
 
 ```json
 {
@@ -364,6 +391,8 @@ GET /hsk/papers/2095405786495315969/parts?module=reading&version=HSK3.0
 | `module` | query | **是** | 缺了无法在综合卷上区分听力和阅读 |
 | `version` | query | 否 | 传了且与卷的 version 不符 → 404 |
 
+**免登录**。带有效 token 时返回用户进度（status / doneCount / draft / report / stats）；未登录时这些字段为空值：`status = "not_started"`、`doneCount = 0`、`correctCount` / `wrongCount` / `draft` / `report` / `stats` 均为 `null`。见 [1.8](#18-免登录接口)。
+
 ```json
 {
   "code": 200,
@@ -405,7 +434,7 @@ GET /hsk/papers/2095405786495315969/parts?module=reading&version=HSK3.0
 | `parts[].doneCount` | Integer | 已作答题数（口语 = 已录音题数） |
 | `parts[].correctCount` / `wrongCount` | Integer | 仅听力/阅读已提交板块有值，其余为 `null` |
 | `parts[].draft` | Object/null | 进行中草稿。**「继续上次位置」用 `draft.currentQuestionId`** |
-| `parts[].draft.id` | Long | 草稿记录主键，**不是 recordId**，只是内部标识，前端不用传回去 |
+| `parts[].draft.id` | Long | 🔴 **就是 recordId**（听/读 = `practice_record.id`，写/译/说 = `practice_subjective_record.id`）。**继续练习就把它传给 `POST /{mod}/records/{draft.id}/resume`**，服务端返回完整现场（进度/答案/草稿）并恢复计时 |
 | `parts[].report` | Object/null | 最近一次已出报告，无则 `null` |
 | `parts[].report.status` | String | `READY` / `PENDING` / `FAILED` / `UNAVAILABLE`；听力/阅读恒 `READY` |
 | `parts[].stats` | Object/null | **只有口语有值**，见下 |
@@ -457,13 +486,13 @@ GET /papers/{paperId}/reports/latest?module=reading&section=1&version=HSK3.0
 ```
 POST /start ──► recordId
    │
-   ├─ GET /{recordId}           恢复现场（刷新/杀进程后重进）
+   ├─ GET /{recordId}           查记录详情（只读，不恢复计时）
    ├─ GET /{recordId}/questions 拉题（含音频、选项、已存答案）
    │
    ├─ PUT  /{recordId}/answers/{questionId}   单题防抖保存（选择即存）
    ├─ PUT  /{recordId}/answers                批量保存（切题/退出/锁屏/提交前）
    ├─ POST /{recordId}/pause                  暂停（结算时长 + 存进度 + 草稿答案）
-   ├─ POST /{recordId}/resume                 恢复作答（幂等）
+   ├─ POST /{recordId}/resume                 继续练习 / 恢复作答（幂等，恢复计时）
    │
 POST /{recordId}/submit ──► 判分 + 报告摘要
    │
@@ -488,7 +517,11 @@ POST /listening/records/start
 | `section` | String | 是 | 板块号，取 U3 的 `parts[].section` |
 | `restart` | Boolean | 否 | `true` = 放弃已有草稿重新开始；`false`/缺省 = 有草稿就恢复 |
 
-**幂等**：同一卷同一板块已有进行中记录时，直接返回那条记录，不会新建。所以「继续练习」就是再调一次 start，不需要额外接口。
+**职责（2026-11-17 调整）**：`start` 只负责**开新练**。
+
+🔴 **「继续练习」不再走 start，改为 `resume`**：从 ④ U3 parts 的 `parts[].draft.id`（就是 recordId）取到 ID，调 `POST /{mod}/records/{recordId}/resume`，一次拿回现场并恢复计时，见 [4.7](#47-暂停--恢复)。判定入口：U3 有 `draft` → `resume`；无 `draft` → `start`。
+
+`start` 仍保留幂等作为**防重复开卷的安全网**：该卷该板块已有进行中记录时返回那条记录、不新建。这是兜底，不是继续练习入口。
 
 响应 `data` 为记录详情，结构见 4.3。
 
@@ -652,9 +685,13 @@ POST /listening/records/{recordId}/resume
 
 🔴 **请求体没有 `durationSeconds`、`baseVersion`**（决策 30）：暂停 = 服务端结算本段在场时长 + 记位置 + 存草稿，一次请求完成。时长一律服务端算，客户端时钟不准或刷时长都影响不到它。
 
-恢复无 body，幂等 —— 本来就在场（未 pause 过或已 resume）时直接返回当前记录，不写库。
+**`resume` = 继续练习入口 + 恢复计时**（2026-11-17 职责调整）：无 body，幂等，做两件事——① 清 `paused_time` 回到「在场」并推进时长结算段起点；② 返回**完整记录详情**（进度、答案），前端据此恢复现场。
 
-两端的响应 `data` 均为完整记录（含 `paused` / `pausedAt`）。
+- **继续练习**：从 U3 parts 的 `parts[].draft.id`（就是 recordId）取 ID，调 `POST /{mod}/records/{recordId}/resume`。一次请求同时恢复现场并续上计时，不必先 start 再 pause。
+- **本来就在场**（未 pause 过或已 resume）时直接返回当前记录，不写库。
+- 已交卷（`status=3`）调 resume 返回 `8103 练习已结束，无法继续作答`。
+
+两端的响应 `data` 均为完整记录（含 `paused` / `pausedAt` / `durationSeconds` / `answers[]`）。
 
 **时长口径（五模块统一）**：
 
@@ -821,7 +858,7 @@ GET /listening/records/{recordId}/answer-card?currentQuestionNumber=5
 | 单题保存 | `PUT /reading/records/{recordId}/answers/{questionId}` | body 是 `{questionId, answer}` |
 | 批量保存 | `PUT /reading/records/{recordId}/answers` | 返回**答案数组**，不是整条记录 |
 | 暂停 | `POST /reading/records/{recordId}/pause` | body 只有 `{currentQuestionId}`，时长服务端结算 |
-| 恢复 | `POST /reading/records/{recordId}/resume` | 无 body，幂等，返回记录详情 |
+| 恢复 / 继续练习 | `POST /reading/records/{recordId}/resume` | 无 body，幂等，返回记录详情；继续练习从 U3 `draft.id` 拿 recordId 调它 |
 | 交卷 | `POST /reading/records/{recordId}/submit` | 响应见 5.7 |
 | 报告 | `GET /reading/records/{recordId}/report` | 结构比听力多 `items[]` 逐题明细 |
 | 报告重试 | `POST /reading/records/{recordId}/report/retry` | 同 |
@@ -955,7 +992,7 @@ POST /reading/records/{recordId}/pause
 POST /reading/records/{recordId}/resume
 ```
 
-无 body，幂等。把 `paused_time` 清掉回到「在场」，并推进时长结算段起点。响应为记录详情。
+无 body，幂等。把 `paused_time` 清掉回到「在场」，并推进时长结算段起点。响应为记录详情（含进度/答案）。**继续练习入口**：用 U3 parts 的 `draft.id`（就是 recordId）调本端点。
 
 > 原 5.6「放弃草稿 `abandon`」端点已退场（决策 30，见附录 C）。重新开始用 `POST /reading/records/start` 带 `restart=true`。
 
@@ -1044,13 +1081,13 @@ POST /reading/records/{recordId}/report/retry
 ```
 POST /start {paperId, sectionMapping, section} ──► recordId
    │
-   ├─ GET /{recordId}            恢复现场
+   ├─ GET /{recordId}            查记录详情（只读，不恢复计时）
    ├─ GET /{recordId}/questions  拉题（含 layout、promptHint 派生的作答区、已存答案、草稿）
    │
    ├─ PUT /{recordId}/questions/{questionId}/draft   草稿（每 2~5s 防抖，整份覆盖）
    ├─ PUT /{recordId}/answers                        正式保存（切题/离开页面时）
    ├─ POST /{recordId}/pause                         暂停（结算时长 + 记位置，见 6.7）
-   ├─ POST /{recordId}/resume                        恢复作答（幂等）
+   ├─ POST /{recordId}/resume                        继续练习 / 恢复作答（幂等，恢复计时）
    │
 POST /{recordId}/submit ──► 客观题即判，主观题入 AI 队列
    │
@@ -1077,7 +1114,7 @@ POST /writing/records/start
 
 🔴 **三个字段缺一不可**。只传 `paperId + section` 不够：HSK 3.0 综合卷上同一张卷的 `section=1` 同时存在听力、阅读、写作、翻译、口语五个板块，必须靠 `sectionMapping` 定位。传错 mapping（比如拿写作的 mapping 打翻译入口）返回 `8108 板块映射与练习内容不一致`。
 
-**幂等**：同一 `(paperId, sectionMapping, section)` 已有进行中记录时直接返回，不新建。
+**职责（2026-11-17 调整）**：`start` 只负责**开新练**。🔴 **继续练习走 `resume`**：从 U3 parts 的 `draft.id`（就是 recordId）调 `POST /{mod}/records/{recordId}/resume`，一次恢复现场与计时，见 [6.7](#67-暂停--恢复写--译--说三模块同构)。`start` 仍保留幂等作防重复兜底，但不作为继续练习入口。
 
 响应 `data` 为记录详情，见 6.3。
 
@@ -1274,7 +1311,7 @@ POST /writing/records/{recordId}/resume
 
 - 暂停 = 服务端结算本段在场时长 + 记位置，一次请求完成；草稿另走 6.5 题目级草稿端点。
 - 🔴 请求体**没有 `durationSeconds`**：时长一律服务端结算（口径同 4.7，五模块统一）。
-- 恢复无 body，幂等 —— 本来就在场时直接返回当前记录，不写库。
+- 恢复无 body，幂等 —— 本来就在场时直接返回当前记录，不写库。**继续练习也走它**：从 U3 parts 的 `draft.id` 拿 recordId 调 resume，返回完整记录（含进度、答案）并恢复计时；写/译/说的草稿现场另由 ② 拉题接口的 `answerDraft` 补齐。
 - 两端点都要求记录处于进行中；已交卷的记录调用返回 `8103 练习已结束，无法继续作答`。
 - 两端的响应 `data` 均为记录详情（含 `paused` / `pausedAt`）。
 
@@ -1461,7 +1498,7 @@ GET /writing/records/{recordId}/answer-card
 | 批量保存 | `PUT /translation/records/{recordId}/answers` |
 | 草稿 | `PUT /translation/records/{recordId}/questions/{questionId}/draft` |
 | 暂停 | `POST /translation/records/{recordId}/pause` |
-| 恢复 | `POST /translation/records/{recordId}/resume` |
+| 恢复 / 继续练习 | `POST /translation/records/{recordId}/resume`（recordId 取 U3 `draft.id`） |
 | 交卷 | `POST /translation/records/{recordId}/submit` |
 | 报告 | `GET /translation/records/{recordId}/report` |
 | 单题详情 | `GET /translation/records/{recordId}/report/questions/{questionId}` |
@@ -1506,13 +1543,13 @@ POST /translation/records/{recordId}/submit
 ```
 POST /start ──► recordId
    │
-   ├─ GET /{recordId}            恢复现场
+   ├─ GET /{recordId}            查记录详情（只读，不恢复计时）
    ├─ GET /{recordId}/questions  拉题（layout 恒 record，音频/题目内容见字段）
    │
    ├─ PUT /{recordId}/questions/{questionId}/draft      提纲草稿（可选，只存文字）
    ├─ POST /{recordId}/questions/{questionId}/answers   录音上传完成后落答案
    ├─ POST /{recordId}/pause                            暂停（结算时长，见 6.7）
-   ├─ POST /{recordId}/resume                           恢复作答（幂等）
+   ├─ POST /{recordId}/resume                           继续练习 / 恢复作答（幂等，恢复计时）
    │
 POST /{recordId}/submit ──► 全部入 AI 队列
    │
@@ -1852,7 +1889,10 @@ JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 �
 - [ ] 写/译/说交卷后轮询的是 `reportStatus`，不是 `status`
 - [ ] 交卷前把草稿落成正式答案（否则 `draftNotSubmitted` 会点名）
 - [ ] 口语不再调 `/recordings/prepare`（已 404）
-- [ ] 暂停/恢复请求体不带 `durationSeconds`（时长服务端结算）；重新开始用 start 的 `restart=true`（阅读 abandon 已退场）
+- [ ] 暂停/恢复请求体不带 `durationSeconds`（时长服务端结算）
+- [ ] **继续练习走 `resume` 不走 start**：从 U3 parts 的 `draft.id`（就是 recordId）调 `POST /{mod}/records/{draft.id}/resume`；无 draft 才调 start
+- [ ] 目录三跳（levels / intro / parts）免登录；未登录时进度字段为空，别当 0 分
+- [ ] 重新开始用 start 的 `restart=true`（阅读 abandon 已退场）
 
 ---
 
@@ -2023,10 +2063,10 @@ JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 �
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/hsk/modules` | 首页模块卡（免登录） |
-| GET | `/hsk/levels` | U1 等级概览 + 卷列表 |
-| GET | `/hsk/levels/{level}/intro` | U2 备考说明 |
-| GET | `/hsk/papers/{paperId}/parts` | U3 卷内板块 + 进度 |
+| GET | `/hsk/modules` | 首页模块卡（免登录，无进度） |
+| GET | `/hsk/levels` | U1 等级概览 + 卷列表（免登录，未登录不返回进度） |
+| GET | `/hsk/levels/{level}/intro` | U2 备考说明（免登录，无进度） |
+| GET | `/hsk/papers/{paperId}/parts` | U3 卷内板块 + 进度（免登录，未登录不返回进度） |
 | GET | `/papers/{paperId}/reports/latest` | CR 板块最近报告 |
 
 ### 听力（12）

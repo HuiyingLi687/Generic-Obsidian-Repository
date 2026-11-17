@@ -60,7 +60,7 @@
 | 27  | **写/译/说 AI 评分扣费（决策登记，详见 SDD）**（2026-11-16） | AI 评分收 `ai_analysis` 配额，口径两条：**按卷扣一次**（一次交卷 = 1 次配额，不按题）+ **评分成功才扣**（全卷 AI 题到终态且 `ai_scored_count > 0`；全失败不扣）。**它会改交卷接口行为**：交卷时无 AI 题直接置 `ai_deduct_state=3`；有 AI 题先 `GET /benefit/aiQuota` 软校验，**余额 0 → `4001` 拦住交卷**（查询异常一律放行），校验在交卷事务内、回滚得掉；评分线程用 CAS 抢「`ai_deduct_state=0`」后调 `POST /benefit/deductAi`（`sceneCode=ai_analysis`、`bizId=recordId`），失败转 `2` 记账 + WARN，**分数不回收**。开关 `subjective.grading.deduct-enabled`（默认 `true`）。🔴 前端需处理交卷 `4001`（引导充值，别当网络错误重试）。`ai_deduct_state` / `ai_deduct_time` TEST 已建，PROD 随 E19 一起上 |
 | 28  | **作答草稿：`practice_subjective_answer` 新增 3 列 + 保存/恢复通道**（2026-11-17，写/译/说） | **目标**：主观题作答中「服务端暂存、每次进来恢复」。🔴 **必须单独一列，不能复用 `answer_text`**——`answer_text` 是判分输入（写作正文 / 口语转写），草稿写进去会改变判分对象与 `grapheme_count`；而且口语草稿是**提纲**，混进 `answer_text` 会被当成转写参与评分。**DDL 三列**：`answer_draft mediumtext NULL`（正文，三个模块**都只存文字**：写作正文 / 笔译译文 / 口语·口译提纲）、`answer_draft_version bigint NOT NULL DEFAULT 0`（每次保存 +1，丢弃乱序旧写）、`answer_draft_saved_time bigint NULL`（服务端毫秒，供恢复提示与「草稿是否比答案新」判断）。**接口**：保存 `PUT /{mod}/records/{recordId}/questions/{questionId}/draft`（`PUT` 全量覆盖，`expectedVersion` 可选乐观锁 → 不匹配 `409`）；恢复**不单开端点**，挂在 ② `GET /{mod}/records/{recordId}/questions` 的每道题 `answerDraft` 字段（开场一次拿全）。🔴 **边界**：① 草稿**不置 `answered`**（答题卡仍显示未答，G9 不变）；② **不参与判分**（`grading_state`/`points` 不受影响）；③ 交卷**不自动拿草稿兜底**，改为交卷响应回显 `draftNotSubmitted:[questionId]` 提示前端返回保存；④ 交卷后草稿冻结只读、不清理；⑤ 不跨场次（新 record 新行）。⚠️ **命名勿混**：这里的「草稿」是**题目级**，与 `/parts[].draft`（**记录级**「未提交的那次 record」）不是一回事，接口字段一律用 **`answerDraft`**。详见 §4.7.0 G10 |
 | 29  | **交卷路名五模块统一为 `/submit`**（2026-11-17；翻译原 `/submissions` 废除） | 🔴 翻译的交卷路径原先沿用旧 `attempts` 链路的复数写法 `POST /translation/records/{recordId}/submissions`，与写作/口语/听力的 `/{recordId}/submit` 不同名。本次**统一为 `/submit`**，五模块一致；**老路径 `/submissions` 直接下线，不保留别名**（`TranslationPracticeController` 的 `@PostMapping` 已改）。🔴 **前端若接过翻译交卷接口，必须同步改路径**，否则 404。旧 `attempts` 链路（`TranslationSubmissionController` 等三个控制器）已于决策 24 摘掉 `@RestController`，不对外暴露，路径一并同步。|
-| 30  | **作答时长改「在场累计」（顺计时 + 可退出）**（2026-11-17；部分推翻决策 24 的时长口径） | **背景**：练习是**顺计时**、允许中途退出，但现状五模块四种口径——听力累加 `pause` 上报值、阅读只认交卷上报、写/译/说按 `end_time − start_time` **墙钟差**（退出吃饭三小时回来交卷，报告就显示「答题时间 3 小时」）。**目标**：`durationSeconds` = **累计在场秒数**，退出不计、回来续算。**DDL 一列**（两表各一）：`paused_time bigint NULL`（离开时刻毫秒；`NULL` = 在场）——存量 `NULL` 等价旧口径、零回填。🔴 **结算公式唯一入口**（`pause` / `submit` / 任何保存动作都走它）：`delta = now − (paused_time ?? start_time)` → `duration += clamp(delta, 0, 1800)` → `paused_time = now`；`resume` 只把 `paused_time` 置 `NULL`。🔴 **五模块同构两端点**：`POST /{mod}/records/{recordId}/pause`（结算 + 存草稿 + 记位置，**退出时一次请求完成**）、`POST /{mod}/records/{recordId}/resume`（幂等置 `NULL`，返回 `durationSeconds`）。🔴 **时长只由服务端时间戳算**：`pause` 请求体**直接删掉 `durationSeconds` 字段**（听力现有前端同步改，不做兼容），一律服务端自算——防客户端时钟不准，也防刷时长；`start_time` 为 NULL 的历史脏数据不累加、保持原值。🔴 **续练要能续上计时器**：① start 与 ①b 记录详情必须下发 `durationSeconds` + `paused`，前端据此把正计时器恢复到已累计值，不能从 0 起。**上界 `clamp` 30 分钟**只兜崩溃/杀进程（前端每 5–10 分钟 `pause` 一次即远低于此），正常不触发。**与判分/时限无关**：不影响 `grading_state`；`durationMinutes` 只是**建议时长**，顺计时不限时、不强制交卷。详见 §4.7.0 G11 |
+| 30  | **作答时长改「在场累计」（顺计时 + 可退出）**（2026-11-17；部分推翻决策 24 的时长口径；当晚修正案加 `resumed_time`） | **背景**：练习是**顺计时**、允许中途退出，但现状五模块四种口径——听力累加 `pause` 上报值、阅读只认交卷上报、写/译/说按 `end_time − start_time` **墙钟差**（退出吃饭三小时回来交卷，报告就显示「答题时间 3 小时」）。**目标**：`durationSeconds` = **累计在场秒数**，退出不计、回来续算。**DDL 一列**（两表各一）：`paused_time bigint NULL`（离开时刻毫秒；`NULL` = 在场）——存量 `NULL` 等价旧口径、零回填。🔴 **结算公式唯一入口**（`pause` / `submit` / 任何保存动作都走它）：`delta = now − (paused_time ?? start_time)` → `duration += clamp(delta, 0, 1800)` → `paused_time = now`；`resume` 只把 `paused_time` 置 `NULL`。🔴 **五模块同构两端点**：`POST /{mod}/records/{recordId}/pause`（结算 + 存草稿 + 记位置，**退出时一次请求完成**）、`POST /{mod}/records/{recordId}/resume`（幂等置 `NULL`，返回 `durationSeconds`）。🔴 **时长只由服务端时间戳算**：`pause` 请求体**直接删掉 `durationSeconds` 字段**（听力现有前端同步改，不做兼容），一律服务端自算——防客户端时钟不准，也防刷时长；`start_time` 为 NULL 的历史脏数据不累加、保持原值。🔴 **续练要能续上计时器**：① start 与 ①b 记录详情必须下发 `durationSeconds` + `paused`，前端据此把正计时器恢复到已累计值，不能从 0 起。**上界 `clamp` 30 分钟**只兜崩溃/杀进程（前端每 5–10 分钟 `pause` 一次即远低于此），正常不触发。**与判分/时限无关**：不影响 `grading_state`；`durationMinutes` 只是**建议时长**，顺计时不限时、不强制交卷。详见 §4.7.0 G11 |
 | 31  | **业务错误码全面细分 + message 中文化**（2026-11-17） | 🔴 **问题**：改造前 `code` 只有 `400 / 404 / 409 / 500` 四个 HTTP 语义值（光 `400` 就挂了 45 种不同错误），`message` 里塞的是英文错误码字符串（`DRAFT_LOCKED`、`SECTION_MAPPING_MISMATCH`，阅读模块甚至直接返回整句英文 `Reading practice record does not exist`）。前端既无法按 `code` 分支（409 下 12 种错误处理方式完全不同），也不能把 `message` 直接展示。**改法**：新建 `HskPracticeErrorCode` 枚举（`hsk/support/`），**号段 8101–8299**，一类错误一个码，共 94 个；`code` 改为唯一业务码、`message` 改为中文可上屏文案。号段：通用 8101–8119 / 目录 8131–8150 / 听力 8141–8160 / 阅读 8161–8199 / 写作 8201–8240 / 翻译 8251–8270 / 口语 8281–8299，与 CSCA（8001–8099）不冲突。**替换量**：150 处 `new BusinessException` + 30 处测试断言。**写法**：`throw HskPracticeErrorCode.XXX.toException()`，禁再写 `new BusinessException(400, "CODE")`。🔴 **改码引发的隐性 bug**：`PracticeReportQueryServiceImpl` 靠 `e.getCode() == 404` 判断「板块尚无报告」并降级为 `data=null`，码改后该判断永不成立 → 已改为 `NO_REPORT_CODES` 集合判断，**新增「报告不存在」类码必须同步登记**。⚠️ **口语未并入**：`SpeakingException`（22 种码 / 58 处）是独立体系，未纳入本次改造，前端调口语接口仍需按 `responseCode` + 英文字符串处理 |
 
 ---
@@ -99,9 +99,9 @@
 | `practice_paper_setting` | 【删除】整表 drop（卷级上下架由 `exam_paper.enabled_prac` 替代） |
 | `practice_paper_structure` | 【删除】整表 drop |
 | `practice_part_setting` | 【删除】整表 drop |
-| `practice_record` | 【删除】`structure_id`、`practice_name`；【启用】`question_ids` 快照；【新增 · 决策 30】`paused_time`（`bigint NULL`，离开时刻毫秒，`NULL`=在场）——时长改按在场累计（DDL 见 §4.7.0 G11） |
+| `practice_record` | 【删除】`structure_id`、`practice_name`；【启用】`question_ids` 快照；【新增 · 决策 30】`paused_time`（`bigint NULL`，离开时刻毫秒，`NULL`=在场）+【修正案】`resumed_time`（`bigint NULL`，最近一次 resume 时刻 = 在场段起点）——时长改按在场累计（DDL 见 §4.7.0 G11） |
 | `practice_report` | 【删除】`structure_id` |
-| `practice_subjective_record` | 【**合并新表**】2026-11-16 起**写作 / 翻译 / 口语共用这一张表**（原 `practice_writing_record` / `practice_speaking_record` 已重命名为 `__bak20261116`）：列取两者并集，`section_mapping` 为 `SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAKING` 区分模块；`section_mapping` / `section` / `level_code` 已就位，`structure_id` 不再需要。【新增 · 决策 30】**`paused_time`**（`bigint NULL`，离开时刻毫秒，`NULL`=在场）——`duration` 改按在场累计（DDL 见 §4.7.0 G11） |
+| `practice_subjective_record` | 【**合并新表**】2026-11-16 起**写作 / 翻译 / 口语共用这一张表**（原 `practice_writing_record` / `practice_speaking_record` 已重命名为 `__bak20261116`）：列取两者并集，`section_mapping` 为 `SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAKING` 区分模块；`section_mapping` / `section` / `level_code` 已就位，`structure_id` 不再需要。【新增 · 决策 30】**`paused_time`**（`bigint NULL`，离开时刻毫秒，`NULL`=在场）+【修正案】**`resumed_time`**（`bigint NULL`，段起点）——`duration` 改按在场累计（DDL 见 §4.7.0 G11） |
 | `practice_subjective_answer` | 【**合并新表**】同上，三模块共用（原 `practice_writing_answer` / `practice_speaking_answer` 已 `__bak20261116`）：`practice_record_id` 关联记录、`snapshot` 单列存题目快照、`answer`（音频 URL）+ `answer_text`（文本/转写）、`duration_ms` / `grapheme_count`、`grading_state` / `points` / `max_score` / `is_full_score` / `analysis`；**无 `is_correct` 列**（主观题不判对错）。【新增 · 决策 28】**草稿三列** `answer_draft`（`mediumtext`，纯文字）、`answer_draft_version`（bigint 默认 0）、`answer_draft_saved_time`（bigint 毫秒）：位在 `answer_version` 之后，承载「作答中服务端暂存、重进恢复」，**不参与判分、不置 `answered`**（DDL 见 §4.7.0 G10） |
 | `sys_dict` / `sys_dict_item` | 【仅数据，不改表结构】新增 `hsk_practice_module_v2`（1007，4 项）/ `hsk_practice_module_v3`（1008，5 项），作为 `/hsk/modules` 的模块卡数据源 |
 
@@ -2345,7 +2345,7 @@ E1 首页模块卡
 | 7   | 作答链路端点**不带 `version`**：版本由 `paperId` 唯一确定（§1 约束 1），仅目录端点（U1/U2/U3）与 CR 需要 `version`                                  |
 | 8   | **答题卡接口统一（决策 25，参考 CSCA）**：五模块各有 `GET /{mod}/records/{recordId}/answer-card`，响应同构——`{recordId, paperId, section, totalQuestions, answeredCount, unansweredCount, currentQuestionNumber, questions[]}`，`questions[]` 按 `question_ids` 快照顺序逐题 `{order, questionId, answered, current}`。🔴 **只记录「答没答」**：不下发 `correct`（对错只在交卷后报告出现），**不含标记、收藏、错题**。**作答中答题卡用本接口，报告页对错用 CR 的 `answerCard[]`，两处题序同源** |
 | 9   | **作答草稿（决策 28 / G10，仅写/译/说）**：作答中定时 `PUT /{mod}/records/{recordId}/questions/{questionId}/draft` 暂存（服务端存 `answer_draft`），**每次进 ② 由每题 `answerDraft` 字段自动恢复**。🔴 草稿**不置 `answered`、不参与判分**；**交卷前必须先走 ③ 批量保存把编辑器内容落成正式答案**（服务端不拿草稿兜底，只在交卷响应回 `draftNotSubmitted` 提示）。命名勿与 `/parts[].draft`（记录级「未提交的那次 record」）混用 |
-| 10  | **作答时长按「在场累计」（决策 30 / G11，五模块同构）**：练习顺计时、允许退出——退出调 `POST /{mod}/records/{recordId}/pause`（**结算本段 + 存草稿 + 记位置**，一次请求完成），回来调 `POST /{mod}/records/{recordId}/resume`（幂等）。🔴 `durationSeconds` = **累计在场秒数**，**不是** `end_time − start_time`（墙钟差会把离线时间算进去）。🔴 **前端必须周期 `pause`**（建议 5–10 分钟，顺带存草稿）并监听 `visibilitychange`，否则崩溃/杀进程时单段被 30 分钟上界截断会少算。续练时 ①/①b 返回 `durationSeconds` + `paused`，计时器从已累计值续起 |
+| 10  | **作答时长按「在场累计」（决策 30 / G11，五模块同构）**：练习顺计时、允许退出——退出调 `POST /{mod}/records/{recordId}/pause`（**结算本段 + 存草稿 + 记位置**，一次请求完成），回来调 `POST /{mod}/records/{recordId}/resume`（幂等）。🔴 `durationSeconds` = **累计在场秒数**，**不是** `end_time − start_time`（墙钟差会把离线时间算进去）。🔴 **前端必须周期 `pause`**（建议 5–10 分钟，顺带存草稿）并监听 `visibilitychange`，否则崩溃/杀进程时单段被 30 分钟上界截断会少算。续练时 ①/①b 返回 `durationSeconds` + `paused`，计时器从已累计值续起。🔴 结算边界 = `max(start_time, paused_time, resumed_time)`（G11 修正案：resume 写 `resumed_time`，防多次暂停/恢复重复计时） |
 
 ### 4.6.2 五模块差异矩阵
 
@@ -2618,16 +2618,18 @@ ALTER TABLE practice_subjective_record
 **结算公式（唯一入口，`pause` / `submit` / 任何保存动作都走它）**：
 
 ```
-delta       = now − (paused_time ?? start_time)
+boundary    = max(start_time, paused_time, resumed_time)   // 当前在场段起点
+delta       = now − boundary
 duration   += clamp(delta, 0, MAX_SEGMENT)   // 秒；上界兜崩溃
-paused_time = now                            // pause 与 submit 都置；resume 置 NULL
+paused_time = now                            // pause 与 submit 都置；resume 置 NULL + resumed_time = now
 ```
 
 | 项 | 口径 |
 |---|---|
 | `duration` 列 | 累计在场秒——听/读 = `practice_record.duration_seconds`，写/译/说 = `practice_subjective_record.duration`；**不再被墙钟差覆盖** |
-| `paused_time` | `NULL` = 在场；非 `NULL` = 上次离开时刻，同时充当「本段起点」 |
-| `start_time` | 保持「首次开始」语义不动，**不拿它当段起点**（否则首次开始时间丢失） |
+| `paused_time` | `NULL` = 在场（未 pause 过或已 resume）；非 `NULL` = 上次离开时刻 |
+| `start_time` | 保持「首次开始」语义不动；仅作「从未 resume」时的段起点兜底 |
+| `resumed_time` | 🟡 **修正案（2026-11-17 晚）**：最近一次 resume 时刻 = 当前在场段起点。初版把段起点寄托在 `paused_time ?? start_time` 上，resume 清列后段起点退回 `start_time`，**「pause→resume→再 pause/submit」会把已计过的段重计一遍且含离开时间**——段起点必须有独立落点，故两表各加一列 `resumed_time bigint NULL`，resume 时写 now；结算边界取三者 max（TEST 已执行 `tmp/_add_resumed_time.py --apply`） |
 | `MAX_SEGMENT` | **30 分钟（1800s）**。前端每 5–10 分钟 `pause` 一次 + `visibilitychange` 一次，单段远低于上界；该上界只兜「杀进程 / 断网」，正常不触发 |
 | 客户端上报 | 🔴 **字段移除**。`pause` 请求体不再有 `durationSeconds`（听力前端同步改，**不保留兼容字段**），时长一律服务端自算——防客户端时钟不准与刷时长；`start_time` 为 NULL 的历史脏数据不累加、保持原 `duration` |
 | `baseVersion` | 听力现有 `ListeningRecordPauseRequest` 带 `@NotNull baseVersion`，但**乐观锁校验早已被注释掉**（`ListeningRecordServiceImpl#pause` 里那段 `if` 是注释），无实际作用 → 本次一并去掉；前端若仍传，服务端忽略 |
@@ -3081,7 +3083,7 @@ POST /translation/records/{recordId}/submit
 
 | E19 | `practice_subjective_record` / `practice_subjective_answer`（写/译/说合并表，决策 26） | **已有**（2026-11-16 新建，各 0 行；原 `practice_writing_*` / `practice_speaking_*` 四表已改名 `__bak20261116`） | 🔴 **两张表都不存在**（仍是 `practice_writing_record` / `practice_writing_answer` / `practice_speaking_record` / `practice_speaking_answer` 老结构） | **生产部署前必须先建表 + 迁移存量**，否则写/译/说三模块全部 `Table 'xuexitest.practice_subjective_record' doesn't exist`。DDL 以 TEST 为准；存量迁移与旧表改名见 SDD 附录 D |
 | E20 | `practice_subjective_answer` 草稿三列（决策 28 / G10） | ✅ **已有**（2026-11-17 已执行 `db/109-subjective-answer-draft.sql`，实测列在：`answer_draft` / `answer_draft_version` / `answer_draft_saved_time`） | 随 E19 一起建（生产该表本就不存在，建表语句直接带上这三列即可，**不需要单独 ALTER**） | 缺列则草稿保存/恢复端点报 `Unknown column 'answer_draft'` |
-| E21 | `practice_record` / `practice_subjective_record` 的 **`paused_time`**（决策 30 / G11） | ✅ **已有**（2026-11-17 已执行 `tmp/_add_paused_time.py --apply`，两表各加一列 `bigint NULL`，表结构备份在 `tmp/backup/`） | 🔴 同样没有：`practice_record` 生产存在 → **需单独 ALTER**；`practice_subjective_record` 随 E19 建表时带上 | 缺列则 `pause` / `resume` 报 `Unknown column 'paused_time'`，五模块只能退化成墙钟差。TEST 执行 §9.1.1 的 ALTER（两表各一列、存量 `NULL` 即「在场」、**零回填**） |
+| E21 | `practice_record` / `practice_subjective_record` 的 **`paused_time` + `resumed_time`**（决策 30 / G11 + 修正案） | ✅ **已有**（2026-11-17 已执行 `tmp/_add_paused_time.py --apply`、`tmp/_add_resumed_time.py --apply`，两表各加两列 `bigint NULL`，表结构备份在 `tmp/backup/`） | 🔴 同样没有：`practice_record` 生产存在 → **需单独 ALTER**；`practice_subjective_record` 随 E19 建表时带上 | 缺列则 `pause` / `resume` 报 `Unknown column 'paused_time'`，五模块只能退化成墙钟差。TEST 执行 §9.1.1 的 ALTER（两表各一列、存量 `NULL` 即「在场」、**零回填**） |
 
 **B. 数据差异（会改变接口返回值）**
 
@@ -3237,7 +3239,7 @@ ALTER TABLE practice_subjective_record
 | 代码侧 `enabled_prac` 过滤 | ✅ 已改完并编译通过 |
 | 写/译/说作答表（决策 26） | ✅ 已合并为 `practice_subjective_record` + `practice_subjective_answer`（2026-11-16 新建，各 0 行）；原 `practice_writing_record/answer`、`practice_speaking_record/answer` 四表已改名 `__bak20261116`（保留回滚） |
 | 作答草稿三列（决策 28 / G10） | ✅ 已加（`db/109-subjective-answer-draft.sql`，实测 `answer_draft` / `_version` / `_saved_time` 三列在位） |
-| 待补 | `uk_module_part` 唯一键；清 `SEC_SPEAKING` 残留 4 行。（~~`paused_time` 两列~~ ✅ 2026-11-17 已在 TEST 执行，见 E21） |
+| 待补 | `uk_module_part` 唯一键；清 `SEC_SPEAKING` 残留 4 行。（~~`paused_time` + `resumed_time`~~ ✅ 2026-11-17 已在 TEST 执行，见 E21） |
 | 生产库 | 差异见 §9.1，**本期不处理** |
 
 ---
