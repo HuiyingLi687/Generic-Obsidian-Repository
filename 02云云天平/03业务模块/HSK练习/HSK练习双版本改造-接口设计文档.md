@@ -2439,11 +2439,12 @@ E1 首页模块卡
 
 1. 目录三跳全部带 `module`（U3 必填）+ `version`；作答端点不带 `version`。
 2. start 请求体一律 `{paperId, sectionMapping, section}`（决策 23），`section` 取 U3 `parts[].section`、`sectionMapping` 取 U3 `parts[].sectionMapping`（或 E1 卡片元数据的 `sectionMapping`）。
-3. 续练 = 再调 start（幂等），**不要**本地缓存 recordId/recordId 过期判断。
+3. 续练 = 再调 start（幂等），**不要**本地缓存 recordId 或自行判断记录是否过期。
 4. 拉题后按逐题 `layout` 渲染作答组件（§4.0.5），**不要**按 `typeCode` 猜形态。
 5. submit 前确保 Idempotency-Key 生成且单次会话复用同一 key。
 6. 交卷后报告入口只有 CR 一个；写/说/译需轮询 `reportStatus`（建议 2–3s 间隔、上限 60s，超时降级为「生成中」占位）。**状态语义（决策 24）**：`GRADING` = AI 还在评分（`grading_state=0`），`READY` = 评完可看（`=1`），`FAILED` = 未答或评分失败（`=2`，可调 `/report/retry`）；报告详情走 `GET /{mod}/records/{recordId}/report`。
 7. 答题卡两处分工（决策 25）：**作答中**调 `GET /{mod}/records/{recordId}/answer-card`（五模块同构，**只回已答/未答**，练习无标记/收藏/错题，随保存刷新）；**报告页**对错/「只看错题」用 CR 通用块 `answerCard[]`，`correct=null` 置灰不进错题过滤。两处题序同源（`question_ids` 快照）。
+8. 作答时长（决策 30）：进页面先按 ①/①b 返回的 `durationSeconds` 把正计时器**恢复到已累计值**；之后**每 5–10 分钟**与 `visibilitychange`（切后台/离开）各调一次 `POST /{mod}/records/{recordId}/pause`（顺带存草稿），回来调 `POST .../resume`。🔴 **不要在前端自己累加时长再上报**——`pause` 请求体已无 `durationSeconds`，时长一律服务端按进出时间戳算。
 
 ---
 
@@ -3076,7 +3077,8 @@ POST /translation/records/{recordId}/submit
 | E18 | `speaking_exam_paper_question.section`（部分号） | **已有**（`varchar(50) NULL`，数字 `1/2/3/0`，2026-11-11 新增；`0` = 开场音乐/确认姓名/确认国籍/报号 4 类前导流程题） | **未核验**（2026-11-11 新增列，生产大概率缺；生产该表只有 `number`/`question_group`） | **CR 端点不受影响**（只读 `practice_part_setting`，口语按 `PART_N` 归一匹配）。受影响的是「口语取题改按 `section`」这条（SDD §3.2.4，缺陷 B-19 的修法）：**生产不补列就只能继续用 `question_type_mapping` 白名单**，3.0 的 6 个新 `type_code` 仍取不到题 |
 
 | E19 | `practice_subjective_record` / `practice_subjective_answer`（写/译/说合并表，决策 26） | **已有**（2026-11-16 新建，各 0 行；原 `practice_writing_*` / `practice_speaking_*` 四表已改名 `__bak20261116`） | 🔴 **两张表都不存在**（仍是 `practice_writing_record` / `practice_writing_answer` / `practice_speaking_record` / `practice_speaking_answer` 老结构） | **生产部署前必须先建表 + 迁移存量**，否则写/译/说三模块全部 `Table 'xuexitest.practice_subjective_record' doesn't exist`。DDL 以 TEST 为准；存量迁移与旧表改名见 SDD 附录 D |
-| E20 | `practice_subjective_answer` 草稿三列（决策 28 / G10） | 🔴 **尚未加列**（2026-11-17 实测：表 31 列中无 `answer_draft*`） | 随 E19 一起建（生产该表本就不存在，建表语句直接带上这三列即可，**不需要单独 ALTER**） | 缺列则草稿保存/恢复端点报 `Unknown column 'answer_draft'`。TEST 侧需先执行 G10 的 `ALTER TABLE`（3 列、零改存量，表当前 0 行，无回填负担） |
+| E20 | `practice_subjective_answer` 草稿三列（决策 28 / G10） | ✅ **已有**（2026-11-17 已执行 `db/109-subjective-answer-draft.sql`，实测列在：`answer_draft` / `answer_draft_version` / `answer_draft_saved_time`） | 随 E19 一起建（生产该表本就不存在，建表语句直接带上这三列即可，**不需要单独 ALTER**） | 缺列则草稿保存/恢复端点报 `Unknown column 'answer_draft'` |
+| E21 | `practice_record` / `practice_subjective_record` 的 **`paused_time`**（决策 30 / G11） | 🔴 **两张表都无此列**（2026-11-17 实测：只有 `start_time` + `duration*`） | 🔴 同样没有：`practice_record` 生产存在 → **需单独 ALTER**；`practice_subjective_record` 随 E19 建表时带上 | 缺列则 `pause` / `resume` 报 `Unknown column 'paused_time'`，五模块只能退化成墙钟差。TEST 执行 §9.1.1 的 ALTER（两表各一列、存量 `NULL` 即「在场」、**零回填**） |
 
 **B. 数据差异（会改变接口返回值）**
 
@@ -3108,6 +3110,13 @@ ALTER TABLE practice_subjective_answer
   ADD COLUMN `answer_draft` mediumtext DEFAULT NULL COMMENT '作答草稿正文（答题端暂存，不参与判分）',
   ADD COLUMN `answer_draft_version` bigint NOT NULL DEFAULT '0' COMMENT '草稿版本（每次保存+1，乱序/多端冲突检测）',
   ADD COLUMN `answer_draft_saved_time` bigint DEFAULT NULL COMMENT '草稿最后保存时间（毫秒，服务端时钟）；NULL=从未存草稿';
+
+-- 决策 30 / G11：作答时长按「在场累计」，两表各加一列（存量 NULL=在场，零回填）
+ALTER TABLE practice_record
+  ADD COLUMN `paused_time` bigint DEFAULT NULL COMMENT '离开时刻（毫秒）；NULL=在场';
+
+ALTER TABLE practice_subjective_record
+  ADD COLUMN `paused_time` bigint DEFAULT NULL COMMENT '离开时刻（毫秒）；NULL=在场';
 ```
 
 - ~~`SEC_SPEAKING` 残留：删 1 行模块配置 + 3 行板块配置，`question` 里 5 条造数题软删（§10 第 6 条）。~~
