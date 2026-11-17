@@ -1811,7 +1811,7 @@ JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 �
 > 🔴 **2026-11-17 起，HSK 练习的业务错误码统一为 8101–8299 的唯一码，`message` 为可直接展示的中文。**
 > 改造前 `code` 只有 400/404/409，`message` 是英文错误码字符串（`DRAFT_LOCKED` 之类），现已全部下线。
 >
-> **号段规划**：通用 8101–8119｜目录 8131–8150｜听力 8141–8160｜阅读 8161–8199｜写作 8201–8240｜翻译 8251–8270｜口语 8281–8299。
+> **号段规划**：通用 8101–8120｜目录 8131–8140｜听力 8141–8150｜阅读 8161–8199｜写作 8201–8240｜翻译 8251–8270｜口语 8281–8299。
 > 与 CSCA（8001–8099）、写字课 / 拼音课（7001–7099）互不冲突。
 
 ### A.0 框架级（不属于业务码段）
@@ -1843,6 +1843,10 @@ JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 �
 | `8113` | `SUBJECTIVE_AI_QUOTA_INSUFFICIENT` | AI 评分次数不足，请前往权益中心购买后交卷 | 写 / 译 / 说交卷时 AI 评分配额不足（拦在交卷事务内）。 |
 | `8114` | `PRACTICE_PART_NO_QUESTIONS` | 该板块没有可练习的题目 | 板块下没有可练习的题目（写 / 译共用，文案由调用处补模块名）。 |
 | `8115` | `PRACTICE_QUESTION_TYPE_NOT_FOUND` | 题型不存在 | 题型不存在（写 / 译共用）。 |
+| `8116` | `REPORT_FORBIDDEN` | 无权访问该报告 | 报告不属于当前用户。**写 / 译 / 说三套解锁服务共用**。 |
+| `8117` | `REPORT_OPERATE_FORBIDDEN` | 无权操作该报告 | 无权对该报告执行解锁 / 重试。**三套解锁服务共用**。 |
+| `8118` | `UNLOCK_QUOTA_INSUFFICIENT` | 权益不足，请前往权益中心购买点数包后重试 | 报告解锁所需权益不足。**三套解锁服务共用**。 |
+| `8119` | `UNLOCK_STATE_CONFLICT` | 解锁状态更新冲突，请稍后重试 | 报告解锁的乐观锁冲突（并发解锁）。**三套解锁服务共用**。 |
 
 ### A.2 目录（版本 / 等级 / 模块 / 试卷 / 板块）
 
@@ -1857,8 +1861,6 @@ JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 �
 | `8137` | `PRACTICE_SECTION_REQUIRED` | 板块号不能为空 | 缺少 section。 |
 | `8138` | `PRACTICE_PART_NOT_FOUND` | 板块不存在 | 板块不存在（试卷下没有该 section）。 |
 | `8140` | `PRACTICE_REPORT_PAPER_NOT_FOUND` | 练习卷不存在 | 报告查询时试卷不存在。 |
-| `8141` | `LISTENING_PAPER_CONTENT_OFFLINE` | 试卷内容已下架，无法作答 | 听力开练时试卷内容已下架。 |
-| `8142` | `LISTENING_PART_CONFIG_OFFLINE` | 板块配置已下架，无法作答 | 听力开练时板块配置已下架。 |
 
 ### A.3 听力
 
@@ -1949,11 +1951,17 @@ JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 �
 
 | code | 常量 | message | 触发场景 |
 |---|---|---|---|
-| `8281` | `SPEAKING_REPORT_NOT_FOUND` | 口语报告不存在 | 口语报告不存在。 |
-| `8282` | `SPEAKING_REPORT_FORBIDDEN` | 无权查看该口语报告 | 无权查看该口语报告。 |
-| `8283` | `SPEAKING_REPORT_OPERATE_FORBIDDEN` | 无权操作该口语报告 | 无权操作该口语报告（解锁 / 重试）。 |
-| `8284` | `SPEAKING_UNLOCK_STATE_CONFLICT` | 解锁状态更新冲突，请稍后重试 | 解锁状态并发更新冲突。 |
-| `8285` | `SPEAKING_QUOTA_INSUFFICIENT` | 权益不足，请前往权益中心购买点数包后重试 | 口语报告解锁所需权益不足。 |
+| `8281` | `SPEAKING_REPORT_NOT_FOUND` | 口语报告不存在 | 口语报告解锁（旧链路）。 |
+
+> 🔴 **8282–8299 目前空置**。原来的 `SPEAKING_REPORT_FORBIDDEN` / `_OPERATE_FORBIDDEN` /
+> `_UNLOCK_STATE_CONFLICT` / `_QUOTA_INSUFFICIENT` 与写作解锁的文案**逐字相同**，已上收为通用码
+> `REPORT_FORBIDDEN`(8116) / `REPORT_OPERATE_FORBIDDEN`(8117) / `UNLOCK_QUOTA_INSUFFICIENT`(8118) /
+> `UNLOCK_STATE_CONFLICT`(8119)，写作与口语共用。
+>
+> **口语作答链路的异常不在这张表里**：录音 / 交卷 / 报告仍走独立的 `SpeakingException`
+> （`responseCode` + 英文 `errorCode`，如 `RECORDING_EXPIRED`），且该链路已于 2026-11-13 停用
+> （录音预签名端点注销、`SpeakingRecordingController` 等 6 个控制器不注册）。当前**唯一实际可达**的
+> 口语错误是配置校验接口的鉴权失败（`404 SPEAKING_RESOURCE_NOT_FOUND`）。
 
 ---
 
