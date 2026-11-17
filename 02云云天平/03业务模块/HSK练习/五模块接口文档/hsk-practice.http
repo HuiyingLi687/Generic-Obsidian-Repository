@@ -1,0 +1,970 @@
+### ============================================================================
+### HSK 练习 · 五模块全链路联调脚本（Idea HTTP Client）
+###
+### 用法：从上到下依次点绿色箭头执行，变量会自动串联。
+###   1. 先改下面 @username / @password 为你的测试账号
+###   2. 选一个 @practice 目标：
+###        经网关：    @practice = http://<网关地址>/api/practice
+###        本地直连：  @practice = http://127.0.0.1:8087
+###   3. 从「00 登录」开始跑
+###
+### 注意：@practice 用本地直连时，登录那一步的 @auth 也要改成 auth-service 的
+###       本地端口（默认 8081），且路径去掉 /api：http://127.0.0.1:8081
+###
+### 每个请求上的 X-Client-Type: APP 不能删 —— 删了服务端会用内置的 userId=1
+### 模拟用户跑，不报错但数据不对。
+###
+### ⚠️ 关于 19 位 ID：脚本用 client.global.set 自动串联 paperId / recordId。
+###    如果脚本引擎把大整数转成 double，尾数会变成 ...000，接口随即报 403。
+###    每个 client.log 都打印了 ID，跑之前扫一眼末尾是不是全 0 —— 是的话
+###    就从响应 JSON 里手动复制真实 ID，替换对应请求里的 {{...}}。
+### ============================================================================
+
+@practice = http://127.0.0.1:8087
+@auth = http://127.0.0.1:8081
+@username = 13800000000
+@password = 123456
+@version = HSK3.0
+@level = 3
+@module = listening
+
+
+### 00 登录：拿 token
+POST {{auth}}/app/login
+Content-Type: application/json
+
+{
+  "username": "{{username}}",
+  "password": "{{password}}"
+}
+
+> {%
+    client.test("登录成功", function () {
+        client.assert(response.body.code === 200, "登录失败: " + JSON.stringify(response.body));
+        client.assert(!!response.body.data.token, "响应里没有 token");
+    });
+    client.global.set("token", response.body.data.token);
+    client.log("token 已写入 token 变量");
+%}
+
+
+### 01 首页模块卡（免登录，不需要 token）
+GET {{practice}}/hsk/modules?version={{version}}
+Accept-Language: zh
+
+> {%
+    client.test("拿到模块卡", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+        client.assert(response.body.data.modules.length > 0, "modules 为空");
+    });
+    client.log("layout=" + response.body.data.layout +
+               " 模块数=" + response.body.data.modules.length);
+%}
+
+
+### 02 U1 等级概览 + 卷列表 → 取第一张卷的 paperId
+GET {{practice}}/hsk/levels?module={{module}}&version={{version}}&level={{level}}
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+Accept-Language: zh
+
+> {%
+    client.test("拿到卷列表", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+        client.assert(response.body.data.paperCount > 0,
+                      "该等级没有卷，换个 level 或 module 再试");
+    });
+    // paperId 是 19 位 Long，直接转字符串存，避免 JS 精度丢失
+    var pid = String(response.body.data.papers[0].paperId);
+    client.global.set("paperId", pid);
+    client.log("paperId=" + pid + "  卷名=" + response.body.data.papers[0].paperCode +
+               "  状态=" + response.body.data.papers[0].status);
+%}
+
+
+### 03 U2 等级备考说明（展示用，无进度）
+GET {{practice}}/hsk/levels/{{level}}/intro?module={{module}}&version={{version}}
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+Accept-Language: zh
+
+> {%
+    client.test("拿到备考说明", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    client.log("总题量=" + response.body.data.totalQuestionCount +
+               " 时长=" + response.body.data.durationMinutes + "分钟" +
+               " 板块数=" + response.body.data.parts.length);
+%}
+
+
+### 04 U3 卷内板块 + 进度 → 取第一个板块的 section
+GET {{practice}}/hsk/papers/{{paperId}}/parts?module={{module}}&version={{version}}
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    client.test("拿到板块", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+        client.assert(response.body.data.parts.length > 0, "该卷没有此模块的板块");
+    });
+    var p = response.body.data.parts[0];
+    client.global.set("section", String(p.section));
+    client.log("section=" + p.section + " (" + typeof p.section + ")" +
+               " partCode=" + p.partCode +
+               " 状态=" + p.status +
+               " 已答=" + p.doneCount + "/" + p.questionCount);
+    if (p.draft) {
+        client.log("有草稿: answeredCount=" + p.draft.answeredCount +
+                   " currentQuestionId=" + p.draft.currentQuestionId);
+    }
+%}
+
+### ============================================================================
+### 一、听力 listening
+### ============================================================================
+
+### 11 听力 · 开练（幂等：已有进行中记录会直接返回）
+POST {{practice}}/listening/records/start
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "paperId": {{paperId}},
+  "section": "{{section}}",
+  "restart": false
+}
+
+> {%
+    client.test("开练成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code +
+                      " message=" + response.body.message);
+    });
+    var d = response.body.data;
+    client.global.set("lisRecordId", String(d.recordId));
+    client.log("recordId=" + d.recordId + " status=" + d.status +
+               " 进度=" + d.answeredCount + "/" + d.totalQuestions);
+%}
+
+
+### 12 听力 · 拉题 → 取第一题
+GET {{practice}}/listening/records/{{lisRecordId}}/questions
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    client.test("拉到题目", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+        client.assert(response.body.data.length > 0, "题目为空");
+    });
+    var q = response.body.data[0];
+    client.global.set("lisQuestionId", String(q.questionId));
+    var opts = q.option_content ? Object.keys(q.option_content) : [];
+    client.global.set("lisOption", opts.length ? opts[0] : "A");
+    client.log("qid=" + q.questionId + " layout=" + q.layout +
+               " 选项键=" + JSON.stringify(opts) +
+               " audio_url=" + q.audio_url);
+%}
+
+
+### 13 听力 · 单题保存（防抖，选完就存）
+PUT {{practice}}/listening/records/{{lisRecordId}}/answers/{{lisQuestionId}}
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "selectedOptionId": "{{lisOption}}",
+  "clientSequence": 1
+}
+
+> {%
+    client.test("单题保存成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    client.log("answer=" + response.body.data.answer +
+               " conflict=" + response.body.data.conflict +
+               " currentVersion=" + response.body.data.currentVersion);
+%}
+
+
+### 14 听力 · 批量保存（切题/退出时）
+PUT {{practice}}/listening/records/{{lisRecordId}}/answers
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "answers": [
+    { "questionId": {{lisQuestionId}}, "selectedOptionId": "{{lisOption}}" }
+  ],
+  "currentQuestionId": {{lisQuestionId}},
+  "durationSeconds": 30
+}
+
+> {%
+    client.test("批量保存成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    client.log("已答=" + response.body.data.answeredCount +
+               "/" + response.body.data.totalQuestions);
+%}
+
+
+### 15 听力 · 暂停（存进度 + 草稿答案）
+POST {{practice}}/listening/records/{{lisRecordId}}/pause
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "currentQuestionId": {{lisQuestionId}},
+  "durationSeconds": 60,
+  "draftAnswers": [
+    { "questionId": {{lisQuestionId}}, "answer": "{{lisOption}}", "answered": 1 }
+  ]
+}
+
+> {%
+    client.test("暂停成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+%}
+
+
+### 16 听力 · 答题卡
+GET {{practice}}/listening/records/{{lisRecordId}}/answer-card
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    client.test("答题卡正常", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    var d = response.body.data;
+    client.log("总题=" + d.totalQuestions + " 已答=" + d.answeredCount +
+               " 未答=" + d.unansweredCount + " 当前题号=" + d.currentQuestionNumber);
+%}
+
+
+### 17 听力 · 交卷（客观题，立刻出报告）
+POST {{practice}}/listening/records/{{lisRecordId}}/submit
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "durationSeconds": 120,
+  "finalAnswers": [
+    { "questionId": {{lisQuestionId}}, "selectedOptionId": "{{lisOption}}" }
+  ]
+}
+
+> {%
+    client.test("交卷成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    var d = response.body.data;
+    client.log("reportStatus=" + d.reportStatus + " 正确率=" + d.accuracyRate +
+               " 对=" + d.correctCount + " 错=" + d.wrongCount);
+%}
+
+
+### 18 听力 · 报告详情
+GET {{practice}}/listening/records/{{lisRecordId}}/report
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    client.test("报告可读", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    client.log("reportStatus=" + response.body.data.reportStatus +
+               " 行数=" + (response.body.data.rows || []).length);
+%}
+
+
+### 19 听力 · 单题回顾
+GET {{practice}}/listening/records/{{lisRecordId}}/report/questions/{{lisQuestionId}}
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    client.test("单题回顾可读", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    client.log("userAnswer=" + response.body.data.userAnswer +
+               " standardAnswer=" + response.body.data.standardAnswer +
+               " isCorrect=" + response.body.data.isCorrect);
+%}
+
+### ============================================================================
+### 二、阅读 reading
+### ============================================================================
+
+### 21 阅读 · 切模块重取 paperId + section
+GET {{practice}}/hsk/papers/{{paperId}}/parts?module=reading&version={{version}}
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    var d = response.body.data;
+    if (response.body.code === 200 && d.parts && d.parts.length) {
+        client.global.set("rdSection", String(d.parts[0].section));
+        client.log("阅读板块 section=" + d.parts[0].section);
+    } else {
+        client.log("该卷没有阅读板块，请换 paperId");
+    }
+%}
+
+
+### 22 阅读 · 开练
+POST {{practice}}/reading/records/start
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "paperId": {{paperId}},
+  "section": "{{rdSection}}",
+  "restart": false
+}
+
+> {%
+    client.test("阅读开练成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    client.global.set("rdRecordId", String(response.body.data.recordId));
+    client.log("recordId=" + response.body.data.recordId +
+               " 进度=" + response.body.data.answeredCount + "/" + response.body.data.totalQuestions);
+%}
+
+
+### 23 阅读 · 拉题（注意 optionContent.options 多一层）
+GET {{practice}}/reading/records/{{rdRecordId}}/questions
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    client.test("阅读题目可读", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    var q = response.body.data[0];
+    client.global.set("rdQuestionId", String(q.questionId));
+    var opts = q.optionContent && q.optionContent.options ? Object.keys(q.optionContent.options) : [];
+    client.global.set("rdOption", opts.length ? opts[0] : "A");
+    client.log("number=" + q.number + " 选项键(在 options 里)=" + JSON.stringify(opts) +
+               " groupId=" + q.groupId);
+%}
+
+
+### 24 阅读 · 单题保存
+PUT {{practice}}/reading/records/{{rdRecordId}}/answers/{{rdQuestionId}}
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "questionId": {{rdQuestionId}},
+  "answer": "{{rdOption}}"
+}
+
+> {%
+    client.test("阅读单题保存成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+%}
+
+
+### 25 阅读 · 批量保存（响应是数组，不是整条记录）
+PUT {{practice}}/reading/records/{{rdRecordId}}/answers
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "answers": [
+    { "questionId": {{rdQuestionId}}, "answer": "{{rdOption}}" }
+  ]
+}
+
+> {%
+    client.test("阅读批量保存成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    client.log("返回条数=" + response.body.data.length + "（是数组）");
+%}
+
+
+### 26 阅读 · 交卷（注意没有 finalAnswers）
+POST {{practice}}/reading/records/{{rdRecordId}}/submit
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "durationSeconds": 120
+}
+
+> {%
+    client.test("阅读交卷成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    client.log("reportStatus=" + response.body.data.reportStatus +
+               " 正确率=" + response.body.data.accuracyRate);
+%}
+
+
+### 27 阅读 · 报告
+GET {{practice}}/reading/records/{{rdRecordId}}/report
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    client.test("阅读报告可读", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    client.log("reportStatus=" + response.body.data.reportStatus +
+               " items=" + (response.body.data.items || []).length);
+%}
+
+### ============================================================================
+### 三、写作 writing（主观链路，交卷后是 GRADING 不是 READY）
+### ============================================================================
+
+### 31 写作 · U3 取板块
+GET {{practice}}/hsk/papers/{{paperId}}/parts?module=writing&version={{version}}
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    var d = response.body.data;
+    if (response.body.code === 200 && d.parts && d.parts.length) {
+        client.global.set("wrSection", String(d.parts[0].section));
+        client.log("写作板块 section=" + d.parts[0].section +
+                   " 题型=" + d.parts[0].typeName);
+    } else {
+        client.log("该卷没有写作板块，请换 paperId");
+    }
+%}
+
+
+### 32 写作 · 开练（三字段必填）
+POST {{practice}}/writing/records/start
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "paperId": {{paperId}},
+  "sectionMapping": "SEC_WRITE",
+  "section": "{{wrSection}}"
+}
+
+> {%
+    client.test("写作开练成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code +
+                      " message=" + response.body.message);
+    });
+    client.global.set("wrRecordId", String(response.body.data.recordId));
+    client.log("recordId=" + response.body.data.recordId +
+               " status=" + response.body.data.status +
+               " reportStatus=" + response.body.data.reportStatus);
+%}
+
+
+### 33 写作 · 拉题（看 layout 与 answerDraft）
+GET {{practice}}/writing/records/{{wrRecordId}}/questions
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    client.test("写作题目可读", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    var q = response.body.data[0];
+    client.global.set("wrQuestionId", String(q.questionId));
+    client.log("layout=" + q.layout + " hasStandardAnswer=" + q.hasStandardAnswer +
+               " answerDraft=" + JSON.stringify(q.answerDraft));
+%}
+
+
+### 34 写作 · 存草稿（整份覆盖；同内容不增版本）
+PUT {{practice}}/writing/records/{{wrRecordId}}/questions/{{wrQuestionId}}/draft
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "text": "我上周未去公园，天气很好，我们一家人一起散步……"
+}
+
+> {%
+    client.test("草稿保存成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code +
+                      " message=" + response.body.message);
+    });
+    client.global.set("wrDraftVersion", response.body.data.version);
+    client.log("version=" + response.body.data.version +
+               " 字素=" + response.body.data.graphemeCount);
+%}
+
+
+### 35 写作 · 再存一次同内容（版本应不变）
+PUT {{practice}}/writing/records/{{wrRecordId}}/questions/{{wrQuestionId}}/draft
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "text": "我上周未去公园，天气很好，我们一家人一起散步……",
+  "expectedVersion": {{wrDraftVersion}}
+}
+
+> {%
+    client.test("同内容不增版本", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+        client.assert(response.body.data.version === {{wrDraftVersion}},
+                      "版本变了：" + response.body.data.version);
+    });
+    client.log("version=" + response.body.data.version + "（应与上次相同）");
+%}
+
+
+### 36 写作 · 正式保存答案（草稿不会自动变答案）
+PUT {{practice}}/writing/records/{{wrRecordId}}/answers
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "answers": [
+    {
+      "questionId": {{wrQuestionId}},
+      "answerText": "我上周未去公园，天气很好，我们一家人一起散步，看到了很多花……"
+    }
+  ],
+  "currentQuestionId": {{wrQuestionId}}
+}
+
+> {%
+    client.test("写作答案保存成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    client.log("已答=" + response.body.data.answeredCount);
+%}
+
+
+### 37 写作 · 答题卡
+GET {{practice}}/writing/records/{{wrRecordId}}/answer-card
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    client.test("写作答题卡正常", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+%}
+
+
+### 38 写作 · 交卷
+POST {{practice}}/writing/records/{{wrRecordId}}/submit
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "finalAnswers": [
+    {
+      "questionId": {{wrQuestionId}},
+      "answerText": "我上周未去公园，天气很好，我们一家人一起散步，看到了很多花……"
+    }
+  ],
+  "durationSeconds": 300
+}
+
+> {%
+    client.test("写作交卷成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    var d = response.body.data;
+    client.log("status=" + d.status + " reportStatus=" + d.reportStatus +
+               " draftNotSubmitted=" + JSON.stringify(d.draftNotSubmitted) +
+               " idempotencyKey=" + d.idempotencyKey);
+%}
+
+
+### 39 写作 · 报告（AI 评分总开关关着时恒为 GRADING）
+GET {{practice}}/writing/records/{{wrRecordId}}/report
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    client.test("写作报告可读", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    var d = response.body.data;
+    client.log("reportStatus=" + d.reportStatus +
+               " 已评=" + d.aiScoredCount + "/" + d.aiQuestionCount +
+               " 得分=" + d.finalScore + "/" + d.totalScore);
+    if (d.reportStatus === "GRADING") {
+        client.log("提示：AI 评分仍在进行（或 grading.enabled=false），需轮询");
+    }
+%}
+
+
+### 3A 写作 · 报告重试（仅 FAILED 时有意义）
+POST {{practice}}/writing/records/{{wrRecordId}}/report/retry
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    client.test("重试接口可调", function () {
+        client.assert(response.body.code === 200 || response.body.code === 400,
+                      "code=" + response.body.code);
+    });
+    client.log("reportStatus=" + (response.body.data || {}).reportStatus +
+               " message=" + response.body.message);
+%}
+
+### ============================================================================
+### 四、翻译 translation（交卷路名是 /submissions）
+### ============================================================================
+
+### 41 翻译 · U3 取板块（section=1 笔译 / 2 口译）
+GET {{practice}}/hsk/papers/{{paperId}}/parts?module=translation&version={{version}}
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    var d = response.body.data;
+    if (response.body.code === 200 && d.parts && d.parts.length) {
+        client.global.set("trSection", String(d.parts[0].section));
+        client.log("翻译板块 section=" + d.parts[0].section +
+                   "（1=笔译 input，2=口译 record）");
+    } else {
+        client.log("该卷没有翻译板块（2.0 卷没有翻译），请把 @version 改成 HSK3.0");
+    }
+%}
+
+
+### 42 翻译 · 开练
+POST {{practice}}/translation/records/start
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "paperId": {{paperId}},
+  "sectionMapping": "SEC_TRANSLATION",
+  "section": "{{trSection}}"
+}
+
+> {%
+    client.test("翻译开练成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    client.global.set("trRecordId", String(response.body.data.recordId));
+    client.log("recordId=" + response.body.data.recordId +
+               " sectionMapping=" + response.body.data.sectionMapping);
+%}
+
+
+### 43 翻译 · 拉题
+GET {{practice}}/translation/records/{{trRecordId}}/questions
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    client.test("翻译题目可读", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    var q = response.body.data[0];
+    client.global.set("trQuestionId", String(q.questionId));
+    client.log("layout=" + q.layout + "（input=笔译，record=口译）" +
+               " content=" + (q.content || "").substring(0, 40));
+%}
+
+
+### 44 翻译 · 保存答案
+PUT {{practice}}/translation/records/{{trRecordId}}/answers
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "answers": [
+    { "questionId": {{trQuestionId}}, "answerText": "The weather is very good today." }
+  ],
+  "currentQuestionId": {{trQuestionId}}
+}
+
+> {%
+    client.test("翻译答案保存成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+%}
+
+
+### 45 翻译 · 交卷（⚠️ 是 /submissions，不是 /submit）
+POST {{practice}}/translation/records/{{trRecordId}}/submissions
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "finalAnswers": [
+    { "questionId": {{trQuestionId}}, "answerText": "The weather is very good today." }
+  ],
+  "durationSeconds": 240
+}
+
+> {%
+    client.test("翻译交卷成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code +
+                      " message=" + response.body.message);
+    });
+    client.log("module=" + response.body.data.module +
+               " status=" + response.body.data.status +
+               " reportStatus=" + response.body.data.reportStatus);
+%}
+
+
+### 46 翻译 · 报告（没有 /report/retry 端点）
+GET {{practice}}/translation/records/{{trRecordId}}/report
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    client.test("翻译报告可读", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    client.log("reportStatus=" + response.body.data.reportStatus);
+%}
+
+### ============================================================================
+### 五、口语 speaking（音频作答，录音上传端点已停用）
+### ============================================================================
+
+### 51 口语 · U3 取板块
+GET {{practice}}/hsk/papers/{{paperId}}/parts?module=speaking&version={{version}}
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    var d = response.body.data;
+    if (response.body.code === 200 && d.parts && d.parts.length) {
+        client.global.set("spSection", String(d.parts[0].section));
+        client.log("口语板块 section=" + d.parts[0].section +
+                   " partCode=" + d.parts[0].partCode);
+    } else {
+        client.log("该卷没有口语板块，请换 paperId");
+    }
+%}
+
+
+### 52 口语 · 开练（sectionMapping 用 SEC_SPEAKING）
+POST {{practice}}/speaking/records/start
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "paperId": {{paperId}},
+  "sectionMapping": "SEC_SPEAKING",
+  "section": "{{spSection}}"
+}
+
+> {%
+    client.test("口语开练成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    client.global.set("spRecordId", String(response.body.data.recordId));
+    client.log("recordId=" + response.body.data.recordId +
+               " sectionMapping=" + response.body.data.sectionMapping +
+               "（服务端返回 SEC_SPEAKING）");
+%}
+
+
+### 53 口语 · 拉题（layout 恒 record，题目本体常在 passage）
+GET {{practice}}/speaking/records/{{spRecordId}}/questions
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    client.test("口语题目可读", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    var q = response.body.data[0];
+    client.global.set("spQuestionId", String(q.questionId));
+    client.log("layout=" + q.layout + "（应恒为 record）" +
+               " hasStandardAnswer=" + q.hasStandardAnswer +
+               " passage=" + (q.passage || "").substring(0, 40));
+%}
+
+
+### 54 口语 · 保存提纲草稿（只存文字，不碰音频）
+PUT {{practice}}/speaking/records/{{spRecordId}}/questions/{{spQuestionId}}/draft
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "text": "1. 问好 2. 介绍家乡 3. 邀请对方来玩"
+}
+
+> {%
+    client.test("口语草稿保存成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    client.log("version=" + response.body.data.version +
+               " 字素=" + response.body.data.graphemeCount);
+%}
+
+
+### 55 口语 · 落答案（音频 URL 由客户端自己上传后拿到）
+### ⚠️ 把 answer 换成你真实上传后的 WAV URL；服务端只存不校验
+POST {{practice}}/speaking/records/{{spRecordId}}/questions/{{spQuestionId}}/answers
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "answer": "https://cdn.example.com/speaking/demo.wav",
+  "durationMs": 45000
+}
+
+> {%
+    client.test("口语答案保存成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code +
+                      " message=" + response.body.message);
+    });
+    client.log("已答=" + response.body.data.answeredCount);
+%}
+
+
+### 56 口语 · 答题卡（answered = 录音已上传）
+GET {{practice}}/speaking/records/{{spRecordId}}/answer-card
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    client.test("口语答题卡正常", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+%}
+
+
+### 57 口语 · 交卷
+POST {{practice}}/speaking/records/{{spRecordId}}/submit
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "durationSeconds": 300
+}
+
+> {%
+    client.test("口语交卷成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    client.log("status=" + response.body.data.status +
+               " reportStatus=" + response.body.data.reportStatus +
+               " AI题数=" + response.body.data.aiQuestionCount);
+%}
+
+
+### 58 口语 · 报告
+GET {{practice}}/speaking/records/{{spRecordId}}/report
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    client.test("口语报告可读", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    client.log("reportStatus=" + response.body.data.reportStatus +
+               " 已评=" + response.body.data.aiScoredCount + "/" + response.body.data.aiQuestionCount);
+%}
+
+### ============================================================================
+### 六、横切验证
+### ============================================================================
+
+### 61 CR 板块最近报告（路径不带 /hsk；无报告时 data.data 为 null）
+GET {{practice}}/papers/{{paperId}}/reports/latest?module=writing&section={{wrSection}}&version={{version}}
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    client.test("最近报告可查", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    client.log("module=" + response.body.data.module +
+               " hasData=" + (response.body.data.data !== null));
+%}
+
+
+### 62 反向用例 · 不带 X-Client-Type（会回落模拟用户 userId=1，不报错）
+GET {{practice}}/hsk/levels?module=listening&version={{version}}&level={{level}}
+
+> {%
+    client.log("⚠️ 这个请求故意不带 X-Client-Type，返回的是模拟用户 1 的数据");
+    client.log("code=" + response.body.code + " paperCount=" +
+               (response.body.data ? response.body.data.paperCount : "null"));
+%}
+
+
+### 63 反向用例 · 不带 token 调需登录接口（应得 code=401）
+GET {{practice}}/hsk/papers/{{paperId}}/parts?module=listening&version={{version}}
+X-Client-Type: APP
+
+> {%
+    client.test("未登录被拦", function () {
+        client.assert(response.body.code === 401,
+                      "期望 401，实际 " + response.body.code + " " + response.body.message);
+    });
+    client.log("message=" + response.body.message + "（HTTP 状态码仍是 200）");
+%}
+
+
+### 64 反向用例 · 用错模块的 sectionMapping 开练（应得 SECTION_MAPPING_MISMATCH）
+POST {{practice}}/translation/records/start
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "paperId": {{paperId}},
+  "sectionMapping": "SEC_WRITE",
+  "section": "{{trSection}}"
+}
+
+> {%
+    client.test("板块归属校验生效", function () {
+        client.assert(response.body.code === 400, "期望 400，实际 " + response.body.code);
+        client.assert(response.body.message === "SECTION_MAPPING_MISMATCH",
+                      "message=" + response.body.message);
+    });
+%}
+
+
+### 65 反向用例 · 交卷后再存草稿（应得 DRAFT_LOCKED）
+PUT {{practice}}/writing/records/{{wrRecordId}}/questions/{{wrQuestionId}}/draft
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "text": "交卷后再存"
+}
+
+> {%
+    client.test("交卷后草稿锁定", function () {
+        client.assert(response.body.code === 409, "期望 409，实际 " + response.body.code);
+        client.assert(response.body.message === "DRAFT_LOCKED",
+                      "message=" + response.body.message);
+    });
+%}

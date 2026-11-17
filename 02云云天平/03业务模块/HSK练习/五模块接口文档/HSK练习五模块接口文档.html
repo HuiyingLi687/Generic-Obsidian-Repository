@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>HSK 练习 · 五模块全链路接口文档</title>
+<style>
+:root{
+  --bg:#fbfbfd; --fg:#1d2129; --muted:#6b7280; --line:#e5e7eb;
+  --card:#ffffff; --code-bg:#f6f8fa; --accent:#1a6fd4; --accent-soft:#eaf2fd;
+  --th:#f3f4f6; --mark:#fff3bf;
+}
+html[data-theme="dark"]{
+  --bg:#14161a; --fg:#e6e8eb; --muted:#9aa4b2; --line:#2a2f37;
+  --card:#1a1d23; --code-bg:#0f1216; --accent:#5aa4f5; --accent-soft:#1b2a3d;
+  --th:#20242b; --mark:#4a3f10;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;}
+aside{position:fixed;top:0;left:0;width:298px;height:100vh;overflow-y:auto;
+  background:var(--card);border-right:1px solid var(--line);padding:18px 10px 60px;}
+aside .brand{font-weight:600;font-size:15px;padding:0 10px 12px;border-bottom:1px solid var(--line);margin-bottom:12px}
+aside .brand small{display:block;font-weight:400;color:var(--muted);font-size:12px;margin-top:4px}
+#q{width:100%;padding:8px 10px;margin:0 0 12px;border:1px solid var(--line);border-radius:8px;
+  background:var(--bg);color:var(--fg);font-size:13px;outline:none}
+#q:focus{border-color:var(--accent)}
+nav a{display:block;padding:5px 10px;border-radius:6px;color:var(--fg);text-decoration:none;
+  font-size:13px;line-height:1.5;border-left:2px solid transparent}
+nav a.lvl3{padding-left:22px;color:var(--muted);font-size:12.5px}
+nav a:hover{background:var(--accent-soft);color:var(--accent)}
+nav a.active{background:var(--accent-soft);color:var(--accent);border-left-color:var(--accent);font-weight:600}
+nav a.hide{display:none}
+main{margin-left:298px;padding:36px 48px 120px;max-width:1020px}
+h1{font-size:28px;margin:0 0 8px;letter-spacing:-.3px}
+h2{font-size:21px;margin:44px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+h3{font-size:16.5px;margin:30px 0 10px}
+h4{font-size:15px;margin:22px 0 8px}
+h2 .anchor,h3 .anchor{margin-left:8px;color:var(--line);text-decoration:none;font-weight:400;opacity:0}
+h2:hover .anchor,h3:hover .anchor{opacity:1}
+a{color:var(--accent)}
+p{margin:10px 0}
+ul,ol{margin:10px 0;padding-left:24px}
+li{margin:4px 0}
+li.check{list-style:none;margin-left:-20px}
+hr{border:0;border-top:1px solid var(--line);margin:34px 0}
+blockquote{margin:14px 0;padding:10px 16px;background:var(--code-bg);
+  border-left:3px solid var(--accent);border-radius:0 8px 8px 0;color:var(--muted)}
+blockquote p{margin:4px 0}
+code{font-family:"JetBrains Mono",Consolas,"Courier New",monospace;font-size:12.8px;
+  background:var(--code-bg);padding:2px 5px;border-radius:4px;border:1px solid var(--line)}
+pre{margin:0;padding:14px 16px;background:var(--code-bg);border:1px solid var(--line);
+  border-radius:10px;overflow-x:auto}
+pre code{background:none;border:0;padding:0;font-size:12.8px;line-height:1.65;white-space:pre}
+.code-wrap{position:relative;margin:12px 0}
+.copy{position:absolute;top:8px;right:8px;padding:3px 10px;font-size:11.5px;cursor:pointer;
+  color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:6px;opacity:0;transition:.15s}
+.code-wrap:hover .copy{opacity:1}
+.copy:hover{color:var(--accent);border-color:var(--accent)}
+.table-wrap{overflow-x:auto;margin:14px 0}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top}
+th{background:var(--th);font-weight:600;white-space:nowrap}
+tbody tr:nth-child(even){background:rgba(127,127,127,.035)}
+td code{white-space:normal;overflow-wrap:anywhere;word-break:break-all}
+td{min-width:64px}
+#theme{position:fixed;top:14px;right:18px;width:34px;height:34px;border-radius:50%;cursor:pointer;
+  border:1px solid var(--line);background:var(--card);color:var(--fg);font-size:15px;z-index:9}
+#menu{display:none}
+@media(max-width:900px){
+  aside{transform:translateX(-100%);transition:.2s;z-index:10;box-shadow:0 0 24px rgba(0,0,0,.18)}
+  aside.open{transform:none}
+  main{margin-left:0;padding:64px 18px 90px}
+  #menu{display:block;position:fixed;top:14px;left:14px;width:34px;height:34px;border-radius:8px;
+    border:1px solid var(--line);background:var(--card);color:var(--fg);font-size:16px;z-index:11;cursor:pointer}
+}
+</style>
+</head>
+<body>
+<button id="menu" onclick="document.querySelector('aside').classList.toggle('open')">☰</button>
+<button id="theme" onclick="toggleTheme()" title="切换深浅色">◐</button>
+<aside>
+  <div class="brand">HSK 练习 · 五模块全链路接口文档<small>practice-service · 2026-11-17</small></div>
+  <input id="q" placeholder="筛选章节…" autocomplete="off"/>
+  <nav id="toc"><a class="lvl2" href="#0-三分钟上手" data-t="0. 三分钟上手">0. 三分钟上手</a>
+<a class="lvl3" href="#01-调用链" data-t="0.1 调用链">0.1 调用链</a>
+<a class="lvl3" href="#02-一个必须知道的坑x-client-type" data-t="0.2 一个必须知道的坑：x-client-type">0.2 一个必须知道的坑：X-Client-Type</a>
+<a class="lvl3" href="#03-一个必须知道的坑业务错误也是-http-200" data-t="0.3 一个必须知道的坑：业务错误也是 http 200">0.3 一个必须知道的坑：业务错误也是 HTTP 200</a>
+<a class="lvl2" href="#1-通用约定" data-t="1. 通用约定">1. 通用约定</a>
+<a class="lvl3" href="#11-地址与网关前缀" data-t="1.1 地址与网关前缀">1.1 地址与网关前缀</a>
+<a class="lvl3" href="#12-请求头" data-t="1.2 请求头">1.2 请求头</a>
+<a class="lvl3" href="#13-统一响应结构" data-t="1.3 统一响应结构">1.3 统一响应结构</a>
+<a class="lvl3" href="#14-业务错误的表现形式" data-t="1.4 业务错误的表现形式">1.4 业务错误的表现形式</a>
+<a class="lvl3" href="#15-参数约定" data-t="1.5 参数约定">1.5 参数约定</a>
+<a class="lvl3" href="#16-三个容易搞混的板块标识" data-t="1.6 三个容易搞混的「板块标识」">1.6 三个容易搞混的「板块标识」</a>
+<a class="lvl3" href="#17-模块-sectionmapping-对照" data-t="1.7 模块 ↔ sectionmapping 对照">1.7 模块 ↔ sectionMapping 对照</a>
+<a class="lvl3" href="#18-免登录接口" data-t="1.8 免登录接口">1.8 免登录接口</a>
+<a class="lvl2" href="#2-五模块差异速查" data-t="2. 五模块差异速查">2. 五模块差异速查</a>
+<a class="lvl3" href="#21-端点对照表" data-t="2.1 端点对照表">2.1 端点对照表</a>
+<a class="lvl3" href="#22-语义差异" data-t="2.2 语义差异">2.2 语义差异</a>
+<a class="lvl3" href="#23-内部接口前端不要用" data-t="2.3 内部接口（前端不要用）">2.3 内部接口（前端不要用）</a>
+<a class="lvl2" href="#3-目录三跳五模块共用" data-t="3. 目录三跳（五模块共用）">3. 目录三跳（五模块共用）</a>
+<a class="lvl3" href="#31-e1-首页模块卡" data-t="3.1 e1 首页模块卡">3.1 E1 首页模块卡</a>
+<a class="lvl3" href="#32-u1-等级概览-卷列表" data-t="3.2 u1 等级概览 + 卷列表">3.2 U1 等级概览 + 卷列表</a>
+<a class="lvl3" href="#33-u2-等级备考说明" data-t="3.3 u2 等级备考说明">3.3 U2 等级备考说明</a>
+<a class="lvl3" href="#34-u3-卷内板块-进度" data-t="3.4 u3 卷内板块 + 进度">3.4 U3 卷内板块 + 进度</a>
+<a class="lvl3" href="#35-cr-板块最近报告" data-t="3.5 cr 板块最近报告">3.5 CR 板块最近报告</a>
+<a class="lvl2" href="#4-听力listening" data-t="4. 听力（listening）">4. 听力（listening）</a>
+<a class="lvl3" href="#41-时序" data-t="4.1 时序">4.1 时序</a>
+<a class="lvl3" href="#42-开始-恢复练习" data-t="4.2 开始 / 恢复练习">4.2 开始 / 恢复练习</a>
+<a class="lvl3" href="#43-记录详情" data-t="4.3 记录详情">4.3 记录详情</a>
+<a class="lvl3" href="#44-拉题" data-t="4.4 拉题">4.4 拉题</a>
+<a class="lvl3" href="#45-单题保存防抖" data-t="4.5 单题保存（防抖）">4.5 单题保存（防抖）</a>
+<a class="lvl3" href="#46-批量保存" data-t="4.6 批量保存">4.6 批量保存</a>
+<a class="lvl3" href="#47-暂停" data-t="4.7 暂停">4.7 暂停</a>
+<a class="lvl3" href="#48-交卷" data-t="4.8 交卷">4.8 交卷</a>
+<a class="lvl3" href="#49-报告详情" data-t="4.9 报告详情">4.9 报告详情</a>
+<a class="lvl3" href="#410-报告摘要" data-t="4.10 报告摘要">4.10 报告摘要</a>
+<a class="lvl3" href="#411-报告重试" data-t="4.11 报告重试">4.11 报告重试</a>
+<a class="lvl3" href="#412-单题回顾" data-t="4.12 单题回顾">4.12 单题回顾</a>
+<a class="lvl3" href="#413-答题卡" data-t="4.13 答题卡">4.13 答题卡</a>
+<a class="lvl2" href="#5-阅读reading" data-t="5. 阅读（reading）">5. 阅读（reading）</a>
+<a class="lvl3" href="#51-端点清单" data-t="5.1 端点清单">5.1 端点清单</a>
+<a class="lvl3" href="#52-记录详情" data-t="5.2 记录详情">5.2 记录详情</a>
+<a class="lvl3" href="#53-拉题含题组" data-t="5.3 拉题（含题组）">5.3 拉题（含题组）</a>
+<a class="lvl3" href="#54-保存答案" data-t="5.4 保存答案">5.4 保存答案</a>
+<a class="lvl3" href="#55-暂停" data-t="5.5 暂停">5.5 暂停</a>
+<a class="lvl3" href="#56-放弃草稿" data-t="5.6 放弃草稿">5.6 放弃草稿</a>
+<a class="lvl3" href="#57-交卷" data-t="5.7 交卷">5.7 交卷</a>
+<a class="lvl3" href="#58-报告" data-t="5.8 报告">5.8 报告</a>
+<a class="lvl3" href="#59-报告重试" data-t="5.9 报告重试">5.9 报告重试</a>
+<a class="lvl2" href="#6-写作writing" data-t="6. 写作（writing）">6. 写作（writing）</a>
+<a class="lvl3" href="#61-时序" data-t="6.1 时序">6.1 时序</a>
+<a class="lvl3" href="#62-开练三字段必填" data-t="6.2 开练（三字段必填）">6.2 开练（三字段必填）</a>
+<a class="lvl3" href="#63-记录详情" data-t="6.3 记录详情">6.3 记录详情</a>
+<a class="lvl3" href="#64-拉题" data-t="6.4 拉题">6.4 拉题</a>
+<a class="lvl3" href="#65-草稿保存" data-t="6.5 草稿保存">6.5 草稿保存</a>
+<a class="lvl3" href="#66-批量保存答案" data-t="6.6 批量保存答案">6.6 批量保存答案</a>
+<a class="lvl3" href="#67-交卷" data-t="6.7 交卷">6.7 交卷</a>
+<a class="lvl3" href="#68-报告" data-t="6.8 报告">6.8 报告</a>
+<a class="lvl3" href="#610-单题详情" data-t="6.10 单题详情">6.10 单题详情</a>
+<a class="lvl3" href="#611-报告重试" data-t="6.11 报告重试">6.11 报告重试</a>
+<a class="lvl3" href="#612-答题卡" data-t="6.12 答题卡">6.12 答题卡</a>
+<a class="lvl2" href="#7-翻译translation" data-t="7. 翻译（translation）">7. 翻译（translation）</a>
+<a class="lvl3" href="#71-差异清单" data-t="7.1 差异清单">7.1 差异清单</a>
+<a class="lvl3" href="#72-端点清单" data-t="7.2 端点清单">7.2 端点清单</a>
+<a class="lvl3" href="#73-笔译与口译" data-t="7.3 笔译与口译">7.3 笔译与口译</a>
+<a class="lvl3" href="#74-交卷示例" data-t="7.4 交卷示例">7.4 交卷示例</a>
+<a class="lvl2" href="#8-口语speaking" data-t="8. 口语（speaking）">8. 口语（speaking）</a>
+<a class="lvl3" href="#81-时序" data-t="8.1 时序">8.1 时序</a>
+<a class="lvl3" href="#82-开练" data-t="8.2 开练">8.2 开练</a>
+<a class="lvl3" href="#83-记录详情" data-t="8.3 记录详情">8.3 记录详情</a>
+<a class="lvl3" href="#84-拉题" data-t="8.4 拉题">8.4 拉题</a>
+<a class="lvl3" href="#85-录音与保存答案" data-t="8.5 录音与保存答案">8.5 录音与保存答案</a>
+<a class="lvl3" href="#86-提纲草稿" data-t="8.6 提纲草稿">8.6 提纲草稿</a>
+<a class="lvl3" href="#87-交卷" data-t="8.7 交卷">8.7 交卷</a>
+<a class="lvl3" href="#88-报告" data-t="8.8 报告">8.8 报告</a>
+<a class="lvl3" href="#89-报告重试" data-t="8.9 报告重试">8.9 报告重试</a>
+<a class="lvl3" href="#810-答题卡" data-t="8.10 答题卡">8.10 答题卡</a>
+<a class="lvl2" href="#9-答题卡五模块共用" data-t="9. 答题卡（五模块共用）">9. 答题卡（五模块共用）</a>
+<a class="lvl2" href="#10-状态机与轮询" data-t="10. 状态机与轮询">10. 状态机与轮询</a>
+<a class="lvl3" href="#101-记录状态" data-t="10.1 记录状态">10.1 记录状态</a>
+<a class="lvl3" href="#102-出报告进度reportstatus" data-t="10.2 出报告进度（reportstatus）">10.2 出报告进度（reportStatus）</a>
+<a class="lvl3" href="#103-轮询建议" data-t="10.3 轮询建议">10.3 轮询建议</a>
+<a class="lvl2" href="#11-通用坑清单" data-t="11. 通用坑清单">11. 通用坑清单</a>
+<a class="lvl3" href="#111-19-位长整数精度丢失" data-t="11.1 19 位长整数精度丢失">11.1 19 位长整数精度丢失</a>
+<a class="lvl3" href="#112-layout-取值" data-t="11.2 layout 取值">11.2 layout 取值</a>
+<a class="lvl3" href="#113-下划线字段" data-t="11.3 下划线字段">11.3 下划线字段</a>
+<a class="lvl3" href="#114-选项结构两层不一致" data-t="11.4 选项结构两层不一致">11.4 选项结构两层不一致</a>
+<a class="lvl3" href="#115-html-富文本" data-t="11.5 html 富文本">11.5 HTML 富文本</a>
+<a class="lvl3" href="#116-recordid-不通用" data-t="11.6 recordid 不通用">11.6 recordId 不通用</a>
+<a class="lvl2" href="#12-联调-checklist" data-t="12. 联调 checklist">12. 联调 checklist</a>
+<a class="lvl2" href="#附录-a-错误码" data-t="附录 a 错误码">附录 A 错误码</a>
+<a class="lvl3" href="#a1-通用" data-t="a.1 通用">A.1 通用</a>
+<a class="lvl3" href="#a2-练习业务" data-t="a.2 练习业务">A.2 练习业务</a>
+<a class="lvl3" href="#a3-目录与开练" data-t="a.3 目录与开练">A.3 目录与开练</a>
+<a class="lvl3" href="#a4-草稿" data-t="a.4 草稿">A.4 草稿</a>
+<a class="lvl2" href="#附录-b-端点总表" data-t="附录 b 端点总表">附录 B 端点总表</a>
+<a class="lvl3" href="#目录5" data-t="目录（5）">目录（5）</a>
+<a class="lvl3" href="#听力11" data-t="听力（11）">听力（11）</a>
+<a class="lvl3" href="#阅读12" data-t="阅读（12）">阅读（12）</a>
+<a class="lvl3" href="#写作9" data-t="写作（9）">写作（9）</a>
+<a class="lvl3" href="#翻译9" data-t="翻译（9）">翻译（9）</a>
+<a class="lvl3" href="#口语9" data-t="口语（9）">口语（9）</a>
+<a class="lvl2" href="#附录-c-已退场端点不要再调" data-t="附录 c 已退场端点（不要再调）">附录 C 已退场端点（不要再调）</a></nav>
+</aside>
+<main><h1 id="hsk-练习-五模块全链路接口文档">HSK 练习 · 五模块全链路接口文档</h1>
+<blockquote><strong>适用服务</strong>：<code>practice-service</code>（对外经 <code>gateway</code> 暴露） <strong>内容版本</strong>：HSK 2.0 / HSK 3.0 <strong>文档口径</strong>：按 2026-11-17 的代码实测整理，路径、字段名、错误码均与线上实现一致 <strong>配套文件</strong>：<code>hsk-practice.http</code>（Idea HTTP Client 全链路联调脚本，可直接点执行）</blockquote>
+<hr/>
+<h2 id="0-三分钟上手">0. 三分钟上手<a class="anchor" href="#0-三分钟上手">#</a></h2>
+<h3 id="01-调用链">0.1 调用链<a class="anchor" href="#01-调用链">#</a></h3>
+<p>五模块共用「目录三跳 → 开练 → 答题 → 交卷 → 看报告」这一条骨架，只有答题和交卷的动作不同。</p>
+<div class="table-wrap"><table><thead><tr><th>步骤</th><th>请求</th><th>拿到什么</th></tr></thead><tbody><tr><td>① 首页</td><td><code>GET /hsk/modules</code></td><td>模块卡（免登录）</td></tr><tr><td>② 等级概览</td><td><code>GET /hsk/levels</code></td><td>该等级的卷列表</td></tr><tr><td>③ 备考说明</td><td><code>GET /hsk/levels/{level}/intro</code></td><td>板块结构（可选，展示用）</td></tr><tr><td>④ 卷内板块</td><td><code>GET /hsk/papers/{paperId}/parts</code></td><td>板块 + 进度（点进去必调）</td></tr><tr><td>⑤ 开练</td><td><code>POST /{module}/records/start</code></td><td><code>recordId</code></td></tr><tr><td>⑥ 拉题</td><td><code>GET /{module}/records/{recordId}/questions</code></td><td>题目列表</td></tr><tr><td>⑦ 答题</td><td>见各模块</td><td>逐题或批量存答案</td></tr><tr><td>⑧ 交卷</td><td><code>POST /{module}/records/{recordId}/submit</code></td><td>判分结果 / 报告状态</td></tr><tr><td>⑨ 报告</td><td><code>GET /{module}/records/{recordId}/report</code></td><td>轮询直到非 <code>GRADING</code></td></tr></tbody></table></div>
+<blockquote>上表路径省略了网关前缀 <code>/api/practice</code>，查询参数也省略；完整写法见 <a href="#11-地址与网关前缀">1.1</a> 与各模块章节。翻译的交卷是 <code>/submissions</code>（复数），见第 7 章。</blockquote>
+<p><code>{module}</code> 的取值与第 ⑦ ⑧ 步的差异见 <a href="#2-五模块差异速查">2. 五模块差异速查</a>。</p>
+<h3 id="02-一个必须知道的坑x-client-type">0.2 一个必须知道的坑：<code>X-Client-Type</code><a class="anchor" href="#02-一个必须知道的坑x-client-type">#</a></h3>
+<p>所有需要用户身份的接口，<strong>必须带 <code>X-Client-Type: APP</code></strong>，否则服务端会拿一个内置的模拟用户（<code>userId=1</code>）来跑，接口不会报错，但你会看到别人的数据。</p>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>X-Client-Type: APP
+Authorization: Bearer &lt;登录拿到的 token&gt;</code></pre></div>
+<p>判断依据：<code>BaseController.getUserInfo()</code> 只在 <code>X-Client-Type=APP</code> 时才解析 JWT；其他取值一律回落模拟用户。带 <code>APP</code> 但 token 缺失/失效时，才会正常返回 <code>401</code>。</p>
+<h3 id="03-一个必须知道的坑业务错误也是-http-200">0.3 一个必须知道的坑：业务错误也是 HTTP 200<a class="anchor" href="#03-一个必须知道的坑业务错误也是-http-200">#</a></h3>
+<p><code>GlobalExceptionHandler</code> 对所有业务异常统一 <code>ResponseEntity.ok(...)</code>，所以：</p>
+<div class="table-wrap"><table><thead><tr><th>你以为</th><th>实际</th></tr></thead><tbody><tr><td><code>404</code> / <code>409</code> 走 HTTP 状态码</td><td>HTTP 状态码全是 <strong>200</strong>，错误在响应体的 <code>code</code> 字段</td></tr><tr><td><code>if (status === 200) 成功</code></td><td>必须 <code>if (body.code === 200) 成功</code></td></tr></tbody></table></div>
+<p><strong>前端只能按 <code>body.code</code> 判断成败</strong>，<code>response.ok</code> 永远为 <code>true</code>。唯一的例外是网关层面的错误（服务不可达、鉴权被网关拦截），那才是真的非 200。</p>
+<hr/>
+<h2 id="1-通用约定">1. 通用约定<a class="anchor" href="#1-通用约定">#</a></h2>
+<h3 id="11-地址与网关前缀">1.1 地址与网关前缀<a class="anchor" href="#11-地址与网关前缀">#</a></h3>
+<p>服务内路径以 <code>/hsk</code>、<code>/listening</code>、<code>/reading</code>、<code>/writing</code>、<code>/translation</code>、<code>/speaking</code>、<code>/papers</code> 开头，经网关后统一加 <code>/api/practice</code> 前缀：</p>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>对外：https://&lt;host&gt;/api/practice/hsk/modules
+服务内：                         /hsk/modules</code></pre></div>
+<p>网关规则是 <code>Path=/api/practice/**</code> + <code>StripPrefix=2</code>，<code>practice</code> 那一段由网关补，<strong>服务内不要重复写</strong>。</p>
+<p>本机直连服务时（不经网关）用 <code>http://127.0.0.1:8087</code>，不加 <code>/api/practice</code>。</p>
+<h3 id="12-请求头">1.2 请求头<a class="anchor" href="#12-请求头">#</a></h3>
+<div class="table-wrap"><table><thead><tr><th>头</th><th>必填</th><th>说明</th></tr></thead><tbody><tr><td><code>X-Client-Type</code></td><td>需要用户数据时必填</td><td>固定 <code>APP</code>。缺失会回落模拟用户 <code>id=1</code></td></tr><tr><td><code>Authorization</code></td><td>同上</td><td><code>Bearer &lt;token&gt;</code>；也兼容 <code>X-Access-Token</code> 头</td></tr><tr><td><code>Accept-Language</code></td><td>否</td><td><code>zh</code> / <code>en</code> / <code>vi</code>，缺省 <code>zh</code>。带区域后缀（<code>en-US</code>）也能识别</td></tr><tr><td><code>Idempotency-Key</code></td><td>否</td><td>仅交卷接口接受，<strong>服务端已忽略其值</strong>，幂等键由后端按 <code>{module}-{recordId}-submit</code> 自拼</td></tr><tr><td><code>Content-Type</code></td><td>有 body 时</td><td><code>application/json</code></td></tr></tbody></table></div>
+<h3 id="13-统一响应结构">1.3 统一响应结构<a class="anchor" href="#13-统一响应结构">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{ "code": 200, "message": "操作成功", "data": { } }</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>code</code></td><td>Integer</td><td><code>200</code> 成功；其余为错误码，见 <a href="#附录-a-错误码">附录 A</a></td></tr><tr><td><code>message</code></td><td>String</td><td>成功固定 <code>操作成功</code>；失败时可能是错误码字符串（如 <code>DRAFT_LOCKED</code>）或中文提示</td></tr><tr><td><code>data</code></td><td>Object / Array / null</td><td>业务数据。无返回值的接口为 <code>null</code></td></tr></tbody></table></div>
+<h3 id="14-业务错误的表现形式">1.4 业务错误的表现形式<a class="anchor" href="#14-业务错误的表现形式">#</a></h3>
+<p><strong>HTTP 200 + body.code ≠ 200</strong>。典型的三种：</p>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{ "code": 401, "message": "未登录或Token无效", "data": null }
+{ "code": 400, "message": "SECTION_MAPPING_MISMATCH", "data": null }
+{ "code": 409, "message": "DRAFT_VERSION_CONFLICT", "data": { "currentVersion": 7, "savedTime": 1789612800000 } }</code></pre></div>
+<p>注意 <code>message</code> 的两种形态：业务异常抛的是<strong>错误码字符串</strong>（<code>DRAFT_LOCKED</code>），参数校验失败给的是<strong>中文描述</strong>（<code>module: 不能为空</code>）。前端做提示时不要直接把 <code>message</code> 甩给用户，按 <code>code</code> 映射文案。</p>
+<h3 id="15-参数约定">1.5 参数约定<a class="anchor" href="#15-参数约定">#</a></h3>
+<ul><li><strong><code>module</code></strong>：<code>listening</code> / <code>reading</code> / <code>writing</code> / <code>speaking</code> / <code>translation</code>，<strong>大小写不敏感</strong>（服务端 <code>toLowerCase</code>），建议小写。</li><li><strong><code>version</code></strong>：<code>HSK2.0</code> / <code>HSK3.0</code>，缺省 <code>HSK2.0</code>；白名单外返回 <code>400 PRACTICE_VERSION_INVALID</code>。</li><li><strong><code>level</code></strong>：数字字符串 <code>"1"</code>–<code>"7"</code>，<code>"7"</code> 代表 HSK 7-9 整级。</li><li><strong><code>section</code></strong>：板块号，各模块统一为数字 <code>1</code>、<code>2</code>、<code>3</code>…；口语同为数字，但<strong>板块编码叫 <code>PART_1</code></strong>（见 1.6）。</li><li><strong><code>recordId</code></strong>：练习记录主键。听力/阅读是 <code>practice_record.id</code>，写作/翻译/口语是 <code>practice_subjective_record.id</code>。<strong>两个模块体系的 ID 不通用</strong>，把听力的 recordId 传给写作必然 403。</li></ul>
+<h3 id="16-三个容易搞混的板块标识">1.6 三个容易搞混的「板块标识」<a class="anchor" href="#16-三个容易搞混的板块标识">#</a></h3>
+<div class="table-wrap"><table><thead><tr><th>场景</th><th>字段名</th><th>类型</th><th>示例</th><th>来源</th></tr></thead><tbody><tr><td>首页模块卡</td><td><code>moduleCode</code></td><td>String</td><td><code>LISTENING</code>（<strong>大写</strong>）</td><td><code>GET /hsk/modules</code></td></tr><tr><td>目录接口入参</td><td><code>module</code></td><td>String</td><td><code>listening</code>（小写，大小写不敏感）</td><td>前端固定传</td></tr><tr><td>U3 板块列表</td><td><code>parts[].section</code></td><td><strong>Integer</strong></td><td><code>1</code></td><td><code>GET /hsk/papers/{id}/parts</code></td></tr><tr><td>U3 板块列表</td><td><code>parts[].partCode</code></td><td>String</td><td><code>"1"</code>；口语是 <code>PART_1</code></td><td>同上</td></tr><tr><td>主观模块开练</td><td><code>sectionMapping</code></td><td>String</td><td><code>SEC_WRITE</code> / <code>SEC_TRANSLATION</code> / <code>SEC_SPEAKING</code></td><td>前端按模块固定传</td></tr><tr><td>主观模块开练</td><td><code>section</code></td><td><strong>String</strong></td><td><code>"1"</code></td><td>取 U3 的 <code>parts[].section</code>，<code>.toString()</code></td></tr></tbody></table></div>
+<p>🔴 <strong>两个类型差异</strong>：U3 的 <code>section</code> 是数字，开练接口的 <code>section</code> 是字符串，中间要转一次。</p>
+<h3 id="17-模块-sectionmapping-对照">1.7 模块 ↔ <code>sectionMapping</code> 对照<a class="anchor" href="#17-模块-sectionmapping-对照">#</a></h3>
+<div class="table-wrap"><table><thead><tr><th>module</th><th>sectionMapping</th><th>记录表</th><th>交卷路名</th></tr></thead><tbody><tr><td><code>listening</code></td><td><code>SEC_LISTEN</code></td><td><code>practice_record</code></td><td><code>/listening/records/{id}/submit</code></td></tr><tr><td><code>reading</code></td><td><code>SEC_READ</code></td><td><code>practice_record</code></td><td><code>/reading/records/{id}/submit</code></td></tr><tr><td><code>writing</code></td><td><code>SEC_WRITE</code></td><td><code>practice_subjective_record</code></td><td><code>/writing/records/{id}/submit</code></td></tr><tr><td><code>translation</code></td><td><code>SEC_TRANSLATION</code></td><td><code>practice_subjective_record</code></td><td><code>/translation/records/{id}/submissions</code>（注意是复数）</td></tr><tr><td><code>speaking</code></td><td><code>SEC_SPEAKING</code></td><td><code>practice_subjective_record</code></td><td><code>/speaking/records/{id}/submit</code></td></tr></tbody></table></div>
+<blockquote>口语的 <code>SEC_SPEAK</code>（少一个 ING）是历史拼写错误，服务端仍放行，但<strong>响应里返回的一律是 <code>SEC_SPEAKING</code></strong>。新代码请用 <code>SEC_SPEAKING</code>。</blockquote>
+<h3 id="18-免登录接口">1.8 免登录接口<a class="anchor" href="#18-免登录接口">#</a></h3>
+<p>只有两个：</p>
+<ul><li><code>GET /api/practice/hsk/modules</code>（首页卡片，响应不含任何用户数据）</li><li><code>GET /api/practice/csca/catalog</code>（CSCA 目录，不在本文范围）</li></ul>
+<p>其余接口都要求 <code>X-Client-Type: APP</code> + 有效 token。<code>GET /hsk/levels</code> 等虽然名字像目录，但返回里带用户进度，<strong>属于需登录接口</strong>。</p>
+<hr/>
+<h2 id="2-五模块差异速查">2. 五模块差异速查<a class="anchor" href="#2-五模块差异速查">#</a></h2>
+<h3 id="21-端点对照表">2.1 端点对照表<a class="anchor" href="#21-端点对照表">#</a></h3>
+<div class="table-wrap"><table><thead><tr><th>动作</th><th>听力</th><th>阅读</th><th>写作</th><th>翻译</th><th>口语</th></tr></thead><tbody><tr><td>开练</td><td><code>POST /listening/records/start</code></td><td><code>POST /reading/records/start</code></td><td><code>POST /writing/records/start</code></td><td><code>POST /translation/records/start</code></td><td><code>POST /speaking/records/start</code></td></tr><tr><td>记录详情</td><td><code>GET /listening/records/{id}</code></td><td><code>GET /reading/records/{id}</code></td><td><code>GET /writing/records/{id}</code></td><td><code>GET /translation/records/{id}</code></td><td><code>GET /speaking/records/{id}</code></td></tr><tr><td>拉题</td><td><code>GET …/{id}/questions</code></td><td>同</td><td>同</td><td>同</td><td>同</td></tr><tr><td>答题</td><td><code>PUT …/{id}/answers/{qid}</code><br><code>PUT …/{id}/answers</code>（批）</td><td><code>PUT …/{id}/answers/{qid}</code><br><code>PUT …/{id}/answers</code>（批）</td><td><code>PUT …/{id}/answers</code>（批）</td><td><code>PUT …/{id}/answers</code>（批）</td><td><code>POST …/{id}/questions/{qid}/answers</code>（单题）</td></tr><tr><td>草稿</td><td>—</td><td>—</td><td><code>PUT …/{id}/questions/{qid}/draft</code></td><td>同</td><td>同（仅提纲）</td></tr><tr><td>暂停</td><td><code>POST …/{id}/pause</code></td><td><code>POST …/{id}/pause</code></td><td>—</td><td>—</td><td>—</td></tr><tr><td>放弃</td><td>—</td><td><code>POST …/{id}/abandon</code></td><td>—</td><td>—</td><td>—</td></tr><tr><td>交卷</td><td><code>POST /listening/records/{id}/submit</code></td><td><code>POST /reading/records/{id}/submit</code></td><td><code>POST /writing/records/{id}/submit</code></td><td><code>POST /translation/records/{id}/submissions</code></td><td><code>POST /speaking/records/{id}/submit</code></td></tr><tr><td>报告</td><td><code>GET …/{id}/report</code></td><td>同</td><td>同</td><td>同</td><td>同</td></tr><tr><td>报告重试</td><td><code>POST …/{id}/report/retry</code></td><td>同</td><td>同</td><td><strong>无此端点</strong></td><td>同</td></tr><tr><td>单题回顾</td><td><code>GET …/{id}/report/questions/{qid}</code></td><td>同</td><td>同</td><td>同</td><td>同</td></tr><tr><td>答题卡</td><td><code>GET /listening/records/{id}/answer-card</code></td><td><code>/reading/…</code></td><td><code>/writing/…</code></td><td><code>/translation/…</code></td><td><code>/speaking/…</code></td></tr></tbody></table></div>
+<p>表里 <code>…</code> 均指 <code>/records/{recordId}</code> 之前那段路径。</p>
+<h3 id="22-语义差异">2.2 语义差异<a class="anchor" href="#22-语义差异">#</a></h3>
+<div class="table-wrap"><table><thead><tr><th>维度</th><th>听力 / 阅读</th><th>写作 / 翻译</th><th>口语</th></tr></thead><tbody><tr><td>判分方式</td><td>交卷即判，报告立刻 <code>READY</code></td><td>客观题即判，主观题走 AI（<code>GRADING</code> → <code>READY</code>）</td><td>全部 AI 判分</td></tr><tr><td>交卷后能否改</td><td>否</td><td>否</td><td>否</td></tr><tr><td>答案形态</td><td><code>selectedOptionId</code>（A/B/C…）/ <code>answer</code></td><td><code>answerText</code> 文本</td><td><code>answer</code> 音频 URL + <code>durationMs</code></td></tr><tr><td>进度定位</td><td><code>currentQuestionId</code> + 题号</td><td>同</td><td>同</td></tr><tr><td>计时</td><td><code>durationSeconds</code> 客户端上报</td><td>同</td><td>同</td></tr><tr><td>答题卡 <code>answered</code></td><td>该题选过</td><td>该题存过答案</td><td>录音已上传完成</td></tr></tbody></table></div>
+<h3 id="23-内部接口前端不要用">2.3 内部接口（前端不要用）<a class="anchor" href="#23-内部接口前端不要用">#</a></h3>
+<p><code>POST /internal/practice/speaking/configs/{version}/validate</code> 是运营侧配置校验入口，不在网关白名单，前端无需接入。</p>
+<hr/>
+<h2 id="3-目录三跳五模块共用">3. 目录三跳（五模块共用）<a class="anchor" href="#3-目录三跳五模块共用">#</a></h2>
+<p>这一组接口与具体模块无关，靠 <code>module</code> 参数区分。三跳都 <strong>必须带 <code>module</code></strong>：HSK 2.0 综合卷上听力第 1 部分和阅读第 1 部分共用同一个 <code>paperId</code> 和 <code>section</code>，光靠后两者无法定位板块。</p>
+<h3 id="31-e1-首页模块卡">3.1 E1 首页模块卡<a class="anchor" href="#31-e1-首页模块卡">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>GET /hsk/modules?version=HSK3.0</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>参数</th><th>位置</th><th>必填</th><th>说明</th></tr></thead><tbody><tr><td><code>version</code></td><td>query</td><td>否</td><td><code>HSK2.0</code> / <code>HSK3.0</code>，缺省 <code>HSK2.0</code></td></tr></tbody></table></div>
+<p><strong>免登录</strong>，不需要 <code>X-Client-Type</code>，响应里没有任何用户数据。</p>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-bash">curl 'https://&lt;host&gt;/api/practice/hsk/modules?version=HSK3.0' \
+  -H 'Accept-Language: zh'</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "version": "HSK3.0",
+    "layout": "LIST",
+    "header": "选择要练习的模块",
+    "modules": [
+      { "moduleCode": "LISTENING",   "sectionMapping": "SEC_LISTEN",      "name": "听力", "nameEn": "Listening",   "nameVi": "Nghe",      "sortOrder": 1 },
+      { "moduleCode": "READING",     "sectionMapping": "SEC_READ",        "name": "阅读", "nameEn": "Reading",     "nameVi": "Đọc",       "sortOrder": 2 },
+      { "moduleCode": "WRITING",     "sectionMapping": "SEC_WRITE",       "name": "写作", "nameEn": "Writing",     "nameVi": "Viết",      "sortOrder": 3 },
+      { "moduleCode": "TRANSLATION", "sectionMapping": "SEC_TRANSLATION", "name": "翻译", "nameEn": "Translation", "nameVi": "Dịch",      "sortOrder": 4 },
+      { "moduleCode": "SPEAKING",    "sectionMapping": "SEC_SPEAK",       "name": "口语", "nameEn": "Speaking",    "nameVi": "Nói",       "sortOrder": 5 }
+    ]
+  }
+}</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>version</code></td><td>String</td><td>回显解析后的版本</td></tr><tr><td><code>layout</code></td><td>String</td><td><code>GRID_2</code>（2.0 四卡）/ <code>LIST</code>（3.0 五卡）</td></tr><tr><td><code>header</code></td><td>String</td><td>副标题，按 <code>Accept-Language</code> 本地化</td></tr><tr><td><code>modules[].moduleCode</code></td><td>String</td><td><strong>大写</strong>模块码，与后面 <code>module</code> 参数（小写）不是同一套</td></tr><tr><td><code>modules[].sectionMapping</code></td><td>String</td><td>⚠️ 口语这里是 <code>SEC_SPEAK</code>（配置表存量值），开练时传 <code>SEC_SPEAKING</code> 或 <code>SEC_SPEAK</code> 都能过</td></tr><tr><td><code>modules[].sortOrder</code></td><td>Integer</td><td>服务端已排好序，前端照序渲染即可</td></tr></tbody></table></div>
+<p>2.0 只有 4 张卡（无翻译），<code>layout=GRID_2</code>。模块卡由字典表驱动，增减模块不需要改前端。</p>
+<h3 id="32-u1-等级概览-卷列表">3.2 U1 等级概览 + 卷列表<a class="anchor" href="#32-u1-等级概览-卷列表">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>GET /hsk/levels?module=reading&amp;version=HSK3.0&amp;level=3</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>参数</th><th>位置</th><th>必填</th><th>说明</th></tr></thead><tbody><tr><td><code>module</code></td><td>query</td><td><strong>是</strong></td><td>缺省或非法 → <code>400 模块编码不合法（PRACTICE_MODULE_INVALID）</code></td></tr><tr><td><code>version</code></td><td>query</td><td>否</td><td>缺省 <code>HSK2.0</code></td></tr><tr><td><code>level</code></td><td>query</td><td>否</td><td>缺省 <code>"1"</code></td></tr></tbody></table></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "module": "reading",
+    "level": "3",
+    "levelName": "HSK 三级",
+    "paperCount": 2,
+    "papers": [
+      { "paperId": 2095405786495315969, "paperCode": "HSK3.0 三级阅读 模拟卷 A", "status": "in_progress", "completedCount": 12, "totalCount": 30 },
+      { "paperId": 2095405786495315970, "paperCode": "HSK3.0 三级阅读 模拟卷 B", "status": "not_started", "completedCount": 0,  "totalCount": 30 }
+    ]
+  }
+}</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>level</code></td><td>String</td><td>数字串，<code>"7"</code> 表示 HSK 7-9 整级</td></tr><tr><td><code>levelName</code></td><td>String</td><td>取配置表 <code>level_name</code> 三语列，<strong>服务端不拼接</strong>，直接展示</td></tr><tr><td><code>papers[].paperId</code></td><td>Long</td><td>主键，19 位长整数，<strong>JSON 里按字符串传更安全</strong>（见 11.1）</td></tr><tr><td><code>papers[].paperCode</code></td><td>String</td><td>卷名，来自 <code>exam_paper.source</code> / <code>speaking_exam_paper.source</code></td></tr><tr><td><code>papers[].status</code></td><td>String</td><td><code>not_started</code> / <code>in_progress</code> / <code>completed</code>（<strong>小写</strong>）</td></tr><tr><td><code>papers[].completedCount</code></td><td>Integer</td><td>已答题数（已提交部分累计；口语 = 已提交的录音题数）</td></tr><tr><td><code>papers[].totalCount</code></td><td>Integer</td><td>该模块在该卷下的总题数，已排除下架题与示例题</td></tr></tbody></table></div>
+<p>模块无内容时（如 2.0 的翻译）返回 <code>paperCount=0</code>、<code>papers=[]</code>，<strong>不报错</strong>，前端做空态处理即可。</p>
+<h3 id="33-u2-等级备考说明">3.3 U2 等级备考说明<a class="anchor" href="#33-u2-等级备考说明">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>GET /hsk/levels/3/intro?module=reading&amp;version=HSK3.0</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>参数</th><th>位置</th><th>必填</th><th>说明</th></tr></thead><tbody><tr><td><code>level</code></td><td>path</td><td>是</td><td>数字串</td></tr><tr><td><code>module</code></td><td>query</td><td><strong>是</strong></td><td></td></tr><tr><td><code>version</code></td><td>query</td><td>否</td><td></td></tr></tbody></table></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "module": "reading",
+    "level": "3",
+    "levelName": "HSK 三级",
+    "abilityDescription": "能够阅读中等长度的汉语材料……",
+    "abilityDescriptionEn": "Can read medium-length Chinese materials...",
+    "abilityDescriptionVi": "...",
+    "totalQuestionCount": 30,
+    "durationMinutes": 35,
+    "parts": [
+      {
+        "partCode": "1",
+        "section": 1,
+        "partName": "第一部分",
+        "partNameEn": "Part 1",
+        "partNameVi": "Phần 1",
+        "typeCode": "reading_choice",
+        "typeName": "单项选择",
+        "typeNameEn": "Multiple choice",
+        "typeNameVi": "Trắc nghiệm",
+        "questionCount": 10,
+        "sortOrder": 1,
+        "durationMinutes": null
+      }
+    ]
+  }
+}</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody><tr><td><code>parts[].partCode</code></td><td>板块编码：口语 <code>PART_1</code>，其余模块是数字串 <code>"1"</code></td></tr><tr><td><code>parts[].section</code></td><td><strong>Integer</strong>，板块号 1..N</td></tr><tr><td><code>parts[].typeCode</code></td><td>题型编码，只表业务语义。<strong>答题交互不看它，只看 <code>question.layout</code></strong></td></tr><tr><td><code>parts[].questionCount</code></td><td>实际题量，现算（已排除下架题与示例题）</td></tr><tr><td><code>parts[].durationMinutes</code></td><td>板块级建议时长，<strong>只有口语下发</strong>，其余为 <code>null</code></td></tr></tbody></table></div>
+<p>这一跳没有进度字段，纯展示。等级未配置或模块关闭时 <code>parts=[]</code>。</p>
+<h3 id="34-u3-卷内板块-进度">3.4 U3 卷内板块 + 进度<a class="anchor" href="#34-u3-卷内板块-进度">#</a></h3>
+<p>点进一张卷就调这个，是<strong>答题前最关键的一跳</strong>。</p>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>GET /hsk/papers/2095405786495315969/parts?module=reading&amp;version=HSK3.0</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>参数</th><th>位置</th><th>必填</th><th>说明</th></tr></thead><tbody><tr><td><code>paperId</code></td><td>path</td><td>是</td><td>试卷 ID（口语落 <code>speaking_exam_paper.id</code>，其余 <code>exam_paper.id</code>）</td></tr><tr><td><code>module</code></td><td>query</td><td><strong>是</strong></td><td>缺了无法在综合卷上区分听力和阅读</td></tr><tr><td><code>version</code></td><td>query</td><td>否</td><td>传了且与卷的 version 不符 → 404</td></tr></tbody></table></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "module": "reading",
+    "paperId": 2095405786495315969,
+    "paperCode": "HSK3.0 三级阅读 模拟卷 A",
+    "parts": [
+      {
+        "partCode": "1",
+        "section": 1,
+        "partName": "第一部分",
+        "partNameEn": "Part 1",
+        "partNameVi": "Phần 1",
+        "typeCode": "reading_choice",
+        "typeName": "单项选择",
+        "typeNameEn": "Multiple choice",
+        "typeNameVi": "Trắc nghiệm",
+        "questionCount": 10,
+        "sortOrder": 1,
+        "durationMinutes": null,
+        "status": "in_progress",
+        "doneCount": 4,
+        "correctCount": null,
+        "wrongCount": null,
+        "draft": { "id": 2095405786495315999, "answeredCount": 4, "currentQuestionId": 2095405786495316201 },
+        "report": { "id": 2095405786495315999, "hasReport": false, "status": "PENDING" },
+        "stats": null
+      }
+    ]
+  }
+}</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>parts[].status</code></td><td>String</td><td><code>not_started</code> / <code>in_progress</code> / <code>completed</code>（小写）</td></tr><tr><td><code>parts[].doneCount</code></td><td>Integer</td><td>已作答题数（口语 = 已录音题数）</td></tr><tr><td><code>parts[].correctCount</code> / <code>wrongCount</code></td><td>Integer</td><td>仅听力/阅读已提交板块有值，其余为 <code>null</code></td></tr><tr><td><code>parts[].draft</code></td><td>Object/null</td><td>进行中草稿。<strong>「继续上次位置」用 <code>draft.currentQuestionId</code></strong></td></tr><tr><td><code>parts[].draft.id</code></td><td>Long</td><td>草稿记录主键，<strong>不是 recordId</strong>，只是内部标识，前端不用传回去</td></tr><tr><td><code>parts[].report</code></td><td>Object/null</td><td>最近一次已出报告，无则 <code>null</code></td></tr><tr><td><code>parts[].report.status</code></td><td>String</td><td><code>READY</code> / <code>PENDING</code> / <code>FAILED</code> / <code>UNAVAILABLE</code>；听力/阅读恒 <code>READY</code></td></tr><tr><td><code>parts[].stats</code></td><td>Object/null</td><td><strong>只有口语有值</strong>，见下</td></tr></tbody></table></div>
+<p>口语的 <code>stats</code>：</p>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">"stats": { "recordedCount": 3, "scoredCount": 2, "unansweredCount": 5, "failedCount": 1 }</code></pre></div>
+<blockquote>⚠️ <code>parts[].section</code> 是数字，开练接口的 <code>section</code> 是字符串，<strong>中间要 <code>.toString()</code></strong>。</blockquote>
+<h3 id="35-cr-板块最近报告">3.5 CR 板块最近报告<a class="anchor" href="#35-cr-板块最近报告">#</a></h3>
+<p>用于「上次成绩」入口。注意路径前缀是 <code>/papers</code>，<strong>不带 <code>/hsk</code></strong>：</p>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>GET /papers/{paperId}/reports/latest?module=reading&amp;section=1&amp;version=HSK3.0</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>参数</th><th>位置</th><th>必填</th><th>说明</th></tr></thead><tbody><tr><td><code>paperId</code></td><td>path</td><td>是</td><td></td></tr><tr><td><code>module</code></td><td>query</td><td><strong>是</strong></td><td></td></tr><tr><td><code>section</code></td><td>query</td><td><strong>是</strong></td><td>板块号，字符串或数字均可</td></tr><tr><td><code>version</code></td><td>query</td><td>否</td><td>传入时校验卷归属</td></tr></tbody></table></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{ "code": 200, "message": "操作成功", "data": { "module": "reading", "data": null } }</code></pre></div>
+<p><code>data.data</code> 为 <code>null</code> 表示该板块尚无报告。有报告时 <code>data.data</code> 的结构随 <code>module</code> 而变（四个模块报告形状本来不同，服务端不强行收敛）：</p>
+<div class="table-wrap"><table><thead><tr><th><code>module</code></th><th><code>data.data</code> 结构</th></tr></thead><tbody><tr><td><code>listening</code></td><td>听力报告摘要，见 <a href="#410-报告摘要">4.10</a></td></tr><tr><td><code>reading</code></td><td>阅读报告，见 <a href="#58-报告">5.8</a></td></tr><tr><td><code>writing</code> / <code>translation</code> / <code>speaking</code></td><td>主观模块报告，见 <a href="#68-报告">6.8</a></td></tr></tbody></table></div>
+<blockquote>翻译也走这个端点，<code>module=translation</code> 时返回主观报告结构。</blockquote>
+<hr/>
+<h2 id="4-听力listening">4. 听力（listening）<a class="anchor" href="#4-听力listening">#</a></h2>
+<p>主键是 <code>recordId</code>（<code>practice_record.id</code>），交卷即判分，报告立刻 <code>READY</code>。</p>
+<h3 id="41-时序">4.1 时序<a class="anchor" href="#41-时序">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>POST /start ──► recordId
+   │
+   ├─ GET /{recordId}           恢复现场（刷新/杀进程后重进）
+   ├─ GET /{recordId}/questions 拉题（含音频、选项、已存答案）
+   │
+   ├─ PUT  /{recordId}/answers/{questionId}   单题防抖保存（选择即存）
+   ├─ PUT  /{recordId}/answers                批量保存（切题/退出/锁屏/提交前）
+   ├─ POST /{recordId}/pause                  暂停（存进度 + 草稿答案）
+   │
+POST /{recordId}/submit ──► 判分 + 报告摘要
+   │
+   ├─ GET  /{recordId}/report                 报告详情（含题号矩阵）
+   ├─ POST /{recordId}/report/retry           报告失败时重试
+   └─ GET  /{recordId}/report/questions/{qid} 单题回顾</code></pre></div>
+<h3 id="42-开始-恢复练习">4.2 开始 / 恢复练习<a class="anchor" href="#42-开始-恢复练习">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>POST /listening/records/start</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{ "paperId": 2095405786495315969, "section": "1", "restart": false }</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead><tbody><tr><td><code>paperId</code></td><td>Long</td><td>是</td><td>试卷 ID</td></tr><tr><td><code>section</code></td><td>String</td><td>是</td><td>板块号，取 U3 的 <code>parts[].section</code></td></tr><tr><td><code>restart</code></td><td>Boolean</td><td>否</td><td><code>true</code> = 放弃已有草稿重新开始；<code>false</code>/缺省 = 有草稿就恢复</td></tr></tbody></table></div>
+<p><strong>幂等</strong>：同一卷同一板块已有进行中记录时，直接返回那条记录，不会新建。所以「继续练习」就是再调一次 start，不需要额外接口。</p>
+<p>响应 <code>data</code> 为记录详情，结构见 4.3。</p>
+<h3 id="43-记录详情">4.3 记录详情<a class="anchor" href="#43-记录详情">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>GET /listening/records/{recordId}</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "recordId": 2095405786495315999,
+    "paperId": 2095405786495315969,
+    "section": "1",
+    "status": 1,
+    "reportStatus": "PENDING",
+    "currentQuestionId": 2095405786495316201,
+    "currentQuestionNumber": 5,
+    "currentPassageItemIndex": 0,
+    "durationSeconds": 180,
+    "answeredCount": 4,
+    "totalQuestions": 10,
+    "answers": [
+      { "questionId": 2095405786495316201, "answer": "A", "answered": true, "conflict": false, "currentVersion": 7 }
+    ]
+  }
+}</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>status</code></td><td>Integer</td><td><code>0</code> 已创建 / <code>1</code> 进行中 / <code>2</code> 已放弃 / <code>3</code> 已提交</td></tr><tr><td><code>reportStatus</code></td><td>String</td><td><code>PENDING</code> / <code>GENERATING</code> / <code>READY</code> / <code>FAILED</code></td></tr><tr><td><code>currentQuestionId</code></td><td>Long</td><td>停在哪道题，用来定位「继续」</td></tr><tr><td><code>currentQuestionNumber</code></td><td>Integer</td><td>题号 = 题集下标 + 1</td></tr><tr><td><code>currentPassageItemIndex</code></td><td>Integer</td><td><code>passageGroup</code> 布局下当前子题索引，其他布局恒 <code>0</code></td></tr><tr><td><code>answers[].currentVersion</code></td><td>Integer</td><td>云端最新版本号，下次保存时作为 <code>baseVersion</code> 传回</td></tr></tbody></table></div>
+<h3 id="44-拉题">4.4 拉题<a class="anchor" href="#44-拉题">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>GET /listening/records/{recordId}/questions</code></pre></div>
+<p>响应是<strong>数组</strong>，按题集顺序：</p>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "code": 200,
+  "message": "操作成功",
+  "data": [
+    {
+      "questionId": 2095405786495316201,
+      "no": 1,
+      "layout": "imageChoice",
+      "passage": "今天天气很好，我们去公园散步。",
+      "variant": null,
+      "answered": true,
+      "userAnswer": "A",
+      "audio_url": "https://cdn.example.com/audio/abc.mp3",
+      "option_content": { "A": "图片A", "B": "图片B", "C": "图片C", "D": "图片D" },
+      "share_audio_url": null
+    }
+  ]
+}</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>layout</code></td><td>String</td><td>答题交互的唯一真源，取值见 <a href="#112-layout-取值">9.2</a></td></tr><tr><td><code>variant</code></td><td>String</td><td>细节选择题变体 <code>short</code> / <code>long</code> / <code>interview</code>，仅 <code>textChoice_shareAudio</code> / <code>passageGroup</code> 有值</td></tr><tr><td><code>answered</code> / <code>userAnswer</code></td><td>Boolean / String</td><td>已存答案回填</td></tr><tr><td><code>audio_url</code></td><td>String</td><td>题目音频。⚠️ <strong>字段名是下划线</strong></td></tr><tr><td><code>option_content</code></td><td>Object</td><td>选项映射 <code>{"A":"...","B":"..."}</code>，<strong>扁平结构</strong>。⚠️ <strong>字段名是下划线</strong></td></tr><tr><td><code>share_audio_url</code></td><td>String</td><td>共享材料音频，仅 <code>passageGroup</code> 布局有值。⚠️ <strong>字段名是下划线</strong></td></tr></tbody></table></div>
+<p>🔴 <strong>这三个字段是真·下划线命名</strong>（源码里 <code>@JsonProperty("audio_url")</code> 显式指定），其余字段都是驼峰。前端别写成 <code>audioUrl</code> / <code>optionContent</code>，会全部取到 <code>undefined</code>。</p>
+<h3 id="45-单题保存防抖">4.5 单题保存（防抖）<a class="anchor" href="#45-单题保存防抖">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>PUT /listening/records/{recordId}/answers/{questionId}</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{ "selectedOptionId": "A", "clientSequence": 12, "baseVersion": 7 }</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead><tbody><tr><td><code>selectedOptionId</code></td><td>String</td><td>是</td><td>稳定选项标识 <code>A</code>/<code>B</code>/<code>C</code>/<code>D</code>/<code>E</code>/<code>F</code>。<strong>判断题也用 A/B 表示，不要传 <code>true</code>/<code>false</code></strong></td></tr><tr><td><code>clientSequence</code></td><td>Integer</td><td>否</td><td>客户端序列号，用于乱序检测（小序号不会覆盖大序号已存的值）</td></tr><tr><td><code>baseVersion</code></td><td>Integer</td><td>否</td><td>乐观锁基础版本，须与记录当前 <code>version</code> 一致；不一致返回冲突摘要</td></tr></tbody></table></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "code": 200,
+  "message": "操作成功",
+  "data": { "questionId": 2095405786495316201, "answer": "A", "answered": true, "conflict": false, "currentVersion": 8 }
+}</code></pre></div>
+<p>冲突时 <code>conflict=true</code>，<code>answer</code> / <code>answered</code> 返回<strong>云端最新值</strong>，由客户端弹窗让用户选「保留本机 / 用云端」。<code>currentVersion</code> 可作为下次重试的 <code>baseVersion</code>。</p>
+<h3 id="46-批量保存">4.6 批量保存<a class="anchor" href="#46-批量保存">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>PUT /listening/records/{recordId}/answers</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "answers": [
+    { "questionId": 2095405786495316201, "selectedOptionId": "A" },
+    { "questionId": 2095405786495316202, "selectedOptionId": "C" }
+  ],
+  "currentQuestionId": 2095405786495316202,
+  "durationSeconds": 240,
+  "clientSequence": 13,
+  "baseVersion": 8
+}</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>answers[]</code></td><td>Array</td><td>每题 <code>questionId</code> + <code>selectedOptionId</code>，必填非空</td></tr><tr><td><code>currentQuestionId</code></td><td>Long</td><td>当前停留题，服务端据此更新续练位置</td></tr><tr><td><code>durationSeconds</code></td><td>Integer</td><td>本次保存累加的有效时长（秒），服务端<strong>按累加</strong>处理</td></tr><tr><td><code>baseVersion</code></td><td>Integer</td><td>乐观锁版本</td></tr></tbody></table></div>
+<p>响应 <code>data</code> 是完整记录（同 4.3），比单题接口多回一次全量，适合切题时刷新本地状态。</p>
+<h3 id="47-暂停">4.7 暂停<a class="anchor" href="#47-暂停">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>POST /listening/records/{recordId}/pause</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "currentQuestionId": 2095405786495316202,
+  "durationSeconds": 300,
+  "draftAnswers": [
+    { "questionId": 2095405786495316201, "answer": "A", "answered": 1 }
+  ],
+  "clientSequence": 14,
+  "baseVersion": 8
+}</code></pre></div>
+<p>与批量保存的区别：<code>draftAnswers</code> 只落<strong>草稿</strong>，不固化提交快照；<code>answered</code> 是 <code>Integer</code>（<code>0</code> 未答 / <code>1</code> 已答），注意与响应里的 Boolean <code>answered</code> 不是同一形态。</p>
+<p>响应 <code>data</code> 为完整记录。</p>
+<h3 id="48-交卷">4.8 交卷<a class="anchor" href="#48-交卷">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>POST /listening/records/{recordId}/submit</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "durationSeconds": 600,
+  "idempotencyKey": "listening-2095405786495315999-submit",
+  "finalAnswers": [
+    { "questionId": 2095405786495316203, "selectedOptionId": "B" }
+  ],
+  "baseVersion": 9,
+  "clientSequence": 15
+}</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>finalAnswers</code></td><td>Array</td><td>交卷前最后一批答案，可为空（前面已逐题存过）</td></tr><tr><td><code>idempotencyKey</code></td><td>String</td><td>相同 key 重复提交直接返回已生成报告。<strong>服务端按 <code>{module}-{recordId}-submit</code> 自拼，你传的值会被忽略</strong></td></tr><tr><td><code>durationSeconds</code></td><td>Integer</td><td>本次累加时长</td></tr></tbody></table></div>
+<p>响应 <code>data</code> 为报告摘要：</p>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "recordId": 2095405786495315999,
+  "reportId": 2095405786495315999,
+  "reportStatus": "READY",
+  "totalQuestions": 10,
+  "answeredCount": 10,
+  "correctCount": 8,
+  "wrongCount": 2,
+  "accuracyRate": 80,
+  "durationSeconds": 600
+}</code></pre></div>
+<p>听力是客观题，交卷即判，<code>reportStatus</code> 直接是 <code>READY</code>。<code>reportId</code> 与 <code>recordId</code> 同值（报告以记录为载体）。</p>
+<h3 id="49-报告详情">4.9 报告详情<a class="anchor" href="#49-报告详情">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>GET /listening/records/{recordId}/report</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "reportId": 2095405786495315999,
+    "reportStatus": "READY",
+    "accuracyRate": 80,
+    "totalQuestions": 10,
+    "correctCount": 8,
+    "wrongCount": 2,
+    "answeredCount": 10,
+    "durationSeconds": 600,
+    "submittedTime": 1789612800000,
+    "rows": [
+      {
+        "number": 1,
+        "questionId": 2095405786495316201,
+        "questionType": "imageChoice",
+        "layout": "imageChoice",
+        "answered": true,
+        "isCorrect": true,
+        "userAnswer": "A",
+        "correctAnswer": "A"
+      }
+    ]
+  }
+}</code></pre></div>
+<p>🔴 报告接口的 <code>reportStatus</code> <strong>值域与记录接口不同</strong>：</p>
+<div class="table-wrap"><table><thead><tr><th>接口</th><th>值域</th></tr></thead><tbody><tr><td><code>GET /listening/records/{id}</code>（记录）</td><td><code>PENDING</code> / <code>GENERATING</code> / <code>READY</code> / <code>FAILED</code></td></tr><tr><td><code>GET /listening/records/{id}/report</code>（报告）</td><td><code>PROCESSING</code> / <code>READY</code> / <code>FAILED_RETRYABLE</code> / <code>FAILED_FINAL</code></td></tr><tr><td><code>POST …/submit</code>（交卷）</td><td>同记录接口：<code>PENDING</code> / <code>GENERATING</code> / <code>READY</code> / <code>FAILED</code></td></tr></tbody></table></div>
+<p>前端做轮询判断时按各自接口的枚举写，别混用一套。</p>
+<p><code>wrongCount</code> = <code>totalQuestions - correctCount</code>，<strong>未作答计入错误</strong>。</p>
+<h3 id="410-报告摘要">4.10 报告摘要<a class="anchor" href="#410-报告摘要">#</a></h3>
+<p>上面 4.8 交卷返回的即报告摘要。<code>GET /papers/{paperId}/reports/latest?module=listening&amp;section=1</code> 的 <code>data.data</code> 也是这个结构。</p>
+<h3 id="411-报告重试">4.11 报告重试<a class="anchor" href="#411-报告重试">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>POST /listening/records/{recordId}/report/retry</code></pre></div>
+<p>无 body。<strong>仅对 <code>FAILED_RETRYABLE</code> 状态生效</strong>，其他状态返回 <code>2006 REPORT_NOT_RETRYABLE</code>。响应为最新报告摘要。</p>
+<h3 id="412-单题回顾">4.12 单题回顾<a class="anchor" href="#412-单题回顾">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>GET /listening/records/{recordId}/report/questions/{questionId}</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "questionId": 2095405786495316201,
+  "no": 1,
+  "layout": "imageChoice",
+  "passage": "今天天气很好。",
+  "variant": null,
+  "answered": true,
+  "userAnswer": "A",
+  "isCorrect": true,
+  "standardAnswer": "A",
+  "analysis": "句意表示天气好，选 A。",
+  "audio_url": "https://cdn.example.com/audio/abc.mp3",
+  "option_content": { "A": "图片A", "B": "图片B" },
+  "share_audio_url": null
+}</code></pre></div>
+<p>全部取自交卷时固化的快照，不拉最新题库。<code>analysis</code> 为空时前端展示「暂无解析」。</p>
+<h3 id="413-答题卡">4.13 答题卡<a class="anchor" href="#413-答题卡">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>GET /listening/records/{recordId}/answer-card?currentQuestionNumber=5</code></pre></div>
+<p><code>currentQuestionNumber</code> 可选，缺省取记录里的当前题号。五模块共用同一个响应结构，见 <a href="#9-答题卡五模块共用">9. 答题卡</a>。</p>
+<hr/>
+<h2 id="5-阅读reading">5. 阅读（reading）<a class="anchor" href="#5-阅读reading">#</a></h2>
+<p>与听力同构，主键同为 <code>recordId</code>，交卷即判。<strong>差异只有四处</strong>：</p>
+<div class="table-wrap"><table><thead><tr><th>差异</th><th>听力</th><th>阅读</th></tr></thead><tbody><tr><td>答题保存</td><td><code>selectedOptionId</code></td><td><code>answer</code>（自由文本/选项标识都走这个字段）</td></tr><tr><td>暂停</td><td><code>pause</code> + 草稿答案</td><td><code>pause</code> 只存当前题位置</td></tr><tr><td>放弃草稿</td><td>无</td><td><code>POST /reading/records/{id}/abandon</code></td></tr><tr><td>题目结构</td><td>单题 + <code>share_audio_url</code></td><td>单题 + <strong>题组 <code>group</code></strong>（共享材料 + 共享选项）</td></tr></tbody></table></div>
+<h3 id="51-端点清单">5.1 端点清单<a class="anchor" href="#51-端点清单">#</a></h3>
+<div class="table-wrap"><table><thead><tr><th>动作</th><th>端点</th><th>与听力的差异</th></tr></thead><tbody><tr><td>开练</td><td><code>POST /reading/records/start</code></td><td>请求体相同</td></tr><tr><td>记录详情</td><td><code>GET /reading/records/{recordId}</code></td><td>响应见 5.2</td></tr><tr><td>拉题</td><td><code>GET /reading/records/{recordId}/questions</code></td><td>响应见 5.3</td></tr><tr><td>单题保存</td><td><code>PUT /reading/records/{recordId}/answers/{questionId}</code></td><td>body 是 <code>{questionId, answer}</code></td></tr><tr><td>批量保存</td><td><code>PUT /reading/records/{recordId}/answers</code></td><td>返回<strong>答案数组</strong>，不是整条记录</td></tr><tr><td>暂停</td><td><code>POST /reading/records/{recordId}/pause</code></td><td>body 只有 <code>{currentQuestionId}</code></td></tr><tr><td>放弃</td><td><code>POST /reading/records/{recordId}/abandon</code></td><td>无 body，返回 <code>data=null</code></td></tr><tr><td>交卷</td><td><code>POST /reading/records/{recordId}/submit</code></td><td>响应见 5.7</td></tr><tr><td>报告</td><td><code>GET /reading/records/{recordId}/report</code></td><td>结构比听力多 <code>items[]</code> 逐题明细</td></tr><tr><td>报告重试</td><td><code>POST /reading/records/{recordId}/report/retry</code></td><td>同</td></tr><tr><td>单题回顾</td><td><code>GET /reading/records/{recordId}/report/questions/{questionId}</code></td><td>返回 <code>ReadingReportItemResponse</code></td></tr><tr><td>答题卡</td><td><code>GET /reading/records/{recordId}/answer-card</code></td><td>同</td></tr></tbody></table></div>
+<h3 id="52-记录详情">5.2 记录详情<a class="anchor" href="#52-记录详情">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "recordId": 2095405786495315999,
+  "paperId": 2095405786495315969,
+  "section": "1",
+  "status": 1,
+  "reportStatus": "PENDING",
+  "currentQuestionId": 2095405786495316201,
+  "currentQuestionNumber": 5,
+  "answeredCount": 4,
+  "totalQuestions": 10,
+  "resumeElapsedSeconds": 0,
+  "answers": [
+    { "questionId": 2095405786495316201, "answer": "B", "answered": true }
+  ]
+}</code></pre></div>
+<p>与听力相比：没有 <code>currentPassageItemIndex</code>、没有 <code>durationSeconds</code>，多一个 <code>resumeElapsedSeconds</code>（本次恢复后重新计时的秒数）。阅读的时长由客户端自己算，服务端不累计。</p>
+<h3 id="53-拉题含题组">5.3 拉题（含题组）<a class="anchor" href="#53-拉题含题组">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "code": 200,
+  "message": "操作成功",
+  "data": [
+    {
+      "questionId": 2095405786495316201,
+      "number": 1,
+      "typeId": "reading_choice",
+      "typeIdMapping": "reading_choice",
+      "content": "根据文章，作者为什么……？",
+      "passage": null,
+      "optionContent": { "options": { "A": "因为天气", "B": "因为时间", "C": "因为地点" } },
+      "audioUrl": null,
+      "groupId": 2095405786495316300,
+      "group": {
+        "groupId": 2095405786495316300,
+        "title1Number": 1,
+        "title1Text": "第一部分",
+        "section": "1",
+        "startNumber": 1,
+        "endNumber": 5,
+        "passage": "这是一段共享的阅读材料……",
+        "audioUrl": null,
+        "optionContent": { "options": {} }
+      },
+      "userAnswer": "A",
+      "answered": true,
+      "optionPoolCode": null,
+      "exclusiveSharedOptions": false
+    }
+  ]
+}</code></pre></div>
+<p>🔴 <strong>选项结构比听力多一层 <code>options</code></strong>：</p>
+<div class="table-wrap"><table><thead><tr><th>模块</th><th>字段</th><th>形态</th></tr></thead><tbody><tr><td>听力</td><td><code>option_content</code></td><td><code>{"A":"文本","B":"文本"}</code> 扁平</td></tr><tr><td>阅读</td><td><code>optionContent.options</code></td><td><code>{"options":{"A":"文本"}}</code> 多一层</td></tr></tbody></table></div>
+<p>这是两套 DTO 的历史差异（听力用 <code>Map&lt;String,String&gt;</code>，阅读用 <code>PracticeOptionContent</code>），<strong>不能共用同一段渲染逻辑</strong>。</p>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody><tr><td><code>number</code></td><td>题号（听力叫 <code>no</code>，阅读叫 <code>number</code>）</td></tr><tr><td><code>group</code></td><td>题组共享内容，<code>groupId=null</code> 时该字段恒 <code>null</code>。同组题目的 <code>group</code> 内容完全相同，前端<strong>只渲染一次</strong></td></tr><tr><td><code>optionPoolCode</code></td><td>共享选项池编码，普通题为 <code>null</code>。同池题目共用一套选项，<strong>选项不互斥</strong>（<code>exclusiveSharedOptions</code> 恒 <code>false</code>，保留兼容）</td></tr><tr><td><code>passage</code></td><td>单题材料。题组材料的放在 <code>group.passage</code></td></tr></tbody></table></div>
+<h3 id="54-保存答案">5.4 保存答案<a class="anchor" href="#54-保存答案">#</a></h3>
+<p>单题：</p>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>PUT /reading/records/{recordId}/answers/{questionId}</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{ "questionId": 2095405786495316201, "answer": "A" }</code></pre></div>
+<p><code>answer</code> 传 <code>null</code> 表示<strong>清空该题答案</strong>。</p>
+<p>批量：</p>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>PUT /reading/records/{recordId}/answers</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{ "answers": [ { "questionId": 1, "answer": "A" }, { "questionId": 2, "answer": "B" } ] }</code></pre></div>
+<p>批量接口的响应是<strong>答案数组</strong>，不是整条记录：</p>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{ "code": 200, "message": "操作成功", "data": [ { "questionId": 1, "answer": "A", "answered": true } ] }</code></pre></div>
+<p>注意与听力的批量接口（返回整条记录）不一致，前端别照抄。</p>
+<h3 id="55-暂停">5.5 暂停<a class="anchor" href="#55-暂停">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>POST /reading/records/{recordId}/pause</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{ "currentQuestionId": 2095405786495316201 }</code></pre></div>
+<p>只存位置，不存草稿答案。响应为记录详情。</p>
+<h3 id="56-放弃草稿">5.6 放弃草稿<a class="anchor" href="#56-放弃草稿">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>POST /reading/records/{recordId}/abandon</code></pre></div>
+<p>无 body，<code>data</code> 为 <code>null</code>。用于「重新开始」前清掉旧草稿。</p>
+<h3 id="57-交卷">5.7 交卷<a class="anchor" href="#57-交卷">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>POST /reading/records/{recordId}/submit</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{ "durationSeconds": 600, "idempotencyKey": "reading-2095405786495315999-submit" }</code></pre></div>
+<p>阅读的交卷请求里<strong>没有 <code>finalAnswers</code>、<code>baseVersion</code>、<code>clientSequence</code></strong> —— 答案必须在交卷前已经保存过。响应为完整报告（同 5.8），不是摘要。</p>
+<h3 id="58-报告">5.8 报告<a class="anchor" href="#58-报告">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>GET /reading/records/{recordId}/report</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "reportId": 2095405786495315999,
+    "recordId": 2095405786495315999,
+    "paperId": 2095405786495315969,
+    "sectionMapping": "SEC_READ",
+    "section": "1",
+    "status": 3,
+    "reportStatus": "READY",
+    "totalQuestionCount": 10,
+    "answeredCount": 10,
+    "correctCount": 8,
+    "wrongCount": 2,
+    "accuracyRate": 80.00,
+    "durationSeconds": 600,
+    "submittedTime": 1789612800000,
+    "items": [
+      {
+        "answerId": 2095405786495316400,
+        "questionId": 2095405786495316201,
+        "questionNumber": 1,
+        "typeId": "reading_choice",
+        "typeIdMapping": "reading_choice",
+        "userAnswer": "A",
+        "standardAnswer": "A",
+        "answered": true,
+        "correct": true,
+        "points": 1.00,
+        "analysis": "……",
+        "questionSnapshot": { },
+        "groupSnapshot": null,
+        "optionSnapshot": [ ]
+      }
+    ]
+  }
+}</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody><tr><td><code>accuracyRate</code></td><td><strong>BigDecimal</strong>（听力是 Integer），如 <code>80.00</code></td></tr><tr><td><code>items[]</code></td><td>逐题明细，直接返回完整报告，不需要再调单题接口</td></tr><tr><td><code>questionSnapshot</code> / <code>groupSnapshot</code> / <code>optionSnapshot</code></td><td>交卷时冻结的题目/题组/选项快照。<strong>报告渲染优先用快照</strong>，别再去拉 <code>/questions</code>（题库可能已改）</td></tr><tr><td><code>wrongCount</code></td><td>错误 + 未作答</td></tr></tbody></table></div>
+<h3 id="59-报告重试">5.9 报告重试<a class="anchor" href="#59-报告重试">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>POST /reading/records/{recordId}/report/retry</code></pre></div>
+<p>无 body，返回完整报告。仅 <code>FAILED_RETRYABLE</code> 可重试。</p>
+<h2 id="6-写作writing">6. 写作（writing）<a class="anchor" href="#6-写作writing">#</a></h2>
+<p>写作、翻译、口语三者<strong>共用同一套记录表和同一套响应结构</strong>（<code>practice_subjective_*</code>），只是 <code>section_mapping</code> 不同。所以这一节的字段表对三者都适用，第 7 节只写翻译的差异。</p>
+<p>与听力/阅读最大的不同：<strong>交卷时主观题只是入队，不是出分</strong>。响应里 <code>status=COMPLETED</code> 但 <code>reportStatus</code> 可能还是 <code>GRADING</code>，需要轮询报告接口。</p>
+<h3 id="61-时序">6.1 时序<a class="anchor" href="#61-时序">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>POST /start {paperId, sectionMapping, section} ──► recordId
+   │
+   ├─ GET /{recordId}            恢复现场
+   ├─ GET /{recordId}/questions  拉题（含 layout、promptHint 派生的作答区、已存答案、草稿）
+   │
+   ├─ PUT /{recordId}/questions/{questionId}/draft   草稿（每 2~5s 防抖，整份覆盖）
+   ├─ PUT /{recordId}/answers                        正式保存（切题/离开页面时）
+   │
+POST /{recordId}/submit ──► 客观题即判，主观题入 AI 队列
+   │
+   ├─ GET /{recordId}/report                  轮询到 READY / FAILED
+   ├─ GET /{recordId}/report/questions/{qid}  单题详情
+   └─ POST /{recordId}/report/retry           FAILED 时重试</code></pre></div>
+<h3 id="62-开练三字段必填">6.2 开练（三字段必填）<a class="anchor" href="#62-开练三字段必填">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>POST /writing/records/start</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{ "paperId": 2095405786495315969, "sectionMapping": "SEC_WRITE", "section": "1" }</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead><tbody><tr><td><code>paperId</code></td><td>Long</td><td>是</td><td>试卷 ID</td></tr><tr><td><code>sectionMapping</code></td><td>String</td><td><strong>是</strong></td><td>写作 <code>SEC_WRITE</code>、翻译 <code>SEC_TRANSLATION</code>、口语 <code>SEC_SPEAKING</code></td></tr><tr><td><code>section</code></td><td>String</td><td><strong>是</strong></td><td>板块号，取 U3 的 <code>parts[].section</code>（<strong>要转成字符串</strong>）</td></tr></tbody></table></div>
+<p>🔴 <strong>三个字段缺一不可</strong>。只传 <code>paperId + section</code> 不够：HSK 3.0 综合卷上同一张卷的 <code>section=1</code> 同时存在听力、阅读、写作、翻译、口语五个板块，必须靠 <code>sectionMapping</code> 定位。传错 mapping（比如拿写作的 mapping 打翻译入口）返回 <code>400 SECTION_MAPPING_MISMATCH</code>。</p>
+<p><strong>幂等</strong>：同一 <code>(paperId, sectionMapping, section)</code> 已有进行中记录时直接返回，不新建。</p>
+<p>响应 <code>data</code> 为记录详情，见 6.3。</p>
+<h3 id="63-记录详情">6.3 记录详情<a class="anchor" href="#63-记录详情">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>GET /writing/records/{recordId}</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "recordId": 2095405786495315999,
+    "paperId": 2095405786495315969,
+    "sectionMapping": "SEC_WRITE",
+    "section": "1",
+    "levelCode": "3",
+    "status": "IN_PROGRESS",
+    "reportStatus": "NOT_READY",
+    "totalQuestions": 2,
+    "answeredCount": 1,
+    "currentQuestionId": 2095405786495316201,
+    "currentQuestionNumber": 1,
+    "durationSeconds": 300,
+    "objectiveCount": 0,
+    "objectiveCorrectCount": 0,
+    "aiQuestionCount": 2,
+    "aiScoredCount": 0,
+    "finalScore": null,
+    "totalScore": null
+  }
+}</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>status</code></td><td>String</td><td><code>IN_PROGRESS</code> / <code>COMPLETED</code> / <code>DISCARDED</code>（<strong>大写</strong>；听力阅读那边是 Integer，别混）</td></tr><tr><td><code>reportStatus</code></td><td>String</td><td><code>NOT_READY</code> / <code>GRADING</code> / <code>READY</code> / <code>FAILED</code></td></tr><tr><td><code>objectiveCount</code> / <code>objectiveCorrectCount</code></td><td>Integer</td><td>客观题数 / 客观题答对数</td></tr><tr><td><code>aiQuestionCount</code> / <code>aiScoredCount</code></td><td>Integer</td><td>AI 题数 / AI 已评出分的题数</td></tr><tr><td><code>finalScore</code> / <code>totalScore</code></td><td>BigDecimal</td><td>得分 / 满分，评完才有值</td></tr></tbody></table></div>
+<p>轮询建议：<code>status=COMPLETED</code> 且 <code>reportStatus=GRADING</code> 时按 2s → 5s → 10s 退避轮询 <code>GET /{recordId}</code>，直到 <code>READY</code> 或 <code>FAILED</code>。</p>
+<h3 id="64-拉题">6.4 拉题<a class="anchor" href="#64-拉题">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>GET /writing/records/{recordId}/questions</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "code": 200,
+  "message": "操作成功",
+  "data": [
+    {
+      "questionId": 2095405786495316201,
+      "order": 1,
+      "no": 1,
+      "layout": "input",
+      "typeName": "命题作文",
+      "sectionTitle": "第一部分",
+      "content": "&lt;p&gt;请以《我的周末》为题写一篇短文。&lt;/p&gt;",
+      "passage": null,
+      "audioUrl": null,
+      "shareAudioUrl": null,
+      "optionContent": null,
+      "groupContent": null,
+      "groupPassage": null,
+      "groupOptionContent": null,
+      "hasStandardAnswer": 0,
+      "answered": false,
+      "answerText": null,
+      "answer": null,
+      "durationMs": null,
+      "answerDraft": {
+        "text": "我上周去了公园……",
+        "graphemeCount": 12,
+        "version": 3,
+        "savedTime": 1789612800000
+      }
+    }
+  ]
+}</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>order</code></td><td>Integer</td><td>题序 = 题集下标 + 1，<strong>答题卡和报告都用这个序</strong></td></tr><tr><td><code>no</code></td><td>Integer</td><td>卷面题号，可能跳号，仅供展示</td></tr><tr><td><code>layout</code></td><td>String</td><td><code>input</code>（作文、笔译）/ <code>record</code>（口译、口语）/ <code>shortInput</code> 等，<strong>渲染组件的唯一依据</strong></td></tr><tr><td><code>content</code> / <code>passage</code></td><td>String</td><td>题干 / 材料，可能是 HTML，<strong>渲染时需白名单过滤</strong></td></tr><tr><td><code>hasStandardAnswer</code></td><td>Integer</td><td><code>1</code> 客观题（交卷即判）/ <code>0</code> 主观题（交 AI）</td></tr><tr><td><code>answered</code> / <code>answerText</code> / <code>answer</code></td><td>—</td><td>已存答案回填；<code>answerText</code> 是文本，<code>answer</code> 是音频 URL</td></tr><tr><td><code>answerDraft</code></td><td>Object/null</td><td>草稿，<code>null</code> 表示从未存过。结构见 6.5</td></tr></tbody></table></div>
+<blockquote><code>optionContent</code> / <code>groupOptionContent</code> 是原样透传的对象（<code>Map&lt;String,Object&gt;</code>），主观模块用得少；口语与口译常常整块为 <code>null</code>。</blockquote>
+<h3 id="65-草稿保存">6.5 草稿保存<a class="anchor" href="#65-草稿保存">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>PUT /writing/records/{recordId}/questions/{questionId}/draft</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{ "text": "我上周去了公园……", "expectedVersion": 3 }</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead><tbody><tr><td><code>text</code></td><td>String</td><td>是</td><td><strong>整份草稿内容</strong>。<code>PUT</code> 语义 = 覆盖，不做按键增量合并。传 <code>""</code> 表示清空</td></tr><tr><td><code>expectedVersion</code></td><td>Long</td><td>否</td><td>上次拿到的 <code>version</code>。传了就做乐观锁，不传则强制覆盖</td></tr></tbody></table></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "code": 200,
+  "message": "操作成功",
+  "data": { "questionId": 2095405786495316201, "version": 4, "savedTime": 1789612800000, "graphemeCount": 412 }
+}</code></pre></div>
+<p><strong>三个必须知道的行为</strong>：</p>
+<ol><li><strong>同内容重复保存不增版本、不写库</strong> —— 返回的 <code>version</code> 与上次相同，可以放心按 2~5s 防抖调。</li><li><strong>草稿不等于答案</strong>。存草稿不置 <code>answered</code>、不判分。<strong>交卷前必须再走一次 6.6 批量保存</strong>，把编辑器内容落成正式答案。服务端不拿草稿兜底，只会在交卷响应里回 <code>draftNotSubmitted</code> 点名哪些题有草稿但没提交。</li><li><strong>字数上限</strong>：写作与笔译 5000 字素（不含空白），超了返回 <code>400 DRAFT_TOO_LONG</code>，不会静默截断。口语与口译的草稿（提纲）不限。</li></ol>
+<p>失败形态：</p>
+<div class="table-wrap"><table><thead><tr><th>情况</th><th>code</th><th>message</th><th>data</th></tr></thead><tbody><tr><td>记录已交卷</td><td><code>409</code></td><td><code>DRAFT_LOCKED</code></td><td><code>null</code></td></tr><tr><td>版本冲突</td><td><code>409</code></td><td><code>DRAFT_VERSION_CONFLICT</code></td><td><code>{currentVersion, savedTime}</code></td></tr><tr><td>题不在本次题集</td><td><code>2001</code></td><td><code>试题不存在</code></td><td><code>null</code></td></tr><tr><td>超字数</td><td><code>400</code></td><td><code>DRAFT_TOO_LONG</code></td><td><code>null</code></td></tr></tbody></table></div>
+<h3 id="66-批量保存答案">6.6 批量保存答案<a class="anchor" href="#66-批量保存答案">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>PUT /writing/records/{recordId}/answers</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "answers": [
+    { "questionId": 2095405786495316201, "answerText": "我上周去了公园……", "answerVersion": 2 }
+  ],
+  "currentQuestionId": 2095405786495316201
+}</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>answers[].answerText</code></td><td>String</td><td>文本作答：写作正文 / 笔译译文 / 口语转写</td></tr><tr><td><code>answers[].answer</code></td><td>String</td><td>音频 URL：口语 / 口译。与 <code>answerText</code> 按模块分工，不互斥</td></tr><tr><td><code>answers[].durationMs</code></td><td>Long</td><td>录音时长（毫秒），音频作答时填</td></tr><tr><td><code>answers[].answerVersion</code></td><td>Long</td><td>客户端持有的答案版本，用于并发冲突检测；<strong>可空，空则不做版本校验</strong></td></tr><tr><td><code>currentQuestionId</code></td><td>Long</td><td>当前题，用于续练定位；缺省不更新进度</td></tr></tbody></table></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "recordId": 2095405786495315999,
+    "answeredCount": 1,
+    "currentQuestionId": 2095405786495316201,
+    "currentQuestionNumber": 1,
+    "answers": [ { "questionId": 2095405786495316201, "answerVersion": 3 } ]
+  }
+}</code></pre></div>
+<p>返回里只回「存了哪些题 + 新版本号」，判分结果交卷后才可见。下次保存时把 <code>answerVersion</code> 带回来做冲突检测。</p>
+<h3 id="67-交卷">6.7 交卷<a class="anchor" href="#67-交卷">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>POST /writing/records/{recordId}/submit</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "finalAnswers": [
+    { "questionId": 2095405786495316201, "answerText": "我上周去了公园……" }
+  ],
+  "durationSeconds": 900
+}</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>finalAnswers</code></td><td>Array</td><td>交卷这一刻的最后一批作答，<strong>可为空</strong>（前面已逐题存过）</td></tr><tr><td><code>durationSeconds</code></td><td>Integer</td><td>客户端上报的答题秒数；缺省按 <code>end_time - start_time</code> 现算</td></tr><tr><td><code>idempotencyKey</code></td><td>String</td><td>兼容旧前端的提示字段，<strong>服务端忽略其值</strong>，幂等键自拼为 <code>writing-{recordId}-submit</code></td></tr></tbody></table></div>
+<p>body 整体可以省略（<code>@RequestBody(required=false)</code>）。</p>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "recordId": 2095405786495315999,
+    "paperId": 2095405786495315969,
+    "module": "writing",
+    "status": "COMPLETED",
+    "reportStatus": "GRADING",
+    "totalQuestions": 2,
+    "answeredCount": 2,
+    "objectiveCount": 0,
+    "objectiveCorrectCount": 0,
+    "aiQuestionCount": 2,
+    "aiScoredCount": 0,
+    "finalScore": null,
+    "totalScore": null,
+    "idempotencyKey": "writing-2095405786495315999-submit",
+    "draftNotSubmitted": [2095405786495316202]
+  }
+}</code></pre></div>
+<p>🔴 <strong>两个状态别混</strong>：<code>status</code> = 记录状态（交完就是 <code>COMPLETED</code>）；<code>reportStatus</code> = 出结果进度（AI 还在评就是 <code>GRADING</code>）。</p>
+<p>🔴 <strong><code>draftNotSubmitted</code></strong>：数组，列出「有草稿但没提交成答案」的题目 ID。非空时说明用户写了但没保存正式答案 —— 前端应提示，不要静默丢弃。</p>
+<h3 id="68-报告">6.8 报告<a class="anchor" href="#68-报告">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>GET /writing/records/{recordId}/report</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "recordId": 2095405786495315999,
+    "paperId": 2095405786495315969,
+    "module": "writing",
+    "sectionMapping": "SEC_WRITE",
+    "section": "1",
+    "reportStatus": "READY",
+    "totalQuestions": 2,
+    "answeredCount": 2,
+    "objectiveCount": 0,
+    "objectiveCorrectCount": 0,
+    "aiQuestionCount": 2,
+    "aiScoredCount": 2,
+    "finalScore": 78.50,
+    "totalScore": 100.00,
+    "durationSeconds": 900,
+    "startTime": 1789612000000,
+    "endTime": 1789612900000,
+    "questions": [
+      {
+        "order": 1,
+        "questionId": 2095405786495316201,
+        "layout": "input",
+        "hasStandardAnswer": 0,
+        "answered": true,
+        "gradingState": 1,
+        "points": 39.25,
+        "maxScore": 50.00,
+        "isFullScore": 0,
+        "correct": null
+      }
+    ]
+  }
+}</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody><tr><td><code>reportStatus</code></td><td><code>GRADING</code>（还有题没评完）/ <code>READY</code>（全部终态且至少有一题评出分）/ <code>FAILED</code>（全部终态但一题都没评出来）/ <code>NOT_READY</code>（未交卷）</td></tr><tr><td><code>questions[].gradingState</code></td><td><code>0</code> 待评 / <code>1</code> 已评 / <code>2</code> 未作答或评分失败</td></tr><tr><td><code>questions[].correct</code></td><td><strong>仅客观题（<code>hasStandardAnswer=1</code>）有值</strong>，主观题恒 <code>null</code> —— 主观表没有 <code>is_correct</code> 列，客观对错由 <code>points</code> 与 <code>maxScore</code> 现算</td></tr><tr><td><code>questions[].isFullScore</code></td><td><code>1</code> 满分 / <code>0</code> 非满分</td></tr><tr><td><code>startTime</code> / <code>endTime</code></td><td>毫秒时间戳</td></tr></tbody></table></div>
+<p><strong>没有 <code>reportId</code></strong> —— 报告是 <code>record + answer</code> 现拼的，不存在报告表。</p>
+<h3 id="610-单题详情">6.10 单题详情<a class="anchor" href="#610-单题详情">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>GET /writing/records/{recordId}/report/questions/{questionId}</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "order": 1,
+  "questionId": 2095405786495316201,
+  "layout": "input",
+  "hasStandardAnswer": 0,
+  "answered": true,
+  "gradingState": 1,
+  "points": 39.25,
+  "maxScore": 50.00,
+  "isFullScore": 0,
+  "correct": null,
+  "analysis": "文章结构完整，词汇使用较丰富，但……",
+  "standardAnswer": null,
+  "answerText": "我上周去了公园……",
+  "answer": null,
+  "snapshot": { "content": "&lt;p&gt;请以《我的周末》为题……&lt;/p&gt;" }
+}</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody><tr><td><code>analysis</code></td><td>主观题是 AI 点评，客观题是题目解析</td></tr><tr><td><code>standardAnswer</code></td><td>客观题给前端展示「正确答案」，<strong>主观题通常为空</strong></td></tr><tr><td><code>snapshot</code></td><td>交卷时冻结的题目快照（题干/题组/选项），渲染用这个，不要重拉题目</td></tr></tbody></table></div>
+<h3 id="611-报告重试">6.11 报告重试<a class="anchor" href="#611-报告重试">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>POST /writing/records/{recordId}/report/retry</code></pre></div>
+<p>无 body。把 <code>grading_state=2</code> 且 <code>answered=1</code> 的题重置为待评、评分次数归零，重新入队。响应是<strong>记录详情</strong>（不是报告）：</p>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{ "code": 200, "message": "操作成功", "data": { "recordId": 2095405786495315999, "reportStatus": "GRADING" } }</code></pre></div>
+<h3 id="612-答题卡">6.12 答题卡<a class="anchor" href="#612-答题卡">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>GET /writing/records/{recordId}/answer-card</code></pre></div>
+<p>结构见 <a href="#9-答题卡五模块共用">9. 答题卡</a>。</p>
+<hr/>
+<h2 id="7-翻译translation">7. 翻译（translation）<a class="anchor" href="#7-翻译translation">#</a></h2>
+<p><strong>与写作完全同构</strong>，落同一张表，<code>section_mapping = SEC_TRANSLATION</code>。只有下面四处差异：</p>
+<h3 id="71-差异清单">7.1 差异清单<a class="anchor" href="#71-差异清单">#</a></h3>
+<div class="table-wrap"><table><thead><tr><th>项</th><th>写作</th><th>翻译</th></tr></thead><tbody><tr><td>开练 <code>sectionMapping</code></td><td><code>SEC_WRITE</code></td><td><code>SEC_TRANSLATION</code></td></tr><tr><td>交卷路名</td><td><code>POST /{id}/submit</code></td><td><strong><code>POST /{id}/submissions</code></strong>（复数）</td></tr><tr><td>报告重试</td><td>有</td><td><strong>无此端点</strong></td></tr><tr><td>板块含义</td><td><code>section=1</code> 写作</td><td><code>section=1</code> 笔译（<code>layout=input</code>）<br><code>section=2</code> 口译（<code>layout=record</code>）</td></tr></tbody></table></div>
+<p>⚠️ 交卷路名不一致是历史契约（写作 <code>/submit</code>、翻译 <code>/submissions</code>），<strong>不是笔误</strong>，前端不要统一。</p>
+<h3 id="72-端点清单">7.2 端点清单<a class="anchor" href="#72-端点清单">#</a></h3>
+<div class="table-wrap"><table><thead><tr><th>动作</th><th>端点</th></tr></thead><tbody><tr><td>开练</td><td><code>POST /translation/records/start</code></td></tr><tr><td>记录详情</td><td><code>GET /translation/records/{recordId}</code></td></tr><tr><td>拉题</td><td><code>GET /translation/records/{recordId}/questions</code></td></tr><tr><td>批量保存</td><td><code>PUT /translation/records/{recordId}/answers</code></td></tr><tr><td>草稿</td><td><code>PUT /translation/records/{recordId}/questions/{questionId}/draft</code></td></tr><tr><td>交卷</td><td><code>POST /translation/records/{recordId}/submissions</code></td></tr><tr><td>报告</td><td><code>GET /translation/records/{recordId}/report</code></td></tr><tr><td>单题详情</td><td><code>GET /translation/records/{recordId}/report/questions/{questionId}</code></td></tr><tr><td>答题卡</td><td><code>GET /translation/records/{recordId}/answer-card</code></td></tr></tbody></table></div>
+<p>请求/响应体全部同第 6 章。<code>module</code> 字段返回 <code>translation</code>。</p>
+<h3 id="73-笔译与口译">7.3 笔译与口译<a class="anchor" href="#73-笔译与口译">#</a></h3>
+<p>同一个模块下两套作答形态，靠 <code>section</code> 区分：</p>
+<div class="table-wrap"><table><thead><tr><th>section</th><th>形态</th><th><code>layout</code></th><th>作答字段</th></tr></thead><tbody><tr><td><code>1</code></td><td>笔译</td><td><code>input</code></td><td><code>answerText</code>（译文文本）</td></tr><tr><td><code>2</code></td><td>口译</td><td><code>record</code></td><td><code>answer</code>（音频 URL）+ <code>durationMs</code></td></tr></tbody></table></div>
+<p>口译的录音流程与口语相同，见 8.5。</p>
+<h3 id="74-交卷示例">7.4 交卷示例<a class="anchor" href="#74-交卷示例">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>POST /translation/records/{recordId}/submissions</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{ "finalAnswers": [ { "questionId": 2095405786495316201, "answerText": "译文内容……" } ], "durationSeconds": 600 }</code></pre></div>
+<p>响应结构同 6.7，<code>module</code> 为 <code>translation</code>。</p>
+<hr/>
+<h2 id="8-口语speaking">8. 口语（speaking）<a class="anchor" href="#8-口语speaking">#</a></h2>
+<p>与写作同表同链路，三处不同：</p>
+<ol><li><strong>题源双份</strong> —— HSK 7-9 口语题来自 <code>question</code> 表，2.0/3.0 口语试卷题来自 <code>speaking_exam_paper_question</code>。前端不需要区分，服务端拍平成同一个响应。</li><li><strong>作答是音频</strong> —— 落 <code>answer</code>（音频 URL）+ <code>durationMs</code>，不是文本。</li><li><strong>全部 AI 判分</strong> —— 口语试卷题没有标准答案，<code>hasStandardAnswer</code> 恒 <code>0</code>。</li></ol>
+<h3 id="81-时序">8.1 时序<a class="anchor" href="#81-时序">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>POST /start ──► recordId
+   │
+   ├─ GET /{recordId}            恢复现场
+   ├─ GET /{recordId}/questions  拉题（layout 恒 record，音频/题目内容见字段）
+   │
+   ├─ PUT /{recordId}/questions/{questionId}/draft      提纲草稿（可选，只存文字）
+   ├─ POST /{recordId}/questions/{questionId}/answers   录音上传完成后落答案
+   │
+POST /{recordId}/submit ──► 全部入 AI 队列
+   │
+   ├─ GET /{recordId}/report                  轮询到 READY / FAILED
+   ├─ GET /{recordId}/report/questions/{qid}  单题详情
+   └─ POST /{recordId}/report/retry           FAILED 时重试</code></pre></div>
+<h3 id="82-开练">8.2 开练<a class="anchor" href="#82-开练">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>POST /speaking/records/start</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{ "paperId": 2095405786495315969, "sectionMapping": "SEC_SPEAKING", "section": "1" }</code></pre></div>
+<p><code>sectionMapping</code> 传 <code>SEC_SPEAKING</code>。历史值 <code>SEC_SPEAK</code> 服务端仍放行，但<strong>响应里返回的永远是 <code>SEC_SPEAKING</code></strong>，前端按返回值为准。</p>
+<p>响应结构同 6.3。</p>
+<h3 id="83-记录详情">8.3 记录详情<a class="anchor" href="#83-记录详情">#</a></h3>
+<p><code>GET /speaking/records/{recordId}</code>，结构同 6.3，<code>sectionMapping</code> 为 <code>SEC_SPEAKING</code>，<code>objectiveCount</code> 恒 <code>0</code>、<code>aiQuestionCount</code> = 总题数。</p>
+<h3 id="84-拉题">8.4 拉题<a class="anchor" href="#84-拉题">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>GET /speaking/records/{recordId}/questions</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "code": 200,
+  "message": "操作成功",
+  "data": [
+    {
+      "questionId": 2095405786495316201,
+      "order": 1,
+      "no": 1,
+      "layout": "record",
+      "typeName": "朗读",
+      "sectionTitle": "第一部分",
+      "content": "&lt;p&gt;请朗读下面的短文。&lt;/p&gt;",
+      "passage": "春天来了，公园里的花都开了……",
+      "audioUrl": null,
+      "shareAudioUrl": null,
+      "optionContent": null,
+      "groupContent": null,
+      "groupPassage": null,
+      "groupOptionContent": null,
+      "hasStandardAnswer": 0,
+      "answered": false,
+      "answerText": null,
+      "answer": null,
+      "durationMs": null,
+      "answerDraft": null
+    }
+  ]
+}</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody><tr><td><code>layout</code></td><td><strong>恒 <code>record</code></strong>。口语试卷题源没有 layout 列，服务端固定下发 <code>record</code></td></tr><tr><td><code>passage</code></td><td>朗读/复述的原文本。口语题<strong>常常没有 <code>content</code>，题目本体在 <code>passage</code></strong> —— 前端渲染时要兜底，<code>content</code> 为空就用 <code>passage</code></td></tr><tr><td><code>audioUrl</code></td><td>听力材料音频（如「听一段话然后回答」）</td></tr><tr><td><code>shareAudioUrl</code></td><td>共享材料音频</td></tr><tr><td><code>hasStandardAnswer</code></td><td>恒 <code>0</code></td></tr><tr><td><code>sectionTitle</code></td><td>板块标题，用于分节展示</td></tr></tbody></table></div>
+<h3 id="85-录音与保存答案">8.5 录音与保存答案<a class="anchor" href="#85-录音与保存答案">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>POST /speaking/records/{recordId}/questions/{questionId}/answers</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{ "answer": "https://cdn.example.com/speaking/u123/q456.wav", "durationMs": 45000 }</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr></thead><tbody><tr><td><code>answer</code></td><td>String</td><td>是</td><td>音频 URL。<strong>路径里的 <code>questionId</code> 会自动覆盖 body 里的同名字段</strong>，body 不用传</td></tr><tr><td><code>durationMs</code></td><td>Long</td><td>是</td><td>录音时长（毫秒）</td></tr><tr><td><code>answerText</code></td><td>String</td><td>否</td><td>转写文本，一般留空由 AI 转写</td></tr></tbody></table></div>
+<p>🔴 <strong>录音预签名端点已停用</strong>（2026-11-13，媒体服务 <code>speaking_media_object</code> 下线）：</p>
+<div class="table-wrap"><table><thead><tr><th>端点</th><th>状态</th></tr></thead><tbody><tr><td><code>POST /speaking/attempts/{id}/questions/{qid}/recordings/prepare</code></td><td>❌ 已注销（404）</td></tr><tr><td><code>POST /speaking/recordings/{id}/confirm</code></td><td>❌ 已注销</td></tr><tr><td><code>POST /speaking/recordings/{id}/retry</code></td><td>❌ 已注销</td></tr><tr><td><code>POST /speaking/recordings/{id}/discard</code></td><td>❌ 已注销</td></tr><tr><td><code>GET /speaking/recordings/{id}/playback-url</code></td><td>❌ 已注销</td></tr></tbody></table></div>
+<p>现在的流程是<strong>客户端自行录音 → 上传到对象存储拿到 URL → 调上面这个接口把 URL 落库</strong>。服务端只存 URL，不校验可达性、不转码、不托管音频。</p>
+<blockquote>如果你的客户端还在调 <code>/recordings/prepare</code>，会拿到 404 —— 这是预期行为，不是接口挂了。旧的 <code>/speaking/attempts/**</code> 系列端点在 2026-11-16 整体退场（决策 24），代码保留但 <code>@RestController</code> 已注释。</blockquote>
+<p>响应同 6.6 的批量保存响应（只落这一题）。</p>
+<p><strong>重录</strong>：直接再调一次同一接口，<code>answer</code> 覆盖为新的 URL，<code>durationMs</code> 一起更新，<code>answered</code> 保持 <code>1</code>。</p>
+<h3 id="86-提纲草稿">8.6 提纲草稿<a class="anchor" href="#86-提纲草稿">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>PUT /speaking/records/{recordId}/questions/{questionId}/draft</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{ "text": "1. 开头问好 2. 介绍家乡 3. 结尾邀请", "expectedVersion": 2 }</code></pre></div>
+<ul><li>只存<strong>提纲文字</strong>，不碰音频，不计入答案，不影响判分。</li><li>不限字数（口语的作答本体是录音，草稿只是辅助记事）。</li><li>🔴 <strong>不要把提纲写进 <code>answerText</code></strong> —— 那会被 AI 当成转写文本来评分。</li></ul>
+<p>响应与失败形态同 6.5。</p>
+<h3 id="87-交卷">8.7 交卷<a class="anchor" href="#87-交卷">#</a></h3>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>POST /speaking/records/{recordId}/submit</code></pre></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{ "finalAnswers": [ { "questionId": 2095405786495316201, "answer": "https://…", "durationMs": 45000 } ], "durationSeconds": 600 }</code></pre></div>
+<p>body 可省略。响应同 6.7，<code>module</code> 为 <code>speaking</code>，<code>status=COMPLETED</code>、<code>reportStatus=GRADING</code>。</p>
+<p>交卷时<strong>未录音的题</strong>会被标记为未作答（<code>grading_state=2</code>），最终报告里计入未得分，不会阻塞其他题的评分。</p>
+<h3 id="88-报告">8.8 报告<a class="anchor" href="#88-报告">#</a></h3>
+<p><code>GET /speaking/records/{recordId}/report</code>，结构同 6.8，<code>module=speaking</code>。</p>
+<p>口语的 <code>aiQuestionCount</code> = 全部题数，没有客观题。<code>questions[].correct</code> 恒 <code>null</code>。</p>
+<h3 id="89-报告重试">8.9 报告重试<a class="anchor" href="#89-报告重试">#</a></h3>
+<p><code>POST /speaking/records/{recordId}/report/retry</code>，行为同 6.11。</p>
+<h3 id="810-答题卡">8.10 答题卡<a class="anchor" href="#810-答题卡">#</a></h3>
+<p><code>GET /speaking/records/{recordId}/answer-card</code>，<code>answered</code> = <strong>录音已上传完成</strong>。结构见第 9 章。</p>
+<hr/>
+<h2 id="9-答题卡五模块共用">9. 答题卡（五模块共用）<a class="anchor" href="#9-答题卡五模块共用">#</a></h2>
+<p>五个模块各有一条，路径规律一致：</p>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>GET /listening/records/{recordId}/answer-card
+GET /reading/records/{recordId}/answer-card
+GET /writing/records/{recordId}/answer-card
+GET /translation/records/{recordId}/answer-card
+GET /speaking/records/{recordId}/answer-card</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>参数</th><th>位置</th><th>必填</th><th>说明</th></tr></thead><tbody><tr><td><code>recordId</code></td><td>path</td><td>是</td><td>记录 ID（听/读与写/译/说的 ID 体系不同，见 1.5）</td></tr><tr><td><code>currentQuestionNumber</code></td><td>query</td><td>否</td><td>当前题号，缺省取记录里保存的进度</td></tr></tbody></table></div>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-json">{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "recordId": 2095405786495315999,
+    "paperId": 2095405786495315969,
+    "section": 1,
+    "totalQuestions": 10,
+    "answeredCount": 4,
+    "unansweredCount": 6,
+    "currentQuestionNumber": 5,
+    "questions": [
+      { "order": 1, "questionId": 2095405786495316201, "answered": true,  "current": false },
+      { "order": 2, "questionId": 2095405786495316202, "answered": false, "current": false }
+    ]
+  }
+}</code></pre></div>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody><tr><td><code>section</code></td><td><strong>Integer</strong>（答题卡这里给数字，与开练的 String 不同）</td></tr><tr><td><code>unansweredCount</code></td><td>= <code>totalQuestions - answeredCount</code></td></tr><tr><td><code>currentQuestionNumber</code></td><td>未开始时为 <code>null</code></td></tr><tr><td><code>questions[].order</code></td><td>题序，与报告 <code>questions[].order</code> 同源同序</td></tr><tr><td><code>questions[].current</code></td><td>是否当前题，与 <code>currentQuestionNumber</code> 同值</td></tr><tr><td><code>questions[].answered</code></td><td>听/读看是否选过；写/译看是否存过答案；口语看录音是否已上传</td></tr></tbody></table></div>
+<p>答题卡<strong>只回「答没答」</strong>，不下发对错、不支持标记/收藏/错题筛选。对错只在交卷后的报告接口出现。</p>
+<hr/>
+<h2 id="10-状态机与轮询">10. 状态机与轮询<a class="anchor" href="#10-状态机与轮询">#</a></h2>
+<h3 id="101-记录状态">10.1 记录状态<a class="anchor" href="#101-记录状态">#</a></h3>
+<p><strong>听力 / 阅读</strong>（<code>status</code> 是 Integer）：</p>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>0 已创建 ──► 1 进行中 ──► 3 已提交
+                └──► 2 已放弃（仅阅读有 abandon）</code></pre></div>
+<p><strong>写作 / 翻译 / 口语</strong>（<code>status</code> 是 String）：</p>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code>IN_PROGRESS ──► COMPLETED
+      └──► DISCARDED</code></pre></div>
+<h3 id="102-出报告进度reportstatus">10.2 出报告进度（<code>reportStatus</code>）<a class="anchor" href="#102-出报告进度reportstatus">#</a></h3>
+<p>按模块分两套，<strong>前端要分别处理</strong>：</p>
+<div class="table-wrap"><table><thead><tr><th>模块</th><th>值域</th><th>谁产出</th></tr></thead><tbody><tr><td>听力 / 阅读（记录接口）</td><td><code>PENDING</code> / <code>GENERATING</code> / <code>READY</code> / <code>FAILED</code></td><td>异步任务</td></tr><tr><td>听力 / 阅读（报告接口）</td><td><code>PROCESSING</code> / <code>READY</code> / <code>FAILED_RETRYABLE</code> / <code>FAILED_FINAL</code></td><td>报告服务</td></tr><tr><td>写作 / 翻译 / 口语</td><td><code>NOT_READY</code> / <code>GRADING</code> / <code>READY</code> / <code>FAILED</code></td><td>按答案表 <code>grading_state</code> 现算</td></tr></tbody></table></div>
+<p>主观三模块的判定规则：</p>
+<div class="table-wrap"><table><thead><tr><th>状态</th><th>条件</th></tr></thead><tbody><tr><td><code>NOT_READY</code></td><td>未交卷</td></tr><tr><td><code>GRADING</code></td><td>已交卷，还有题 <code>grading_state=0</code>（待评）</td></tr><tr><td><code>READY</code></td><td>全部终态，且至少有一题评出分</td></tr><tr><td><code>FAILED</code></td><td>全部终态，但<strong>一题都没评出来</strong></td></tr></tbody></table></div>
+<h3 id="103-轮询建议">10.3 轮询建议<a class="anchor" href="#103-轮询建议">#</a></h3>
+<div class="table-wrap"><table><thead><tr><th>场景</th><th>建议</th></tr></thead><tbody><tr><td>听力 / 阅读交卷</td><td>交卷响应已是 <code>READY</code>，直接跳报告页，无需轮询</td></tr><tr><td>写 / 译 / 说交卷</td><td>2s → 5s → 10s → 10s… 退避轮询 <code>GET /{recordId}</code>，30s 后转「后台生成中，稍后到报告页查看」</td></tr><tr><td>见到 <code>FAILED</code></td><td>展示「重试」按钮 → <code>POST /{recordId}/report/retry</code></td></tr><tr><td>报告页停留</td><td>每 10s 拉一次 <code>GET /{recordId}/report</code>，<code>READY</code> 即停</td></tr></tbody></table></div>
+<p>服务端 AI 评分的总开关默认<strong>关闭</strong>（<code>subjective.grading.enabled=false</code>）：开关关着时交卷照常，主观题停在「待评」，报告一直是 <code>GRADING</code>。<strong>联调时如果一直等不到分数，先问后端这个开关开了没</strong>，不是前端的问题。</p>
+<hr/>
+<h2 id="11-通用坑清单">11. 通用坑清单<a class="anchor" href="#11-通用坑清单">#</a></h2>
+<h3 id="111-19-位长整数精度丢失">11.1 19 位长整数精度丢失<a class="anchor" href="#111-19-位长整数精度丢失">#</a></h3>
+<p><code>paperId</code>、<code>recordId</code>、<code>questionId</code> 都是 19 位 Long（如 <code>2095405786495315969</code>），超过 JavaScript <code>Number.MAX_SAFE_INTEGER</code>（<code>9007199254740991</code>，16 位）。</p>
+<div class="code-wrap"><button class="copy" onclick="copyCode(this)">复制</button><pre><code class="lang-js">JSON.parse('{"paperId":2095405786495315969}').paperId  // 2095405786495316000 ← 尾数被抹平</code></pre></div>
+<p>后果：拿这个 ID 去查卷会查不到（返回空或 404），而且<strong>不报错</strong>，非常难查。</p>
+<p>三种解法，任选其一：</p>
+<ol><li>让后端统一加 <code>@JsonSerialize(using = ToStringSerializer.class)</code>，ID 一律以字符串下发（<strong>推荐</strong>，但需要后端改）</li><li>前端用 <code>json-bigint</code> 之类的库解析</li><li>前端自行把 19 位数字当字符串处理，不参与数值运算</li></ol>
+<p>发请求时 ID 用字符串也不会报错（Spring 会自动转 Long）。</p>
+<h3 id="112-layout-取值">11.2 layout 取值<a class="anchor" href="#112-layout-取值">#</a></h3>
+<p><code>layout</code> 是<strong>答题交互的唯一真源</strong>，不要在客户端按 <code>typeCode</code> / <code>typeName</code> 去猜该渲染什么组件。</p>
+<div class="table-wrap"><table><thead><tr><th>layout</th><th>交互</th><th>出现在</th></tr></thead><tbody><tr><td><code>imageJudge</code></td><td>看图判断（✓/✗）</td><td>听力</td></tr><tr><td><code>imageChoice</code></td><td>看图选图</td><td>听力</td></tr><tr><td><code>imageMatch</code></td><td>看图连线/匹配</td><td>听力</td></tr><tr><td><code>textJudge</code></td><td>文字判断（✓/✗）</td><td>听力</td></tr><tr><td><code>textChoice</code></td><td>文字选择</td><td>听力、阅读</td></tr><tr><td><code>textChoice_shareAudio</code></td><td>文字选择 + 共享音频</td><td>听力</td></tr><tr><td><code>passageGroup</code></td><td>长材料多子题</td><td>听力</td></tr><tr><td><code>input</code></td><td>文本输入</td><td>写作、笔译</td></tr><tr><td><code>shortInput</code></td><td>短文本输入</td><td>写作</td></tr><tr><td><code>record</code></td><td>录音</td><td>口语、口译</td></tr></tbody></table></div>
+<p>判断题的作答值用 <code>A</code>/<code>B</code>（表示 ✓/✗），<strong>不要传 <code>true</code>/<code>false</code></strong>。</p>
+<h3 id="113-下划线字段">11.3 下划线字段<a class="anchor" href="#113-下划线字段">#</a></h3>
+<p>只有听力拉题和听力单题回顾这两个接口有下划线字段：</p>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>出现在</th></tr></thead><tbody><tr><td><code>audio_url</code></td><td><code>ListeningQuestionResponse</code>、<code>ListeningQuestionReportResponse</code></td></tr><tr><td><code>option_content</code></td><td>同上</td></tr><tr><td><code>share_audio_url</code></td><td>同上</td></tr></tbody></table></div>
+<p>其余所有接口、所有字段都是驼峰。阅读用的是 <code>audioUrl</code> / <code>optionContent</code> / <code>shareAudioUrl</code>。</p>
+<h3 id="114-选项结构两层不一致">11.4 选项结构两层不一致<a class="anchor" href="#114-选项结构两层不一致">#</a></h3>
+<div class="table-wrap"><table><thead><tr><th>模块</th><th>字段</th><th>取法</th></tr></thead><tbody><tr><td>听力</td><td><code>option_content</code></td><td><code>data[i].option_content.A</code></td></tr><tr><td>阅读</td><td><code>optionContent</code></td><td><code>data[i].optionContent.options.A</code></td></tr><tr><td>写/译/说</td><td><code>optionContent</code></td><td>原样透传，通常为 <code>null</code></td></tr></tbody></table></div>
+<p>阅读多一层 <code>options</code> 包裹，这是 DTO 类型不同导致的，前端不能复用同一段渲染逻辑。</p>
+<h3 id="115-html-富文本">11.5 HTML 富文本<a class="anchor" href="#115-html-富文本">#</a></h3>
+<p><code>content</code>、<code>passage</code>、<code>analysis</code> 里可能是 HTML（<code>&lt;p&gt;</code>、<code>&lt;img&gt;</code>、<code>&lt;b&gt;</code>、上下标等）。渲染时用白名单过滤（<code>p/br/img/b/i/u/span/div/a/sub/sup/table/...</code>），<strong>不要用 <code>&lt;[^&gt;]*&gt;</code> 一刀切</strong> —— 数学题面里的 <code>H&lt;0</code>、<code>$a&lt;b&lt;0$</code> 会被整段吞掉。</p>
+<h3 id="116-recordid-不通用">11.6 recordId 不通用<a class="anchor" href="#116-recordid-不通用">#</a></h3>
+<p>听力/阅读的 <code>recordId</code> 来自 <code>practice_record</code>，写作/翻译/口语的来自 <code>practice_subjective_record</code>。两套 ID 空间独立，拿错了返回 <code>403 FORBIDDEN</code>（不是 404）。</p>
+<hr/>
+<h2 id="12-联调-checklist">12. 联调 checklist<a class="anchor" href="#12-联调-checklist">#</a></h2>
+<p>按顺序过一遍，能覆盖 90% 的问题：</p>
+<ul><li class="check">☐ 请求带 <code>X-Client-Type: APP</code> 且 token 有效（否则会静默用 <code>userId=1</code> 的模拟用户）</li><li class="check">☐ 成功判定用 <code>body.code === 200</code>，不是 HTTP 状态码</li><li class="check">☐ <code>module</code> 传小写（大小写不敏感，但别传 <code>LISTENING</code> 之外的怪值）</li><li class="check">☐ U3 的 <code>parts[].section</code>（数字）→ 开练的 <code>section</code>（字符串），中间转了一次</li><li class="check">☐ 主观模块开练传全三字段 <code>paperId + sectionMapping + section</code></li><li class="check">☐ 翻译交卷是 <code>/submissions</code>（复数），写作是 <code>/submit</code></li><li class="check">☐ 听力取 <code>option_content</code>，阅读取 <code>optionContent.options</code></li><li class="check">☐ 听力取 <code>audio_url</code>，阅读取 <code>audioUrl</code></li><li class="check">☐ 19 位 ID 没有在 JS 里被当数字解析</li><li class="check">☐ 写/译/说交卷后轮询的是 <code>reportStatus</code>，不是 <code>status</code></li><li class="check">☐ 交卷前把草稿落成正式答案（否则 <code>draftNotSubmitted</code> 会点名）</li><li class="check">☐ 口语不再调 <code>/recordings/prepare</code>（已 404）</li></ul>
+<hr/>
+<h2 id="附录-a-错误码">附录 A 错误码<a class="anchor" href="#附录-a-错误码">#</a></h2>
+<h3 id="a1-通用">A.1 通用<a class="anchor" href="#a1-通用">#</a></h3>
+<div class="table-wrap"><table><thead><tr><th>code</th><th>message</th><th>场景</th></tr></thead><tbody><tr><td><code>200</code></td><td>操作成功</td><td>成功</td></tr><tr><td><code>400</code></td><td>参数错误</td><td>参数校验失败，<code>message</code> 带字段名与中文说明</td></tr><tr><td><code>401</code></td><td>未登录或Token无效</td><td>缺 token / token 过期 / 未带 <code>X-Client-Type: APP</code> 且接口强制鉴权</td></tr><tr><td><code>403</code></td><td>FORBIDDEN</td><td>记录不属于当前用户、或用错模块的 recordId</td></tr><tr><td><code>404</code></td><td>试卷不存在 / 板块不存在</td><td><code>paperId</code> 查不到，或该模块在该卷下没有板块（<code>version</code> 与卷不符也走这条）</td></tr><tr><td><code>500</code></td><td>系统内部错误</td><td>服务端异常，需带上 traceId 找后端</td></tr></tbody></table></div>
+<h3 id="a2-练习业务">A.2 练习业务<a class="anchor" href="#a2-练习业务">#</a></h3>
+<div class="table-wrap"><table><thead><tr><th>code</th><th>message</th><th>场景</th><th>前端处理</th></tr></thead><tbody><tr><td><code>2001</code></td><td>试题不存在</td><td>题目不在本次题集内</td><td>刷新题目列表</td></tr><tr><td><code>2003</code></td><td>记录版本冲突，请刷新后重试</td><td><code>baseVersion</code> 与云端不一致</td><td>重新拉记录，重放本地答案</td></tr><tr><td><code>2004</code></td><td>记录不在进行中，无法保存</td><td>记录已交卷 / 已放弃</td><td>跳报告页</td></tr><tr><td><code>2005</code></td><td>记录未提交，无法查看报告</td><td>未交卷就看报告</td><td>回答题页</td></tr><tr><td><code>2006</code></td><td>报告状态不允许重试</td><td>非 <code>FAILED_RETRYABLE</code> 调了 retry</td><td>隐藏重试按钮</td></tr></tbody></table></div>
+<h3 id="a3-目录与开练">A.3 目录与开练<a class="anchor" href="#a3-目录与开练">#</a></h3>
+<div class="table-wrap"><table><thead><tr><th>code</th><th>message</th><th>场景</th></tr></thead><tbody><tr><td><code>400</code></td><td><code>PRACTICE_VERSION_INVALID</code></td><td><code>version</code> 不是 <code>HSK2.0</code> / <code>HSK3.0</code></td></tr><tr><td><code>400</code></td><td><code>模块编码不合法（PRACTICE_MODULE_INVALID）：xxx</code></td><td>U1/U2/U3 的 <code>module</code> 缺失或不在五个取值内</td></tr><tr><td><code>400</code></td><td><code>SECTION_MAPPING_MISMATCH</code></td><td>开练的 <code>sectionMapping</code> 与入口模块不符（如拿写作的 mapping 打翻译入口）</td></tr><tr><td><code>400</code></td><td><code>section 不能为空</code></td><td><code>GET /papers/{paperId}/reports/latest</code> 没传 <code>section</code></td></tr></tbody></table></div>
+<h3 id="a4-草稿">A.4 草稿<a class="anchor" href="#a4-草稿">#</a></h3>
+<div class="table-wrap"><table><thead><tr><th>code</th><th>message</th><th>场景</th><th>data</th></tr></thead><tbody><tr><td><code>400</code></td><td><code>DRAFT_TOO_LONG</code></td><td>写作/笔译草稿超 5000 字素</td><td><code>null</code></td></tr><tr><td><code>409</code></td><td><code>DRAFT_LOCKED</code></td><td>交卷后再存草稿</td><td><code>null</code></td></tr><tr><td><code>409</code></td><td><code>DRAFT_VERSION_CONFLICT</code></td><td><code>expectedVersion</code> 与当前不符</td><td><code>{currentVersion, savedTime}</code></td></tr><tr><td><code>409</code></td><td>请求数据已存在，请勿重复提交</td><td>并发首存撞唯一键（服务端已自动退化为更新，正常不会出现）</td><td><code>null</code></td></tr></tbody></table></div>
+<blockquote><code>message</code> 是<strong>错误码字符串</strong>（如 <code>DRAFT_LOCKED</code>）而非中文，前端按 <code>code</code> + <code>message</code> 组合映射文案，不要把 <code>message</code> 直接展示给用户。</blockquote>
+<hr/>
+<h2 id="附录-b-端点总表">附录 B 端点总表<a class="anchor" href="#附录-b-端点总表">#</a></h2>
+<p>共 57 个端点（不含内部接口）。</p>
+<h3 id="目录5">目录（5）<a class="anchor" href="#目录5">#</a></h3>
+<div class="table-wrap"><table><thead><tr><th>方法</th><th>路径</th><th>说明</th></tr></thead><tbody><tr><td>GET</td><td><code>/hsk/modules</code></td><td>首页模块卡（免登录）</td></tr><tr><td>GET</td><td><code>/hsk/levels</code></td><td>U1 等级概览 + 卷列表</td></tr><tr><td>GET</td><td><code>/hsk/levels/{level}/intro</code></td><td>U2 备考说明</td></tr><tr><td>GET</td><td><code>/hsk/papers/{paperId}/parts</code></td><td>U3 卷内板块 + 进度</td></tr><tr><td>GET</td><td><code>/papers/{paperId}/reports/latest</code></td><td>CR 板块最近报告</td></tr></tbody></table></div>
+<h3 id="听力11">听力（11）<a class="anchor" href="#听力11">#</a></h3>
+<div class="table-wrap"><table><thead><tr><th>方法</th><th>路径</th></tr></thead><tbody><tr><td>POST</td><td><code>/listening/records/start</code></td></tr><tr><td>GET</td><td><code>/listening/records/{recordId}</code></td></tr><tr><td>GET</td><td><code>/listening/records/{recordId}/questions</code></td></tr><tr><td>PUT</td><td><code>/listening/records/{recordId}/answers/{questionId}</code></td></tr><tr><td>PUT</td><td><code>/listening/records/{recordId}/answers</code></td></tr><tr><td>POST</td><td><code>/listening/records/{recordId}/pause</code></td></tr><tr><td>POST</td><td><code>/listening/records/{recordId}/submit</code></td></tr><tr><td>GET</td><td><code>/listening/records/{recordId}/report</code></td></tr><tr><td>POST</td><td><code>/listening/records/{recordId}/report/retry</code></td></tr><tr><td>GET</td><td><code>/listening/records/{recordId}/report/questions/{questionId}</code></td></tr><tr><td>GET</td><td><code>/listening/records/{recordId}/answer-card</code></td></tr></tbody></table></div>
+<h3 id="阅读12">阅读（12）<a class="anchor" href="#阅读12">#</a></h3>
+<div class="table-wrap"><table><thead><tr><th>方法</th><th>路径</th></tr></thead><tbody><tr><td>POST</td><td><code>/reading/records/start</code></td></tr><tr><td>GET</td><td><code>/reading/records/{recordId}</code></td></tr><tr><td>GET</td><td><code>/reading/records/{recordId}/questions</code></td></tr><tr><td>PUT</td><td><code>/reading/records/{recordId}/answers/{questionId}</code></td></tr><tr><td>PUT</td><td><code>/reading/records/{recordId}/answers</code></td></tr><tr><td>POST</td><td><code>/reading/records/{recordId}/pause</code></td></tr><tr><td>POST</td><td><code>/reading/records/{recordId}/abandon</code></td></tr><tr><td>POST</td><td><code>/reading/records/{recordId}/submit</code></td></tr><tr><td>GET</td><td><code>/reading/records/{recordId}/report</code></td></tr><tr><td>POST</td><td><code>/reading/records/{recordId}/report/retry</code></td></tr><tr><td>GET</td><td><code>/reading/records/{recordId}/report/questions/{questionId}</code></td></tr><tr><td>GET</td><td><code>/reading/records/{recordId}/answer-card</code></td></tr></tbody></table></div>
+<h3 id="写作9">写作（9）<a class="anchor" href="#写作9">#</a></h3>
+<div class="table-wrap"><table><thead><tr><th>方法</th><th>路径</th></tr></thead><tbody><tr><td>POST</td><td><code>/writing/records/start</code></td></tr><tr><td>GET</td><td><code>/writing/records/{recordId}</code></td></tr><tr><td>GET</td><td><code>/writing/records/{recordId}/questions</code></td></tr><tr><td>PUT</td><td><code>/writing/records/{recordId}/answers</code></td></tr><tr><td>PUT</td><td><code>/writing/records/{recordId}/questions/{questionId}/draft</code></td></tr><tr><td>POST</td><td><code>/writing/records/{recordId}/submit</code></td></tr><tr><td>GET</td><td><code>/writing/records/{recordId}/report</code></td></tr><tr><td>GET</td><td><code>/writing/records/{recordId}/report/questions/{questionId}</code></td></tr><tr><td>POST</td><td><code>/writing/records/{recordId}/report/retry</code></td></tr><tr><td>GET</td><td><code>/writing/records/{recordId}/answer-card</code></td></tr></tbody></table></div>
+<h3 id="翻译9">翻译（9）<a class="anchor" href="#翻译9">#</a></h3>
+<div class="table-wrap"><table><thead><tr><th>方法</th><th>路径</th></tr></thead><tbody><tr><td>POST</td><td><code>/translation/records/start</code></td></tr><tr><td>GET</td><td><code>/translation/records/{recordId}</code></td></tr><tr><td>GET</td><td><code>/translation/records/{recordId}/questions</code></td></tr><tr><td>PUT</td><td><code>/translation/records/{recordId}/answers</code></td></tr><tr><td>PUT</td><td><code>/translation/records/{recordId}/questions/{questionId}/draft</code></td></tr><tr><td>POST</td><td><code>/translation/records/{recordId}/submissions</code></td></tr><tr><td>GET</td><td><code>/translation/records/{recordId}/report</code></td></tr><tr><td>GET</td><td><code>/translation/records/{recordId}/report/questions/{questionId}</code></td></tr><tr><td>GET</td><td><code>/translation/records/{recordId}/answer-card</code></td></tr></tbody></table></div>
+<h3 id="口语9">口语（9）<a class="anchor" href="#口语9">#</a></h3>
+<div class="table-wrap"><table><thead><tr><th>方法</th><th>路径</th></tr></thead><tbody><tr><td>POST</td><td><code>/speaking/records/start</code></td></tr><tr><td>GET</td><td><code>/speaking/records/{recordId}</code></td></tr><tr><td>GET</td><td><code>/speaking/records/{recordId}/questions</code></td></tr><tr><td>POST</td><td><code>/speaking/records/{recordId}/questions/{questionId}/answers</code></td></tr><tr><td>PUT</td><td><code>/speaking/records/{recordId}/questions/{questionId}/draft</code></td></tr><tr><td>POST</td><td><code>/speaking/records/{recordId}/submit</code></td></tr><tr><td>GET</td><td><code>/speaking/records/{recordId}/report</code></td></tr><tr><td>GET</td><td><code>/speaking/records/{recordId}/report/questions/{questionId}</code></td></tr><tr><td>POST</td><td><code>/speaking/records/{recordId}/report/retry</code></td></tr><tr><td>GET</td><td><code>/speaking/records/{recordId}/answer-card</code></td></tr></tbody></table></div>
+<p>小计：目录 5、听力 11、阅读 12、写作 10、翻译 9、口语 10，合计 <strong>57</strong> 个（答题卡已算进各自模块）。 写作、口语有重试端点而翻译没有；阅读多一条 <code>abandon</code>，口语与翻译的答题走单题接口。</p>
+<hr/>
+<h2 id="附录-c-已退场端点不要再调">附录 C 已退场端点（不要再调）<a class="anchor" href="#附录-c-已退场端点不要再调">#</a></h2>
+<p>以下端点在 2026-11-11 ~ 11-16 陆续退场，代码保留但 <code>@RestController</code> 已注释，<strong>请求会 404</strong>：</p>
+<div class="table-wrap"><table><thead><tr><th>端点</th><th>退场时间</th><th>替代</th></tr></thead><tbody><tr><td><code>/listening/levels</code>、<code>/reading/levels</code>、<code>/writing/levels</code> 等 15 个模块内目录</td><td>2026-11-11</td><td><code>GET /hsk/levels</code>、<code>GET /hsk/papers/{id}/parts</code></td></tr><tr><td><code>/writing/attempts/**</code></td><td>2026-11-16</td><td><code>/writing/records/**</code></td></tr><tr><td><code>/translation/attempts/**</code></td><td>2026-11-16</td><td><code>/translation/records/**</code></td></tr><tr><td><code>/speaking/attempts/**</code></td><td>2026-11-16</td><td><code>/speaking/records/**</code></td></tr><tr><td><code>/writing/reports/**</code>、<code>/translation/reports/**</code>、<code>/speaking/reports/**</code></td><td>2026-11-16</td><td><code>/{mod}/records/{recordId}/report</code></td></tr><tr><td><code>/speaking/recordings/**</code>（含 <code>prepare</code>）</td><td>2026-11-13</td><td>客户端自传音频后调 <code>POST /speaking/records/{id}/questions/{qid}/answers</code></td></tr><tr><td><code>/listening/parts/{structureId}/reports/latest</code> 等 4 条</td><td>2026-11-11</td><td><code>GET /papers/{paperId}/reports/latest</code></td></tr></tbody></table></div>
+<p>没有兼容层，全部直接 404。如果前端代码里还有这些路径，需要同批改掉。</p></main>
+<script>
+function copyCode(btn){
+  var code = btn.parentNode.querySelector('code').innerText;
+  navigator.clipboard.writeText(code).then(function(){
+    btn.textContent='已复制'; setTimeout(function(){btn.textContent='复制'},1200);
+  });
+}
+function toggleTheme(){
+  var cur = document.documentElement.getAttribute('data-theme');
+  var next = cur === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  try{ localStorage.setItem('hsk-doc-theme', next); }catch(e){}
+}
+(function(){
+  var saved;
+  try{ saved = localStorage.getItem('hsk-doc-theme'); }catch(e){}
+  if(!saved){ saved = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; }
+  document.documentElement.setAttribute('data-theme', saved);
+})();
+
+var links = [].slice.call(document.querySelectorAll('#toc a'));
+document.getElementById('q').addEventListener('input', function(){
+  var v = this.value.trim().toLowerCase();
+  links.forEach(function(a){
+    a.classList.toggle('hide', v !== '' && a.dataset.t.indexOf(v) < 0);
+  });
+});
+
+var targets = links.map(function(a){
+  return {a:a, el:document.getElementById(a.getAttribute('href').slice(1))};
+}).filter(function(t){ return t.el; });
+
+function sync(){
+  var y = window.scrollY + 90, cur = targets[0];
+  targets.forEach(function(t){ if(t.el.offsetTop <= y) cur = t; });
+  links.forEach(function(a){ a.classList.remove('active'); });
+  if(cur){ cur.a.classList.add('active'); }
+}
+window.addEventListener('scroll', sync, {passive:true});
+window.addEventListener('load', sync);
+document.querySelectorAll('a[href^="#"]').forEach(function(a){
+  a.addEventListener('click', function(){
+    var el = document.getElementById(this.getAttribute('href').slice(1));
+    if(el){ setTimeout(function(){ window.scrollTo({top: el.offsetTop - 70, behavior:'smooth'}); }, 0); }
+    document.querySelector('aside').classList.remove('open');
+  });
+});
+</script>
+</body>
+</html>
