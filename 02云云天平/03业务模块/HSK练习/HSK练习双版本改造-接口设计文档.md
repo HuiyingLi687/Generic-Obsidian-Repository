@@ -2570,6 +2570,29 @@ ALTER TABLE practice_subjective_answer
 4. **草稿不跨场次** —— 重开练习 = 新 `recordId` = 新行，天然隔离；不做「上次草稿带过来」。
 5. **草稿不清理** —— 交卷后保留（只读）。不做 TTL 删除（未提交 record 本就长期存在，草稿体积可忽略）。
 
+> ✅ **实现状态（2026-11-17，practice-service 已落地）**
+>
+> | 项 | 落地情况 |
+> |---|---|
+> | DDL | TEST 已执行（`db/109-subjective-answer-draft.sql`，3 列 pos 27/28/29）；PROD 随 E19 建表时带上 |
+> | 端点 | `PUT /writing|translation|speaking/records/{recordId}/questions/{questionId}/draft` ×3，请求 `{text, expectedVersion?}`，响应 `{questionId, version, savedTime, graphemeCount}` |
+> | 恢复 | ② `GET .../questions` 每题 `answerDraft`（无草稿为 `null`，清空后为带空 `text` 的块） |
+> | 交卷 | 响应新增 `draftNotSubmitted: [questionId…]`，服务端不拿草稿兜底 |
+> | 额外错误码 | `400 DRAFT_TOO_LONG`（写作/笔译 >5000 字素；口语与口译不限） |
+>
+> 🔴 **错误码形态与前端约定**：`GlobalExceptionHandler` 统一 `ResponseEntity.ok(...)`，
+> 所以 `409 DRAFT_VERSION_CONFLICT` / `409 DRAFT_LOCKED` 实际是 **HTTP 200 + body `code=409`**
+> （与既有 `400 SECTION_MAPPING_MISMATCH` 同款）。前端**必须按 body 的 `code` 判断**，
+> 不要看 HTTP 状态码。冲突时 body 的 `data` 是 `{currentVersion, savedTime}`。
+>
+> 补充口径（实现时的三个决定）：
+> ① **同内容重复保存不增版本、不写库** —— 前端 debounce 抖动 / 失焦与切题各触发一次时，
+> 每次 +1 会整列重写 5~10KB，白耗 IO；
+> ② 首次保存插的占位行 `grading_state` 取 **2（未答或失败）** 而不是 0 —— 若取 0，
+> 这题会被算进「待评」，报告侧 `reportStatus` 可能误判成 `GRADING`；`answered` 仍为 0，
+> 所以报告失败的判定（`grading_state=2 且 answered=1`）不会误伤它。交卷时整行会被重算覆盖；
+> ③ `max_score` 首次先置 0，交卷按题目重算 —— 草稿阶段不参与任何统计。
+
 ### 4.7.1 听力（listening，主键 recordId）
 
 **三段口径**：
@@ -2690,7 +2713,7 @@ ALTER TABLE practice_subjective_answer
 | 🔴 **G1 取题加 `enabled_prac=1` 过滤** | 各模块 questions（口语双源） | 五模块 |
 | 🟡 G5/G6/G7 口径对齐 | 答题保存、听/读 submit 统计写回、口语常量 | — |
 | 🟡 **决策 25：answer-card 端点 ×5 新增**（五模块同构、参考 CSCA，**只回已答/未答**，响应见 §4.7.0 G9） | `GET /{mod}/records/{recordId}/answer-card` | 五模块 |
-| 🟡 **决策 28：作答草稿**（`practice_subjective_answer` 加 3 列 + 保存端点 ×3 + ② 携带 `answerDraft`，口径见 §4.7.0 G10）：🔴 **仅写/译/说**，听/读不涉及 | `PUT /{mod}/records/{recordId}/questions/{questionId}/draft`、`GET /{mod}/records/{recordId}/questions` | 写/译/说 |
+| ✅ **决策 28：作答草稿**（`practice_subjective_answer` 加 3 列 + 保存端点 ×3 + ② 携带 `answerDraft`，口径见 §4.7.0 G10）：🔴 **仅写/译/说**，听/读不涉及。**2026-11-17 代码已落地**（TEST 已加列，PROD 随 E19 建表） | `PUT /{mod}/records/{recordId}/questions/{questionId}/draft`、`GET /{mod}/records/{recordId}/questions` | 写/译/说 |
 
 > 快照冻结（G2）= **提交时**，与现状一致，无改造；仅需确认各模块 submit 实现覆盖了口径列出的全部快照字段（尤其听力的音频、口语试卷的 `practice_audio_url` / `reference_answer`）。
 
