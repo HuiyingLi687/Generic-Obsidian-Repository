@@ -1,9 +1,13 @@
 # HSK 练习接口 · 新增字段说明（前端对接稿）
 
-> 服务：`practice-service`（网关前缀 `/api/practice`）>   
-> 关联需求：HSK3.0 大纲接入（听力 / 阅读 / 写作 / 口语 四个练习模块支持 `version` 切换）>   
-> 代码基线：`83512a49`（听力新增 3.0 版本）→ `10bf2146`（听力目录改造 + 投影器）>   
-> 文档版本：v1.0 · 2026-10-19>   
+> 服务：`practice-service`（网关前缀 `/api/practice`）
+>   
+> 关联需求：HSK3.0 大纲接入（听力 / 阅读 / 写作 / 口语 四个练习模块支持 `version` 切换）
+>   
+> 代码基线：`83512a49`（听力新增 3.0 版本）→ `10bf2146`（听力目录改造 + 投影器）
+>   
+> 文档版本：v1.0 · 2026-10-19
+>   
 > 影响范围：**4 个模块 / 13 个 GET 接口**（11 个新增入参 `version` + 2 个新增返回字段），新增 **1 个公共入参** + **3 个返回字段**
 
 ---
@@ -79,7 +83,8 @@
 | 12 | 口语 | `GET /speaking/levels/{levelCode}/intro`  | 单等级说明               | `version` | `version`                                                      |
 | 13 | 口语 | `GET /speaking/papers`                    | 试卷列表                | `version` | `version`                                                      |
 
-**未受影响的接口**（字段无变化）：`/reading|writing|speaking/preferences`（GET/PUT）、`/reading/papers/{id}/parts`、`/speaking/papers/{id}/parts`。  
+**未受影响的接口**（字段无变化）：`/reading|writing|speaking/preferences`（GET/PUT）、`/reading/papers/{id}/parts`、`/speaking/papers/{id}/parts`。
+  
 ⚠️ 其中偏好接口**不支持 `version`**，在 HSK3.0 场景下有已知限制，见 §6.5。
 
 ---
@@ -402,7 +407,8 @@
 | 偏好跨版本共享             | 在 HSK3.0 选了 5 级，切回 HSK2.0 后 `/preferences` 仍返回 `lastLevel=5`；等级数字相同就"看起来正常"，但语义不是同一份大纲                 |
 | `PUT` 一律按 HSK2.0 校验 | `updatePreference` 内部用的是默认版本，传 HSK3.0 独有的 `HSK7-9` 会直接 **404**；传 HSK3.0 的 2 级（HSK2.0 下写作未开放）可能 404/409 |
 
-**前端临时规避**：切到 `HSK3.0` 时**不要调用 `/preferences/level` 保存等级**（或只在 `HSK2.0` 下调用），进页面时也不要用 `/preferences` 的返回值直接回填等级下拉框 —— 以本地状态 / URL 参数为准。  
+**前端临时规避**：切到 `HSK3.0` 时**不要调用 `/preferences/level` 保存等级**（或只在 `HSK2.0` 下调用），进页面时也不要用 `/preferences` 的返回值直接回填等级下拉框 —— 以本地状态 / URL 参数为准。
+  
 **根治方案**：偏好表加 `version` 列 + 接口加 `version` 入参，需后端另开一轮改造。
 
 ---
