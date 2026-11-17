@@ -2597,6 +2597,71 @@ ALTER TABLE practice_subjective_answer
 > 所以报告失败的判定（`grading_state=2 且 answered=1`）不会误伤它。交卷时整行会被重算覆盖；
 > ③ `max_score` 首次先置 0，交卷按题目重算 —— 草稿阶段不参与任何统计。
 
+**G11 作答时长按「在场累计」（决策 30，五模块同构）**
+
+练习是**顺计时**、允许中途退出：退出即停表，回来续算。`durationSeconds` = **累计在场秒数**，**不是** `end_time − start_time`（墙钟差会把离线时间算进去——退出吃饭三小时回来交卷，报告就显示「答题时间 3 小时」）。
+
+**DDL（两表各一列，存量 `NULL` 等价旧口径、零回填）**：
+
+```sql
+ALTER TABLE practice_record
+  ADD COLUMN `paused_time` bigint DEFAULT NULL COMMENT '离开时刻（毫秒）；NULL=在场';
+ALTER TABLE practice_subjective_record
+  ADD COLUMN `paused_time` bigint DEFAULT NULL COMMENT '离开时刻（毫秒）；NULL=在场';
+```
+
+**结算公式（唯一入口，`pause` / `submit` / 任何保存动作都走它）**：
+
+```
+delta       = now − (paused_time ?? start_time)
+duration   += clamp(delta, 0, MAX_SEGMENT)   // 秒；上界兜崩溃
+paused_time = now                            // pause 与 submit 都置；resume 置 NULL
+```
+
+| 项 | 口径 |
+|---|---|
+| `duration` 列 | 累计在场秒——听/读 = `practice_record.duration_seconds`，写/译/说 = `practice_subjective_record.duration`；**不再被墙钟差覆盖** |
+| `paused_time` | `NULL` = 在场；非 `NULL` = 上次离开时刻，同时充当「本段起点」 |
+| `start_time` | 保持「首次开始」语义不动，**不拿它当段起点**（否则首次开始时间丢失） |
+| `MAX_SEGMENT` | **30 分钟（1800s）**。前端每 5–10 分钟 `pause` 一次 + `visibilitychange` 一次，单段远低于上界；该上界只兜「杀进程 / 断网」，正常不触发 |
+| 客户端上报 | 🔴 **不采信**。听力现有 `pause.durationSeconds` 降级为「`start_time` 为空时兜底」，前端可逐步停传；只要有 `start_time` 一律服务端自算（防客户端时钟不准与刷时长） |
+
+**两个端点（五模块同构）**：
+
+`POST /{mod}/records/{recordId}/pause` —— 退出/周期存档一次搞定（结算 + 存草稿 + 记位置）
+
+```json
+{ "currentQuestionId": 91003, "draftAnswers": [], "clientSequence": 7 }
+```
+
+```json
+{ "recordId": 88100, "durationSeconds": 745, "paused": true, "pausedAt": 1789612800000 }
+```
+
+`POST /{mod}/records/{recordId}/resume` —— 幂等，`paused_time` 置 `NULL`
+
+```json
+{ "recordId": 88100, "durationSeconds": 745, "paused": false, "resumedAt": 1789613400000 }
+```
+
+| 规则 | 说明 |
+|---|---|
+| 幂等 | 重复 `pause` 时 `delta ≈ 0`，只刷 `paused_time`；重复 `resume` 无副作用 |
+| 越权 | `recordId` 不属于当前用户、或不属于该 `module`（`section_mapping` 校验）→ `404`（同 G9） |
+| 已交卷 | `status` 非进行中 → `409 RECORD_NOT_IN_PROGRESS`（冻结，不许再结算） |
+| 续练续计时 | ① start 与 ①b 记录详情**必须**回 `durationSeconds` + `paused`；前端把正计时器恢复到已累计值，**不能从 0 起**（否则报告数与用户所见对不上） |
+| 判分隔离 | 不影响 `grading_state` / `points`；`durationMinutes` 只是**建议时长**，顺计时不限时、不强制交卷 |
+
+**🔴 阅读 `POST /reading/records/{recordId}/abandon` 下线**（2026-11-17）：该端点**只有阅读有**（`ReadingRecordController#abandon` → `status=2`）。练习已改为「可退出 + 随时续练」，放弃不再有意义——不想做就是不交卷、记录留着随时回来。处理方式：摘掉 `@PostMapping`、**不删方法体**，前端调用得 `404`。副作用：`practice_record.status=2`（已放弃）**今后不再产生**，历史值保留不动。⚠️ 「重新做一遍」不靠放弃——`start` 会幂等返回进行中那条，若要强制重开需另立需求（如 `start` 加 `restart`），本期不做。
+
+**改造点（五个模块）**：
+
+| 模块 | 现有实现 | 改什么 |
+|---|---|---|
+| 听 | `ListeningRecordServiceImpl#pause` 累加**客户端上报值**；`ListeningSubmissionFinalizer` 交卷再累加一次上报值 | 改服务端时间戳结算；上报值降为兜底；新增 `resume`；start/详情补 `durationSeconds` + `paused` |
+| 读 | `ReadingRecordServiceImpl#pause` **只记位置不记时长**；`ReadingSubmissionFinalizer` 只认交卷上报值 | `pause` 补结算；submit 改口径；新增 `resume`；`abandon` 下线 |
+| 写 / 译 / 说 | `SubjectivePracticeServiceImpl#resolveDuration` = `now − start_time` 墙钟差 | 改累加结算（**仅此一处**）；`pause` 路径 `/attempts`→`/records` 并补结算；新增 `resume`（翻译的 `pause` 原「无」→ 新增） |
+
 ### 4.7.1 听力（listening，主键 recordId）
 
 **三段口径**：
@@ -2607,13 +2672,14 @@ ALTER TABLE practice_subjective_answer
 
 | #   | 端点                                                                   | 标记  | 说明                                                                                                              |
 | --- | -------------------------------------------------------------------- | --- | --------------------------------------------------------------------------------------------------------------- |
-| 1   | `POST /listening/records/start` `{paperId, sectionMapping, section}` | ⚪   | 开卷幂等（已有）；`question_ids` 固化（已有）。快照在 submit 冻结（G2），start 不动                                                       |
+| 1   | `POST /listening/records/start` `{paperId, sectionMapping, section}` | ⚪   | 开卷幂等（已有）；`question_ids` 固化（已有）。快照在 submit 冻结（G2），start 不动；**响应补 `durationSeconds` / `paused`**（G11，续练续计时） |
 | 2   | `GET /listening/records/{recordId}`                                  | ⚪   | 记录详情/续练状态                                                                                                       |
 | 2b  | `GET /listening/records/{recordId}/answer-card`                      | 🟡  | **新增端点（决策 25，参考 CSCA）**：`questions[]` 按 `question_ids` 快照；只回 `answered`（取 `practice_answer`）——**无对错/标记/收藏**（G9） |
 | 3   | `GET /listening/records/{recordId}/questions`                        | 🔴  | 数据源改三元组 + `enabled_prac=1`（G1）；共享音频走 `question_shared_audio`（G8）；逐题 `layout`                                    |
 | 4   | `PUT /listening/records/{recordId}/answers/{questionId}`             | 🟡  | 单题保存；`current_question_number` 口径（G5）                                                                           |
 | 5   | `PUT /listening/records/{recordId}/answers`                          | 🟡  | 批量保存；同上                                                                                                         |
-| 6   | `POST /listening/records/{recordId}/pause`                           | ⚪   | 暂停                                                                                                              |
+| 6   | `POST /listening/records/{recordId}/pause`                           | 🟡  | **改口径（决策 30 / G11）**：服务端结算 `duration += now − (paused_time ?? start_time)`；**客户端上报的 `durationSeconds` 降级为 `start_time` 缺失时兜底、不再采信**；返回 `{durationSeconds, paused:true}` |
+| 6b  | `POST /listening/records/{recordId}/resume`                          | 🟡  | **新增（决策 30）**：`paused_time = NULL`，返回 `{durationSeconds, paused:false}`；幂等 |
 | 7   | `POST /listening/records/{recordId}/submit`                          | 🔴  | `idempotency_key` 拼法改 `{module}-{recordId}-submit`（G4，去 `-1`）；判分口径 G6 对齐；**提交时冻结题目快照**（G2，与现状一致，确认实现覆盖音频快照字段）   |
 | 8   | `GET /papers/{paperId}/reports/latest?module=listening&section=`（CR） | ⚪   | `answerCard` 按 `question_ids` 构造（§4.3）                                                                          |
 | 9   | `GET /listening/records/{recordId}/report`                           | 🟡  | 报告数据源改读**快照列**（题干/选项以快照为准）                                                                                      |
@@ -2630,15 +2696,17 @@ ALTER TABLE practice_subjective_answer
 
 | #   | 端点                                                                                     | 标记  | 说明                                                            |
 | --- | -------------------------------------------------------------------------------------- | --- | ------------------------------------------------------------- |
-| 1   | `POST /reading/records/start`                                                          | ⚪   | 同听力 1（快照在 submit 冻结，start 不动）                                 |
+| 1   | `POST /reading/records/start`                                                          | ⚪   | 同听力 1（快照在 submit 冻结，start 不动）；响应补 `durationSeconds` / `paused`（G11） |
 | 2   | `GET /reading/records/{recordId}`                                                      | ⚪   | 详情                                                            |
 | 2b  | `GET /reading/records/{recordId}/answer-card`                                          | 🟡  | **新增端点（决策 25）**：口径同听力 2b，只回 `answered`，无对错/标记/收藏              |
 | 3   | `GET /reading/records/{recordId}/questions`                                            | 🔴  | 数据源三元组 + `enabled_prac=1`；共享材料走 `question_group`              |
 | 4   | `PUT /reading/records/{recordId}/answers/{questionId}`                                 | 🟡  | 单题保存（G5）                                                      |
 | 5   | `PUT /reading/records/{recordId}/answers`                                              | 🟡  | 批量保存（G5）                                                      |
-| 6   | `POST /reading/records/{recordId}/pause`                                               | ⚪   | 暂停                                                            |
-| 7   | `POST /reading/records/{recordId}/submit`                                              | 🔴  | `idempotency_key` 去 `-1`（G4）+ 判分口径（G6）+ **提交时冻结快照**（G2，与现状一致） |
-| 8   | `POST /reading/records/{recordId}/sessions` → `/{sessionId}/heartbeat` → `/end`        | ⚪   | 计时会话（听力没有，阅读独有）                                               |
+| 6   | `POST /reading/records/{recordId}/pause`                                               | 🟡  | **补结算（决策 30 / G11）**：现状只记位置**不记时长** → 加 `duration += now − (paused_time ?? start_time)`；返回 `{durationSeconds, paused:true}` |
+| 6b  | `POST /reading/records/{recordId}/resume`                                              | 🟡  | **新增（决策 30）**：`paused_time = NULL`，返回 `{durationSeconds, paused:false}`；幂等       |
+| 6c  | ~~`POST /reading/records/{recordId}/abandon`~~                                         | 🔴  | **下线（决策 30）**：摘 `@PostMapping`、**保留方法体**，前端调用 404；`practice_record.status=2` 今后不再产生 |
+| 7   | `POST /reading/records/{recordId}/submit`                                              | 🔴  | `idempotency_key` 去 `-1`（G4）+ 判分口径（G6）+ **提交时冻结快照**（G2，与现状一致）+ 时长改累加结算（G11，不再只认上报值） |
+| 8   | ~~`POST /reading/records/{recordId}/sessions` → `/{sessionId}/heartbeat` → `/end`~~     | 🔴  | **删除（决策 24）**：顺计时只需进出时间戳，不需要心跳；三端点注释掉 |
 | 9   | CR `?module=reading&section=`                                                          | ⚪   | —                                                             |
 | 10  | `GET /reading/records/{recordId}/report` / `.../report/questions/{q}` / `report/retry` | 🟡  | 报告数据源改读快照列                                                    |
 
@@ -2652,14 +2720,15 @@ ALTER TABLE practice_subjective_answer
 
 | #   | 端点                                                                 | 标记  | 说明                                                                                                                             |
 | --- | ------------------------------------------------------------------ | --- | ------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | `POST /writing/records/start`                                      | ⚪   | 快照在 submit 冻结（G2），start 不动                                                                                                     |
+| 1   | `POST /writing/records/start`                                      | ⚪   | 快照在 submit 冻结（G2），start 不动；**响应补 `durationSeconds` / `paused`**（G11，续练续计时）                                                    |
 | 2   | `GET /writing/records/{recordId}`                                  | ⚪   | 详情                                                                                                                             |
 | 2b  | `GET /writing/records/{recordId}/answer-card`                      | 🟡  | **新增端点（决策 25）**：只回 `answered`（按 answer 表有无记录），无对错/标记/收藏                                                                        |
 | 3   | `GET /writing/records/{recordId}/questions`                        | 🔴  | 数据源 `enabled_prac=1`（G1）+ `layout` 改读原值（B-04，已在 §4.0.5）+ **逐题携带 `answerDraft`（G10，重进恢复）**                                                        |
 | 3a  | `PUT /writing/records/{recordId}/questions/{questionId}/draft` `{text,expectedVersion?}` | 🟡 | **新增端点（决策 28 / G10）**：草稿保存，`answer_draft` 全量覆盖 + `answer_draft_version` 自增；**不写 `answer_text`、不置 `answered`、不判分**；交卷后仅读 |
 | 4   | `PUT /writing/records/{recordId}/answers`                          | 🟡  | 批量保存 + 快照口径；**交卷前必须先调本端点把编辑器内容落答案，服务端不会拿草稿兜底（G10 边界 3）** |
-| 5   | ~~`POST /writing/records/{recordId}/sessions` ×3~~                 | 🔴  | **注释掉（决策 24）**：倒计时无心跳，`duration` = `end_time − start_time`                                                                     |
-| 6   | ~~`POST /writing/records/{recordId}/pause`~~                       | 🔴  | **注释掉（决策 24）**：倒计时无暂停                                                                                                          |
+| 5   | ~~`POST /writing/records/{recordId}/sessions` ×3~~                 | 🔴  | **仍注释（决策 24）**：顺计时只需进出时间戳，不需要心跳（决策 30 **未**恢复） |
+| 6   | `POST /writing/records/{recordId}/pause`                           | 🟡  | **恢复并改口径（决策 30 / G11）**：现有实现只存 `currentQuestionId` / `currentQuestionNumber`（`WritingAttemptPauseRequest`），**不记时长** → 加服务端结算 `duration += now − (paused_time ?? start_time)`；路径 `/attempts`→`/records`；返回 `{durationSeconds, paused:true}` |
+| 6b  | `POST /writing/records/{recordId}/resume`                          | 🟡  | **新增（决策 30）**：`paused_time = NULL`，返回 `{durationSeconds, paused:false}`；幂等 |
 | 7   | `POST /writing/records/{recordId}/submit`                          | 🔴  | **has_standard_answer 分流**（G3）+ `idempotency_key` 服务端统一（G4，弃客户端头）+ **提交时冻结快照**（G2，与现状一致）+ AI 评分落 `grading_state`（决策 24，不再建报告行） |
 | 8   | CR `?module=writing&section=`                                      | 🔴  | `writing` 扩展块重设计（决策 24）：数据源改 record + answer 表，`reportStatus` 按 `grading_state`                                                |
 | 9   | `GET /writing/records/{recordId}/report` + `/report/questions/{q}` | 🔴  | **改造（决策 24）**：原 `/writing/reports/{reportId}` 系列随报告表退场作废，对齐听/读按 `recordId` 定位；逐题反馈按 `grading_state` / `points` / `analysis`    |
