@@ -643,43 +643,43 @@ Content-Type: application/json
 
 **返回字段说明**
 
-| 字段 | 类型 | 改动标记 | 说明 |
-|---|---|---|---|
-| reportId | Long | 【无变更】 | 与 `recordId` 同值（`practice_report` 表已删） |
-| recordId | Long | 【无变更】 | 练习记录 ID |
-| paperId | Long | 【新增】 | 试卷 ID |
-| module | String | 【新增】 | `listening` / `reading` |
-| sectionMapping | String | 【新增】 | `SEC_LISTEN` / `SEC_READ` |
-| section | String | 【新增】 | 板块号 |
-| status | Integer | 【新增】 | 记录状态 |
-| reportStatus | String | 【修改】 | 收敛为 `PENDING/GENERATING/READY/FAILED`；原听力可能回 `PROCESSING` |
-| retryable | Boolean | 【新增】 | 失败是否可重试；原听力用 `FAILED_RETRYABLE`/`FAILED_FINAL` 表达 |
-| totalQuestions | Integer | 【修改】 | 题目总数；**原阅读字段名 `totalQuestionCount`** |
-| answeredCount | Integer | 【无变更】 | 已答题数 |
-| correctCount | Integer | 【无变更】 | 答对数 |
-| wrongCount | Integer | 【无变更】 | 答错数（未作答计入错误） |
-| accuracyRate | BigDecimal | 【无变更】 | 正确率百分比，保留 2 位小数；原听力为 Integer |
-| durationSeconds | Integer | 【无变更】 | 用时秒数 |
-| submittedTime | Long | 【无变更】 | 提交时间戳毫秒 |
-| rows | Array | 【修改】 | 题号矩阵通用化（原听力 `rows` 字段名不变，`number` 取代 `no`） |
-| rows[].number | Integer | 【无变更】 | 题号 |
-| rows[].questionId | Long | 【无变更】 | 题目 ID |
-| rows[].questionType | String | 【无变更】 | 题型名；阅读由 `typeIdMapping` 填充 |
-| rows[].layout | String | 【无变更】 | 布局；**阅读恒 null** |
-| rows[].answered | Boolean | 【无变更】 | 是否作答 |
-| rows[].isCorrect | Boolean | 【无变更】 | 是否正确 |
-| rows[].userAnswer | String | 【无变更】 | 用户答案 |
-| rows[].correctAnswer | String | 【无变更】 | 正确答案 |
-| items | Array | 【修改】 | 单题明细通用化（原阅读 `items` 扩展到听力） |
-| items[].answerId | Long | 【无变更】 | 答案行 ID；**听力恒 null** |
-| items[].questionId | Long | 【无变更】 | 题目 ID |
-| items[].number | Integer | 【修改】 | 题号；**原阅读字段名 `questionNumber`** |
-| items[].typeId / typeIdMapping | String | 【无变更】 | 题型；听力 `typeId` 恒 null、`typeIdMapping` 复用 `questionType` |
-| items[].userAnswer / standardAnswer | String | 【无变更】 | 用户答案 / 标准答案 |
-| items[].answered / correct | Boolean | 【无变更】 | 是否作答 / 是否答对 |
-| items[].points | BigDecimal | 【无变更】 | 得分；**听力恒 null** |
-| items[].analysis | String | 【无变更】 | 解析；**听力恒 null**（走逐题回顾端点） |
-| items[].questionSnapshot / groupSnapshot / optionSnapshot | Object/Array | 【无变更】 | 冻结快照；**听力恒 null** |
+| 字段                                                        | 类型           | 改动标记  | 说明                                                        |
+| --------------------------------------------------------- | ------------ | ----- | --------------------------------------------------------- |
+| reportId                                                  | Long         | 【无变更】 | 与 `recordId` 同值（`practice_report` 表已删）                    |
+| recordId                                                  | Long         | 【无变更】 | 练习记录 ID                                                   |
+| paperId                                                   | Long         | 【新增】  | 试卷 ID                                                     |
+| module                                                    | String       | 【新增】  | `listening` / `reading`                                   |
+| sectionMapping                                            | String       | 【新增】  | `SEC_LISTEN` / `SEC_READ`                                 |
+| section                                                   | String       | 【新增】  | 板块号                                                       |
+| status                                                    | Integer      | 【新增】  | 记录状态                                                      |
+| reportStatus                                              | String       | 【修改】  | 收敛为 `PENDING/GENERATING/READY/FAILED`；原听力可能回 `PROCESSING` |
+| retryable                                                 | Boolean      | 【新增】  | 失败是否可重试；原听力用 `FAILED_RETRYABLE`/`FAILED_FINAL` 表达         |
+| totalQuestions                                            | Integer      | 【修改】  | 题目总数；**原阅读字段名 `totalQuestionCount`**                      |
+| answeredCount                                             | Integer      | 【无变更】 | 已答题数                                                      |
+| correctCount                                              | Integer      | 【无变更】 | 答对数                                                       |
+| wrongCount                                                | Integer      | 【无变更】 | 答错数（未作答计入错误）                                              |
+| accuracyRate                                              | BigDecimal   | 【无变更】 | 正确率百分比，保留 2 位小数；原听力为 Integer                              |
+| durationSeconds                                           | Integer      | 【无变更】 | 用时秒数                                                      |
+| submittedTime                                             | Long         | 【无变更】 | 提交时间戳毫秒                                                   |
+| rows                                                      | Array        | 【修改】  | 题号矩阵通用化（原听力 `rows` 字段名不变，`number` 取代 `no`）                |
+| rows[].number                                             | Integer      | 【无变更】 | 题号                                                        |
+| rows[].questionId                                         | Long         | 【无变更】 | 题目 ID                                                     |
+| rows[].questionType                                       | String       | 【无变更】 | 题型名；阅读由 `typeIdMapping` 填充                                |
+| rows[].layout                                             | String       | 【无变更】 | 布局；**阅读恒 null**                                           |
+| rows[].answered                                           | Boolean      | 【无变更】 | 是否作答                                                      |
+| rows[].isCorrect                                          | Boolean      | 【无变更】 | 是否正确                                                      |
+| rows[].userAnswer                                         | String       | 【无变更】 | 用户答案                                                      |
+| rows[].correctAnswer                                      | String       | 【无变更】 | 正确答案                                                      |
+| items                                                     | Array        | 【修改】  | 单题明细通用化（原阅读 `items` 扩展到听力）                                |
+| items[].answerId                                          | Long         | 【无变更】 | 答案行 ID；**听力恒 null**                                       |
+| items[].questionId                                        | Long         | 【无变更】 | 题目 ID                                                     |
+| items[].number                                            | Integer      | 【修改】  | 题号；**原阅读字段名 `questionNumber`**                            |
+| items[].typeId / typeIdMapping                            | String       | 【无变更】 | 题型；听力 `typeId` 恒 null、`typeIdMapping` 复用 `questionType`   |
+| items[].userAnswer / standardAnswer                       | String       | 【无变更】 | 用户答案 / 标准答案                                               |
+| items[].answered / correct                                | Boolean      | 【无变更】 | 是否作答 / 是否答对                                               |
+| items[].points                                            | BigDecimal   | 【无变更】 | 得分；**听力恒 null**                                           |
+| items[].analysis                                          | String       | 【无变更】 | 解析；**听力恒 null**（走逐题回顾端点）                                  |
+| items[].questionSnapshot / groupSnapshot / optionSnapshot | Object/Array | 【无变更】 | 冻结快照；**听力恒 null**                                         |
 
 **服务端内部执行顺序**
 
