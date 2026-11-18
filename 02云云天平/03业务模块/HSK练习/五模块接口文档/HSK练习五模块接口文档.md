@@ -13,18 +13,18 @@
 
 五模块共用「目录三跳 → 开练 → 答题 → 交卷 → 看报告」这一条骨架，只有答题和交卷的动作不同。
 
-| 步骤 | 请求 | 拿到什么 |
-|---|---|---|
-| ① 首页 | `GET /hsk/modules` | 模块卡（免登录，无进度） |
-| ② 等级概览 | `GET /hsk/levels` | 该等级的卷列表（免登录；未登录不返回进度） |
-| ③ 备考说明 | `GET /hsk/levels/{level}/intro` | 板块结构（免登录，本来无进度） |
-| ④ 卷内板块 | `GET /hsk/papers/{paperId}/parts` | 板块 + 进度（免登录；未登录不返回进度，点进去必调） |
-| ⑤ 开新练 | `POST /{module}/records/start` | `recordId`（只开新练） |
-| ⑤b 继续练习 | `POST /{module}/records/{recordId}/resume` | 用 ④ 的 `draft.id` 恢复现场 + 计时 |
-| ⑥ 拉题 | `GET /{module}/records/{recordId}/questions` | 题目列表 |
-| ⑦ 答题 | 见各模块 | 逐题或批量存答案 |
-| ⑧ 交卷 | `POST /{module}/records/{recordId}/submit` | 判分结果 / 报告状态 |
-| ⑨ 报告 | `GET /{module}/records/{recordId}/report` | 轮询直到非 `GRADING` |
+| 步骤      | 请求                                           | 拿到什么                        |
+| ------- | -------------------------------------------- | --------------------------- |
+| ① 首页    | `GET /hsk/modules`                           | 模块卡（免登录，无进度）                |
+| ② 等级概览  | `GET /hsk/levels`                            | 该等级的卷列表（免登录；未登录不返回进度）       |
+| ③ 备考说明  | `GET /hsk/levels/{level}/intro`              | 板块结构（免登录，本来无进度）             |
+| ④ 卷内板块  | `GET /hsk/papers/{paperId}/parts`            | 板块 + 进度（免登录；未登录不返回进度，点进去必调） |
+| ⑤ 开新练   | `POST /{module}/records/start`               | `recordId`（只开新练）            |
+| ⑤b 继续练习 | `POST /{module}/records/{recordId}/resume`   | 用 ④ 的 `draft.id` 恢复现场 + 计时  |
+| ⑥ 拉题    | `GET /{module}/records/{recordId}/questions` | 题目列表                        |
+| ⑦ 答题    | 见各模块                                         | 逐题或批量存答案                    |
+| ⑧ 交卷    | `POST /{module}/records/{recordId}/submit`   | 判分结果 / 报告状态                 |
+| ⑨ 报告    | `GET /{module}/records/{recordId}/report`    | 轮询直到非 `GRADING`             |
 
 > 上表路径省略了网关前缀 `/api/practice`，查询参数也省略；完整写法见 [1.1](#11-地址与网关前缀) 与各模块章节。**交卷路名五模块统一为 `/submit`**（2026-11-17 起，翻译原先的 `/submissions` 已废除）。**目录三跳 ②③④ 免登录；⑤ 开新练与 ⑤b 继续练习是两个不同入口**，见 [1.8](#18-免登录接口) 与 [4.2](#42-开始--恢复练习)。
 
