@@ -78,19 +78,19 @@
 | `SubjectiveModule` | `writing` / `translation` / `speaking` | 【无变更】主观族模块码，直接作为 `module` 参数取值 |
 | `AnswerCardModule.SPEAKING.sectionMapping` | `SEC_SPEAKING`【修改】 | 原值 `SEC_SPEAK`（拼写错误）；校验时仍接受旧值 |
 | `AiUnlockState`【新增】 | `LOCKED(0)` / `UNLOCKED(1)` / `OWED(2)` / `NOT_REQUIRED(3)` | 主观题 AI 解析的解锁状态，对应 `ai_deduct_state` |
-| 记录状态【修改】 | `CREATED` / `IN_PROGRESS` / `ABANDONED` / `SUBMITTED` | 客观记录与主观记录共用这一套状态名，落 `practice_record.status`、`practice_subjective_record.status`。库里存数字，出参返回枚举名 |
+| 记录状态【修改】 | `CREATED(0)` / `IN_PROGRESS(1)` / `ABANDONED(2)` / `SUBMITTED(3)` | 客观记录与主观记录共用这一套码值，落 `practice_record.status`、`practice_subjective_record.status`。库里存数字，出参返回枚举名 |
 | 目录 / 板块进度【修改】 | `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED` | 只有 `papers[].status` 与 `parts[].status` 用这一套，按草稿与报告现算，库里没有对应列 |
 
-**记录状态在两处的码值**
+**记录状态码值（两族一致）**
 
-| 状态 | 客观记录 `practice_record.status` | 主观记录 `practice_subjective_record.status` |
-|---|---|---|
-| `CREATED` | `0` | 无此态（建记录即作答中） |
-| `IN_PROGRESS` | `1` | `0` |
-| `ABANDONED` | `2` | `2` |
-| `SUBMITTED` | `3` | `1` |
+| 状态 | 码值 | 客观记录 `practice_record.status` | 主观记录 `practice_subjective_record.status` |
+|---|---|---|---|
+| `CREATED` 创建中 | `0` | 记录已建、尚未作答 | 不出现（建记录即作答中） |
+| `IN_PROGRESS` 作答中 | `1` | 有作答未交卷 | 建记录即此态 |
+| `ABANDONED` 已放弃 | `2` | 超时、换卷、数据清理 | 同左 |
+| `SUBMITTED` 已提交 | `3` | 已交卷 | 已交卷 |
 
-> 两处的码值不同、状态名相同：服务端判库仍按数字比较，只在拼装响应时换成枚举名。目录与板块进度是另一套三态，只出现在 §4.4.1 的 `papers[].status` 与 §4.4.3 的 `parts[].status`。
+> 两张记录表的码值完全相同，服务端判库按数字比较，只在拼装响应时换成枚举名。目录与板块进度是另一套三态，只出现在 §4.4.1 的 `papers[].status` 与 §4.4.3 的 `parts[].status`。
 
 ## 3. 接口总览清单
 
@@ -776,26 +776,26 @@ Content-Type: application/json
 
 **返回字段说明**（统计取自 `practice_record`，`rows` 由快照组装）
 
-| 字段                       | 类型         | 说明                                    |
-| ------------------------ | ---------- | ------------------------------------- |
-| recordId                 | Long       | 练习记录 ID                               |
-| paperId                  | Long       | 试卷 ID                                 |
-| module                   | String     | `listening` / `reading`               |
-| sectionMapping           | String     | `SEC_LISTEN` / `SEC_READ`             |
-| section                  | String     | 板块号                                   |
-| status                   | String     | 状态枚举，报告场景恒 `SUBMITTED`               |
-| totalQuestions           | Integer    | 题目总数                                  |
-| answeredCount            | Integer    | 已答题数                                  |
-| correctCount             | Integer    | 答对数                                   |
-| wrongCount               | Integer    | 答错数（未作答计入错误）                          |
-| accuracyRate             | BigDecimal | 正确率百分比，保留 2 位小数                       |
-| durationSeconds          | Integer    | 用时秒数                                  |
-| submittedTime            | Long       | 提交时间戳毫秒                               |
-| rows                     | Array      | 题号矩阵，元素见下                             |
-| rows[].number            | Integer    | 题号，practice_record.question_ids数组下标+1 |
-| rows[].questionId        | Long       | 题目 ID                                 |
-| rows[].answered          | Boolean    | 是否作答                                  |
-| rows[].isCorrect         | Boolean    | 是否正确                                  |
+| 字段                | 类型         | 说明                                    |
+| ----------------- | ---------- | ------------------------------------- |
+| recordId          | Long       | 练习记录 ID                               |
+| paperId           | Long       | 试卷 ID                                 |
+| module            | String     | `listening` / `reading`               |
+| sectionMapping    | String     | `SEC_LISTEN` / `SEC_READ`             |
+| section           | String     | 板块号                                   |
+| status            | String     | 状态枚举，报告场景恒 `SUBMITTED`                |
+| totalQuestions    | Integer    | 题目总数                                  |
+| answeredCount     | Integer    | 已答题数                                  |
+| correctCount      | Integer    | 答对数                                   |
+| wrongCount        | Integer    | 答错数（未作答计入错误）                          |
+| accuracyRate      | BigDecimal | 正确率百分比，保留 2 位小数                       |
+| durationSeconds   | Integer    | 用时秒数                                  |
+| submittedTime     | Long       | 提交时间戳毫秒                               |
+| rows              | Array      | 题号矩阵，元素见下                             |
+| rows[].number     | Integer    | 题号，practice_record.question_ids数组下标+1 |
+| rows[].questionId | Long       | 题目 ID                                 |
+| rows[].answered   | Boolean    | 是否作答                                  |
+| rows[].isCorrect  | Boolean    | 是否正确                                  |
 
 
 **服务端内部执行顺序**
@@ -997,7 +997,7 @@ Content-Type: application/json
 
 **用途**：开练。同一试卷同一板块已有未提交记录时直接返回该记录；已提交后再调用则新建一次练习
 **鉴权**：需要登录
-**幂等**：按 `(userId, paperId, sectionMapping, section)` 命中 `status = IN_PROGRESS`（0）的记录即返回，不重复建记录、不重置进度与计时
+**幂等**：按 `(userId, paperId, sectionMapping, section)` 命中 `status = IN_PROGRESS`（1）的记录即返回，不重复建记录、不重置进度与计时
 
 **入参说明**
 
@@ -1033,7 +1033,7 @@ Content-Type: application/json
 | sectionMapping        | String     | 板块域，库里原值                                 |
 | section               | String     | 板块号                                      |
 | levelCode             | String     | HSK 等级码                                  |
-| status                | String     | 枚举 `IN_PROGRESS` 作答中 / `SUBMITTED` 已提交 / `ABANDONED` 已放弃；库中存 0/1/2                           |
+| status                | String     | 枚举 `CREATED` 创建中 / `IN_PROGRESS` 作答中 / `ABANDONED` 已放弃 / `SUBMITTED` 已提交；库中存 0/1/2/3                           |
 | totalQuestions        | Integer    | 本次练习总题数（开练时冻结）                           |
 | answeredCount         | Integer    | 已作答题目数                                   |
 | currentQuestionId     | Long       | 当前停留题目 ID                                |
@@ -1052,7 +1052,7 @@ Content-Type: application/json
 
 1. 校验 `sectionMapping` 与 `module` 一致，不一致回 `8108`
 2. `section` 去空白
-3. 查未提交记录 `(userId, paperId, sectionMapping, section)`，条件只有 `status = IN_PROGRESS`（0）：命中直接返回，**不再校验卷与板块配置**
+3. 查未提交记录 `(userId, paperId, sectionMapping, section)`，条件只有 `status = IN_PROGRESS`（1）：命中直接返回，**不再校验卷与板块配置**
 4. 校验试卷存在，不存在回 `8107`
 5. 按三元组 `(paperId, sectionMapping, section)` 现取题、按题号排序，**冻结 `question_ids`**；之后拉题与交卷只认这份冻结顺序
 6. 统计客观题数，算出 `totalQuestions` / `totalScore` / `objectiveCount` / `aiQuestionCount`
@@ -1089,7 +1089,7 @@ Content-Type: application/json
 | sectionMapping        | String     | 板块域，库里原值                                 |
 | section               | String     | 板块号                                      |
 | levelCode             | String     | HSK 等级码                                  |
-| status                | String     | 枚举 `IN_PROGRESS` 作答中 / `SUBMITTED` 已提交 / `ABANDONED` 已放弃；库中存 0/1/2                           |
+| status                | String     | 枚举 `CREATED` 创建中 / `IN_PROGRESS` 作答中 / `ABANDONED` 已放弃 / `SUBMITTED` 已提交；库中存 0/1/2/3                           |
 | totalQuestions        | Integer    | 本次练习总题数（开练时冻结）                           |
 | answeredCount         | Integer    | 已作答题目数                                   |
 | currentQuestionId     | Long       | 当前停留题目 ID；未开始为 null                      |
@@ -1153,7 +1153,7 @@ Content-Type: application/json
 | sectionMapping        | String     | 板块域                   |
 | section               | String     | 板块号                   |
 | levelCode             | String     | HSK 等级码               |
-| status                | String     | 枚举 `IN_PROGRESS` 作答中 / `SUBMITTED` 已提交 / `ABANDONED` 已放弃；库中存 0/1/2        |
+| status                | String     | 枚举 `CREATED` 创建中 / `IN_PROGRESS` 作答中 / `ABANDONED` 已放弃 / `SUBMITTED` 已提交；库中存 0/1/2/3        |
 | totalQuestions        | Integer    | 本次练习总题数               |
 | answeredCount         | Integer    | 已作答题目数                |
 | currentQuestionId     | Long       | 当前停留题目 ID；请求体未带则保持原值  |
@@ -1206,7 +1206,7 @@ Content-Type: application/json
 | sectionMapping        | String     | 板块域            |
 | section               | String     | 板块号            |
 | levelCode             | String     | HSK 等级码        |
-| status                | String     | 枚举 `IN_PROGRESS` 作答中 / `SUBMITTED` 已提交 / `ABANDONED` 已放弃；库中存 0/1/2 |
+| status                | String     | 枚举 `CREATED` 创建中 / `IN_PROGRESS` 作答中 / `ABANDONED` 已放弃 / `SUBMITTED` 已提交；库中存 0/1/2/3 |
 | totalQuestions        | Integer    | 本次练习总题数        |
 | answeredCount         | Integer    | 已作答题目数         |
 | currentQuestionId     | Long       | 当前停留题目 ID      |
@@ -1488,7 +1488,7 @@ Content-Type: application/json
 | recordId              | Long          | 练习记录 ID                |
 | paperId               | Long          | 试卷 ID                  |
 | module                | String        | 模块码                    |
-| status                | String        | 枚举 `IN_PROGRESS` 作答中 / `SUBMITTED` 已提交 / `ABANDONED` 已放弃；库中存 0/1/2         |
+| status                | String        | 枚举 `CREATED` 创建中 / `IN_PROGRESS` 作答中 / `ABANDONED` 已放弃 / `SUBMITTED` 已提交；库中存 0/1/2/3         |
 | totalQuestions        | Integer       | 总题数                    |
 | answeredCount         | Integer       | 已作答题目数                 |
 | objectiveCount        | Integer       | 客观题数                   |
@@ -1510,7 +1510,7 @@ Content-Type: application/json
    - 题集里有、但一行答案都没有的题 → 补一条占位行，`grading_state = 未答`，报告才能逐题列出
    - 客观题（`has_standard_answer = 1`）：已作答则当次比对判分、写 `points` 与对错、置已评；未作答则 0 分、置未答
    - 主观题且满分 > 0：已作答置**待评**并收集 `answer_id`；未作答置未答
-1. 写回记录：`status = SUBMITTED`（1）、`end_time`、结算在场时长、全量统计、`idempotency_key`
+1. 写回记录：`status = SUBMITTED`（3）、`end_time`、结算在场时长、全量统计、`idempotency_key`
 2. **本卷没有可评的 AI 题**时直接把 `ai_deduct_state` 置为 `3 无需解锁`；有 AI 题则停在 `0 未解锁`，等用户在报告页主动解锁
 3. 事务提交后再把待评作答投进评分线程池（`afterCommit`），不拖慢交卷响应
 4. 返回
@@ -1538,36 +1538,36 @@ Content-Type: application/json
 
 **返回字段说明**（`SubjectiveReportResponse`）
 
-| 字段                            | 类型         | 改动标记  | 说明                     |
-| ----------------------------- | ---------- | ----- | ---------------------- |
-| recordId                      | Long       | 【无变更】 | 练习记录 ID                |
-| paperId                       | Long       | 【无变更】 | 试卷 ID                  |
-| module                        | String     | 【新增】  | 模块码                    |
-| sectionMapping                | String     | 【无变更】 | 板块域                    |
-| section                       | String     | 【无变更】 | 板块号                    |
-| status                        | String     | 【修改】  | 枚举 `IN_PROGRESS` / `SUBMITTED` / `ABANDONED`；库中存 0/1/2         |
-| totalQuestions                | Integer    | 【无变更】 | 总题数                    |
-| answeredCount                 | Integer    | 【无变更】 | 已作答题目数                 |
-| objectiveCount                | Integer    | 【无变更】 | 客观题数                   |
-| objectiveCorrectCount         | Integer    | 【无变更】 | 客观题答对数                 |
-| aiQuestionCount               | Integer    | 【无变更】 | AI 题数                  |
-| aiScoredCount                 | Integer    | 【无变更】 | AI 已评出分的题数             |
-| finalScore                    | BigDecimal | 【无变更】 | 当前总分                   |
-| totalScore                    | BigDecimal | 【无变更】 | 本卷满分                   |
-| durationSeconds               | Integer    | 【无变更】 | 累计在场秒数                 |
-| startTime                     | Long       | 【无变更】 | 开练时刻（毫秒）               |
-| endTime                       | Long       | 【无变更】 | 交卷时刻（毫秒）               |
-| aiUnlocked                    | Boolean    | 【新增】  | 解析是否已解锁；内容不因未解锁而清空     |
-| questions                     | Array      | 【无变更】 | 逐题摘要，元素见下              |
-| questions[].order             | Integer    | 【无变更】 | 题序 = 冻结下标 + 1          |
-| questions[].questionId        | Long       | 【无变更】 | 题目 ID                  |
-| questions[].hasStandardAnswer | Integer    | 【无变更】 | 1 客观 / 0 主观            |
-| questions[].answered          | Boolean    | 【无变更】 | 是否已作答                  |
-| questions[].gradingState      | Integer    | 【无变更】 | 0 待评 / 1 已评 / 2 未答或失败  |
-| questions[].points            | BigDecimal | 【无变更】 | 得分；待评时为 null           |
-| questions[].maxScore          | BigDecimal | 【无变更】 | 单题满分                   |
-| questions[].isFullScore       | Integer    | 【无变更】 | 1 满分 / 0 非满分；待评时为 null |
-| questions[].correct           | Boolean    | 【无变更】 | 客观题对错；主观题恒 null        |
+| 字段                            | 类型         | 改动标记  | 说明                                                     |
+| ----------------------------- | ---------- | ----- | ------------------------------------------------------ |
+| recordId                      | Long       | 【无变更】 | 练习记录 ID                                                |
+| paperId                       | Long       | 【无变更】 | 试卷 ID                                                  |
+| module                        | String     | 【新增】  | 模块码                                                    |
+| sectionMapping                | String     | 【无变更】 | 板块域                                                    |
+| section                       | String     | 【无变更】 | 板块号                                                    |
+| status                        | String     | 【修改】  | 枚举 `CREATED` / `IN_PROGRESS` / `ABANDONED` / `SUBMITTED`；库中存 0/1/2/3 |
+| totalQuestions                | Integer    | 【无变更】 | 总题数                                                    |
+| answeredCount                 | Integer    | 【无变更】 | 已作答题目数                                                 |
+| objectiveCount                | Integer    | 【无变更】 | 客观题数                                                   |
+| objectiveCorrectCount         | Integer    | 【无变更】 | 客观题答对数                                                 |
+| aiQuestionCount               | Integer    | 【无变更】 | AI 题数                                                  |
+| aiScoredCount                 | Integer    | 【无变更】 | AI 已评出分的题数                                             |
+| finalScore                    | BigDecimal | 【无变更】 | 当前总分                                                   |
+| totalScore                    | BigDecimal | 【无变更】 | 本卷满分                                                   |
+| durationSeconds               | Integer    | 【无变更】 | 累计在场秒数                                                 |
+| startTime                     | Long       | 【无变更】 | 开练时刻（毫秒）                                               |
+| endTime                       | Long       | 【无变更】 | 交卷时刻（毫秒）                                               |
+| aiUnlocked                    | Boolean    | 【新增】  | 解析是否已解锁；内容不因未解锁而清空                                     |
+| questions                     | Array      | 【无变更】 | 逐题摘要，元素见下                                              |
+| questions[].order             | Integer    | 【无变更】 | 题序 = 冻结下标 + 1                                          |
+| questions[].questionId        | Long       | 【无变更】 | 题目 ID                                                  |
+| questions[].hasStandardAnswer | Integer    | 【无变更】 | 1 客观 / 0 主观                                            |
+| questions[].answered          | Boolean    | 【无变更】 | 是否已作答                                                  |
+| questions[].gradingState      | Integer    | 【无变更】 | 0 待评 / 1 已评 / 2 未答或失败                                  |
+| questions[].points            | BigDecimal | 【无变更】 | 得分；待评时为 null                                           |
+| questions[].maxScore          | BigDecimal | 【无变更】 | 单题满分                                                   |
+| questions[].isFullScore       | Integer    | 【无变更】 | 1 满分 / 0 非满分；待评时为 null                                 |
+| questions[].correct           | Boolean    | 【无变更】 | 客观题对错；主观题恒 null                                        |
 
 
 **服务端内部执行顺序**
@@ -1657,7 +1657,7 @@ Content-Type: application/json
 | sectionMapping        | String     | 板块域                               |
 | section               | String     | 板块号                               |
 | levelCode             | String     | HSK 等级码                           |
-| status                | String     | 枚举 `IN_PROGRESS` 作答中 / `SUBMITTED` 已提交 / `ABANDONED` 已放弃；库中存 0/1/2                    |
+| status                | String     | 枚举 `CREATED` 创建中 / `IN_PROGRESS` 作答中 / `ABANDONED` 已放弃 / `SUBMITTED` 已提交；库中存 0/1/2/3                    |
 | totalQuestions        | Integer    | 本次练习总题数                           |
 | answeredCount         | Integer    | 已作答题目数                            |
 | currentQuestionId     | Long       | 当前停留题目 ID                         |
@@ -2091,29 +2091,6 @@ Content-Type: application/json
 | section | query | String | 必传 | 板块号，五个模块统一为数字：`1` / `2` / `3`… |
 | version | query | String | 否 | 传了就校验卷归属，不符回 `8136` |
 
-**返回完整示例（听力）**
-
-```json
-{
-  "code": 200,
-  "message": "操作成功",
-  "data": {
-    "module": "listening",
-    "data": {
-      "recordId": 900812,
-      "reportId": 900812,
-      "reportStatus": "READY",
-      "totalQuestions": 20,
-      "answeredCount": 20,
-      "correctCount": 17,
-      "wrongCount": 3,
-      "accuracyRate": 85,
-      "durationSeconds": 1265
-    }
-  }
-}
-```
-
 **返回字段说明（外层）**
 
 | 字段 | 类型 | 说明 |
@@ -2123,88 +2100,62 @@ Content-Type: application/json
 
 `data` 的形状按 `module` 分四种，字段各自列全：
 
-**`data`（listening：报告摘要）**
+**`data`（listening、reading：报告摘要  §4.2.9 报告同结构）**
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| recordId | Long | 练习记录 ID |
-| reportId | Long | 报告 ID，与 `recordId` 同值 |
-| reportStatus | String | `PENDING` / `GENERATING` / `READY` / `FAILED` |
-| totalQuestions | Integer | 总题数 |
-| answeredCount | Integer | 已答题数 |
-| correctCount | Integer | 答对数 |
-| wrongCount | Integer | 答错数（未作答计入错误） |
-| accuracyRate | Integer | 正确率百分比，听力此字段为整数 |
-| durationSeconds | Integer | 用时秒数 |
+| 字段                | 类型         | 说明                                    |
+| ----------------- | ---------- | ------------------------------------- |
+| recordId          | Long       | 练习记录 ID                               |
+| paperId           | Long       | 试卷 ID                                 |
+| module            | String     | `listening` / `reading`               |
+| sectionMapping    | String     | `SEC_LISTEN` / `SEC_READ`             |
+| section           | String     | 板块号                                   |
+| status            | String     | 状态枚举，报告场景恒 `SUBMITTED`                |
+| totalQuestions    | Integer    | 题目总数                                  |
+| answeredCount     | Integer    | 已答题数                                  |
+| correctCount      | Integer    | 答对数                                   |
+| wrongCount        | Integer    | 答错数（未作答计入错误）                          |
+| accuracyRate      | BigDecimal | 正确率百分比，保留 2 位小数                       |
+| durationSeconds   | Integer    | 用时秒数                                  |
+| submittedTime     | Long       | 提交时间戳毫秒                               |
+| rows              | Array      | 题号矩阵，元素见下                             |
+| rows[].number     | Integer    | 题号，practice_record.question_ids数组下标+1 |
+| rows[].questionId | Long       | 题目 ID                                 |
+| rows[].answered   | Boolean    | 是否作答                                  |
+| rows[].isCorrect  | Boolean    | 是否正确                                  |
 
-**`data`（reading：报告 + 单题明细）**
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| reportId | Long | 报告 ID，与 `recordId` 同值 |
-| recordId | Long | 练习记录 ID |
-| paperId | Long | 试卷 ID |
-| sectionMapping | String | 恒 `SEC_READ` |
-| section | String | 板块号 |
-| status | String | 状态枚举，报告场景恒 `SUBMITTED` |
-| reportStatus | String | `PENDING` / `GENERATING` / `READY` / `FAILED` |
-| totalQuestionCount | Integer | 总题数 |
-| answeredCount | Integer | 已答题数 |
-| correctCount | Integer | 答对数 |
-| wrongCount | Integer | 答错数（未作答计入错误） |
-| accuracyRate | BigDecimal | 正确率百分比，保留 2 位小数 |
-| durationSeconds | Integer | 用时秒数 |
-| submittedTime | Long | 提交时间戳（毫秒） |
-| items | Array | 单题明细，元素见下 |
-| items[].answerId | Long | 答案行 ID |
-| items[].questionId | Long | 题目 ID |
-| items[].questionNumber | Integer | 题号 |
-| items[].typeId | String | 原始题型 ID |
-| items[].typeIdMapping | String | 题型映射编码 |
-| items[].userAnswer | String | 用户答案 |
-| items[].standardAnswer | String | 标准答案 |
-| items[].answered | Boolean | 是否已作答 |
-| items[].correct | Boolean | 是否答对 |
-| items[].points | BigDecimal | 本题得分 |
-| items[].analysis | String | 交卷时冻结的解析 |
-| items[].questionSnapshot | Object | 题目冻结快照 |
-| items[].groupSnapshot | Object | 题组冻结快照 |
-| items[].optionSnapshot | Array | 选项冻结快照 |
-
-> 阅读的最近报告仍按阅读原有模型带 `items`，与 §4.2.9 收敛后的「摘要 + `rows`」不同；两处口径是否统一见 §10 第 8 条。前端取阅读的最近报告时只读摘要字段即可，`items` 不要当作跨模块通用字段。
 
 **`data`（writing / translation / speaking：与 §4.3.10 报告同结构）**
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| recordId | Long | 练习记录 ID |
-| paperId | Long | 试卷 ID |
-| module | String | `writing` / `translation` / `speaking` |
-| sectionMapping | String | `SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAKING` |
-| section | String | 板块号 |
-| status | String | 枚举 `IN_PROGRESS` / `SUBMITTED` / `ABANDONED`；库中存 0/1/2 |
-| totalQuestions | Integer | 总题数 |
-| answeredCount | Integer | 已作答题目数 |
-| objectiveCount | Integer | 客观题数 |
-| objectiveCorrectCount | Integer | 客观题答对数 |
-| aiQuestionCount | Integer | 需 AI 评分的题数 |
-| aiScoredCount | Integer | AI 已评出分的题数 |
-| finalScore | BigDecimal | 当前总分 |
-| totalScore | BigDecimal | 本卷满分 |
-| durationSeconds | Integer | 累计在场秒数 |
-| startTime | Long | 开练时刻（毫秒） |
-| endTime | Long | 交卷时刻（毫秒）；未交卷为 `null` |
-| aiUnlocked | Boolean | 解析是否已解锁 |
-| questions | Array | 逐题摘要，元素见下 |
-| questions[].order | Integer | 题序 = 冻结下标 + 1 |
-| questions[].questionId | Long | 题目 ID |
-| questions[].hasStandardAnswer | Integer | 1 客观 / 0 主观 |
-| questions[].answered | Boolean | 是否已作答 |
-| questions[].gradingState | Integer | 0 待评 / 1 已评 / 2 未答或失败 |
-| questions[].points | BigDecimal | 得分；待评时为 `null` |
-| questions[].maxScore | BigDecimal | 单题满分 |
-| questions[].isFullScore | Integer | 1 满分 / 0 非满分 |
-| questions[].correct | Boolean | 客观题对错；主观题恒 `null` |
+| 字段                            | 类型         | 说明                                                                   |
+| ----------------------------- | ---------- | -------------------------------------------------------------------- |
+| recordId                      | Long       | 练习记录 ID                                                              |
+| paperId                       | Long       | 试卷 ID                                                                |
+| module                        | String     | `writing` / `translation` / `speaking`                               |
+| sectionMapping                | String     | `SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAKING`                     |
+| section                       | String     | 板块号                                                                  |
+| status                        | String     | 枚举 `CREATED` / `IN_PROGRESS` / `ABANDONED` / `SUBMITTED`；库中存 0/1/2/3 |
+| totalQuestions                | Integer    | 总题数                                                                  |
+| answeredCount                 | Integer    | 已作答题目数                                                               |
+| objectiveCount                | Integer    | 客观题数                                                                 |
+| objectiveCorrectCount         | Integer    | 客观题答对数                                                               |
+| aiQuestionCount               | Integer    | 需 AI 评分的题数                                                           |
+| aiScoredCount                 | Integer    | AI 已评出分的题数                                                           |
+| finalScore                    | BigDecimal | 当前总分                                                                 |
+| totalScore                    | BigDecimal | 本卷满分                                                                 |
+| durationSeconds               | Integer    | 累计在场秒数                                                               |
+| startTime                     | Long       | 开练时刻（毫秒）                                                             |
+| endTime                       | Long       | 交卷时刻（毫秒）；未交卷为 `null`                                                 |
+| aiUnlocked                    | Boolean    | 解析是否已解锁                                                              |
+| questions                     | Array      | 逐题摘要，元素见下                                                            |
+| questions[].order             | Integer    | 题序 = 冻结下标 + 1                                                        |
+| questions[].questionId        | Long       | 题目 ID                                                                |
+| questions[].hasStandardAnswer | Integer    | 1 客观 / 0 主观                                                          |
+| questions[].answered          | Boolean    | 是否已作答                                                                |
+| questions[].gradingState      | Integer    | 0 待评 / 1 已评 / 2 未答或失败                                                |
+| questions[].points            | BigDecimal | 得分；待评时为 `null`                                                       |
+| questions[].maxScore          | BigDecimal | 单题满分                                                                 |
+| questions[].isFullScore       | Integer    | 1 满分 / 0 非满分                                                         |
+| questions[].correct           | Boolean    | 客观题对错；主观题恒 `null`                                                    |
 
 **服务端内部执行顺序**
 
