@@ -1248,32 +1248,32 @@ Content-Type: application/json
 
 **返回字段说明**（`SubjectiveQuestionResponse`，数组，按题序）
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| questionId | Long | 题目 ID |
-| order | Integer | 题序 = `question_ids` 下标 + 1，**前端翻页/定位以此为准** |
-| no | Integer | 卷面题号（`question.number`），可能跳号，只用于展示 |
-| layout | String | 题面形态，`question.layout` 原值：`input` / `record` / `shortInput` 等 |
-| typeName | String | 题型名 |
-| sectionTitle | String | 板块标题 |
-| content | String | 题干 |
-| passage | String | 题级材料 |
-| audioUrl | String | 题目音频地址 |
-| shareAudioUrl | String | 共享材料音频地址 |
-| optionContent | Object | 选项，扁平结构 `{"A":"文本","B":"文本"}` |
-| groupContent | String | 题组题干 |
-| groupPassage | String | 题组共用材料 |
-| groupOptionContent | Object | 题组共用选项，结构同上 |
-| hasStandardAnswer | Integer | `1` 客观题（交卷即判）、`0` 主观题（交 AI） |
-| answered | Boolean | 是否已保存正式作答（草稿不算） |
-| answerText | String | 已保存的文本作答：写作正文 / 笔译译文 / 口语转写 |
-| answer | String | 已保存的音频 URL：口语 / 口译 |
-| durationMs | Long | 录音时长（毫秒） |
-| answerDraft | Object | 草稿块；从未存过为 `null`，子字段见下 |
-| answerDraft.text | String | 草稿正文；空串表示用户清空后存过 |
-| answerDraft.graphemeCount | Integer | 不含空白字符的字素数 |
-| answerDraft.version | Long | 草稿版本，保存时回传做乐观锁 |
-| answerDraft.savedTime | Long | 最后保存时刻（毫秒） |
+| 字段                        | 类型      | 说明                                                            |
+| ------------------------- | ------- | ------------------------------------------------------------- |
+| questionId                | Long    | 题目 ID                                                         |
+| order                     | Integer | 题序 = `question_ids` 下标 + 1，**前端翻页/定位以此为准**                    |
+| no                        | Integer | 卷面题号（`question.number`），可能跳号，只用于展示                            |
+| layout                    | String  | 题面形态，`question.layout` 原值：`input` / `record` / `shortInput` 等 |
+| typeName                  | String  | 题型名                                                           |
+| sectionTitle              | String  | 板块标题                                                          |
+| content                   | String  | 题干                                                            |
+| passage                   | String  | 题级材料                                                          |
+| audioUrl                  | String  | 题目音频地址                                                        |
+| shareAudioUrl             | String  | 共享材料音频地址                                                      |
+| optionContent             | Object  | 选项，扁平结构 `{"A":"文本","B":"文本"}`                                 |
+| groupContent              | String  | 题组题干                                                          |
+| groupPassage              | String  | 题组共用材料                                                        |
+| groupOptionContent        | Object  | 题组共用选项，结构同上                                                   |
+| hasStandardAnswer         | Integer | `1` 客观题（交卷即判）、`0` 主观题（交 AI）                                   |
+| answered                  | Boolean | 是否已保存正式作答（草稿不算）                                               |
+| answerText                | String  | 已保存的文本作答：写作正文 / 笔译译文 / 口语转写                                   |
+| answer                    | String  | 已保存的音频 URL：口语 / 口译                                            |
+| durationMs                | Long    | 录音时长（毫秒）                                                      |
+| answerDraft               | Object  | 草稿块；从未存过为 `null`，子字段见下                                        |
+| answerDraft.text          | String  | 草稿正文；空串表示用户清空后存过                                              |
+| answerDraft.graphemeCount | Integer | 不含空白字符的字素数                                                    |
+| answerDraft.version       | Long    | 草稿版本，保存时回传做乐观锁                                                |
+| answerDraft.savedTime     | Long    | 最后保存时刻（毫秒）                                                    |
 
 **服务端内部执行顺序**
 
