@@ -1689,20 +1689,20 @@ Content-Type: application/json
 
 **返回字段说明**
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| recordId | Long | 练习记录 ID |
-| alreadyUnlocked | Boolean | 已解锁或卷内无可评分 AI 题时为 `true`，此时只看文案、不再引导支付 |
-| price | Integer | 本次消耗数量，来自权益中心的场景单价；已解锁时为 null |
-| vip | Boolean | 会员赠送的 AI 次数大于 0 即为 `true` |
-| freeCount | Integer | 剩余免费解锁次数 |
-| aiQuotaTotal | Integer | AI 解析次数总余额（会员 + 永久） |
-| examPointTotal | Integer | 考试点数总余额（会员 + 永久） |
-| recommendedMethod | String | `free` / `ai_quota` / `exam_point` / `none` |
-| content | String | 弹窗正文，已按语言填好数量 |
-| buttonLabel | String | 确认按钮文案 |
-| bottomLabel | String | 底部余额栏名称；已解锁时为 null |
-| bottomValue | Integer | 底部余额栏数值；已解锁时为 null |
+| 字段                | 类型      | 说明                                          |
+| ----------------- | ------- | ------------------------------------------- |
+| recordId          | Long    | 练习记录 ID                                     |
+| alreadyUnlocked   | Boolean | 已解锁或卷内无可评分 AI 题时为 `true`，此时只看文案、不再引导支付      |
+| price             | Integer | 本次消耗数量，来自权益中心的场景单价；已解锁时为 null               |
+| vip               | Boolean | 会员赠送的 AI 次数大于 0 即为 `true`                   |
+| freeCount         | Integer | 剩余免费解锁次数                                    |
+| aiQuotaTotal      | Integer | AI 解析次数总余额（会员 + 永久）                         |
+| examPointTotal    | Integer | 考试点数总余额（会员 + 永久）                            |
+| recommendedMethod | String  | `free` / `ai_quota` / `exam_point` / `none` |
+| content           | String  | 弹窗正文，已按语言填好数量                               |
+| buttonLabel       | String  | 确认按钮文案                                      |
+| bottomLabel       | String  | 底部余额栏名称；已解锁时为 null                          |
+| bottomValue       | Integer | 底部余额栏数值；已解锁时为 null                          |
 
 **返回完整示例**
 
@@ -1789,15 +1789,15 @@ Content-Type: application/json
 
 ## 5. 错误码更新
 
-| 错误码 | 服务 | 场景 |
-|---|---|---|
-| 8133 | practice-service | 【修改】合并路径后承担更多职责：`module` 缺失、取值不在白名单（客观族只认 listening / reading，主观族只认 writing / translation / speaking） |
-| 8141 / 8142 | practice-service | 【无变更】听力续练时卷内容 / 板块配置已下架 |
-| 8166 / 8167 / 8168 | practice-service | 【无变更】阅读试卷 / 板块不可练习、板块无题 |
-| 8104 | practice-service | 【无变更】`baseVersion` 不一致；本次对阅读也要求传 `baseVersion`（但不校验） |
-| 8105 | practice-service | 【修改】解锁预检与执行解锁要求记录已交卷，未交卷同样回该码 |
-| 8118 | practice-service | 【新增】解锁时免费次数、AI 解析次数、考试点数三级都不足 |
-| 8119 | practice-service | 【新增】解锁状态写回冲突：扣减已完成但状态位被行锁之外的写操作改过 |
+| 错误码                | 服务               | 场景                                                                                                    |
+| ------------------ | ---------------- | ----------------------------------------------------------------------------------------------------- |
+| 8133               | practice-service | 【修改】合并路径后承担更多职责：`module` 缺失、取值不在白名单（客观族只认 listening / reading，主观族只认 writing / translation / speaking） |
+| 8141 / 8142        | practice-service | 【无变更】听力续练时卷内容 / 板块配置已下架                                                                               |
+| 8166 / 8167 / 8168 | practice-service | 【无变更】阅读试卷 / 板块不可练习、板块无题                                                                               |
+| 8104               | practice-service | 【无变更】`baseVersion` 不一致；本次对阅读也要求传 `baseVersion`（但不校验）                                                  |
+| 8105               | practice-service | 【修改】解锁预检与执行解锁要求记录已交卷，未交卷同样回该码                                                                         |
+| 8118               | practice-service | 【新增】解锁时免费次数、AI 解析次数、考试点数三级都不足                                                                         |
+| 8119               | practice-service | 【新增】解锁状态写回冲突：扣减已完成但状态位被行锁之外的写操作改过                                                                     |
 
 ## 6. 前端对接注意事项
 
