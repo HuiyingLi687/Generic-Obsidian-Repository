@@ -525,7 +525,7 @@ Content-Type: application/json
 **服务端内部执行顺序**
 
 1. 解析模块，校验归属与 `status=1`
-2. 听力：按 `question_ids` 顺序回 `question` 表取题，按 `question_id` 取 `question_shared_audio` 得 `shareAudioUrl` 
+2. 听力：按 `question_ids` 顺序回 `question` 表取题，拿 `paper_id` 和`group_id`回 `question_shared_audio` 表取 `audio_url`得 `shareAudioUrl` 字段值
 3. 阅读：按 `question_ids` 顺序回 `question` 表取题
 4. 回填答案与 `answered`
 5. 统一转成客观族题目结构
@@ -543,19 +543,19 @@ Content-Type: application/json
 
 **入参说明**
 
-| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
-|---|---|---|---|---|
-| recordId | path | Long | 是 | 练习记录 ID |
-| questionId | path | Long | 是 | 题目 ID |
-| module | query | String | 必传 | 【新增】模块码 |
-| answer | body | String | 是 | 【修改】选项编码 A/B/C/D/E/F（判断题用 A/B）；原听力字段名 `selectedOptionId` |
-| baseVersion | body | Integer | 是 | 【新增】记录 `version`；不一致回 `8104`（听力强校验，阅读不校验） |
-| clientSequence | body | Integer | 否 | 【无变更】乱序检测用 |
+| 参数名         | 位置    | 类型      | 必填  | 约束&说明                                      |
+| ----------- | ----- | ------- | --- | ------------------------------------------ |
+| recordId    | path  | Long    | 是   | 练习记录 ID                                    |
+| questionId  | path  | Long    | 是   | 题目 ID                                      |
+| module      | query | String  | 必传  | 【新增】模块码                                    |
+| answer      | body  | String  | 是   | 【修改】选项编码 A/B/C/D/E/F（判断题用 A/B）；传 null 表示清空 |
+| baseVersion | body  | Integer | 是   | 【新增】记录 `version`；不一致回 `8104`（强校验）          |
+
 
 **请求示例**
 
 ```json
-{ "answer": "C", "baseVersion": 7, "clientSequence": 128 }
+{ "answer": "C", "baseVersion": 7, }
 ```
 
 **返回完整示例**
@@ -568,7 +568,6 @@ Content-Type: application/json
     "questionId": 55120,
     "answer": "C",
     "answered": true,
-    "conflict": false,
     "currentVersion": 8
   }
 }
@@ -576,20 +575,18 @@ Content-Type: application/json
 
 **返回字段说明**
 
-| 字段 | 类型 | 改动标记 | 说明 |
-|---|---|---|---|
-| questionId | Long | 【无变更】 | 题目 ID |
-| answer | String | 【无变更】 | 保存后的答案 |
-| answered | Boolean | 【无变更】 | 是否已作答 |
-| conflict | Boolean | 【无变更】 | 冲突标记；阅读恒 false |
+| 字段             | 类型      | 改动标记  | 说明              |
+| -------------- | ------- | ----- | --------------- |
+| questionId     | Long    | 【无变更】 | 题目 ID           |
+| answer         | String  | 【无变更】 | 保存后的答案          |
+| answered       | Boolean | 【无变更】 | 是否已作答           |
 | currentVersion | Integer | 【无变更】 | 记录最新版本；阅读恒 null |
 
 **服务端内部执行顺序**
 
 1. 解析模块，锁记录并校验归属与 `status=1`（`8102` / `8103`）
-2. 听力：读答案行并写 `answer = 请求answer`、`answered = 1`，重算 `answeredCount`，`lastSavedTime = now`
-3. 阅读：写答案；`answer` 传 null 表示清空
-4. 返回答案项
+2. 写答案行 `answer = 请求answer`、`answered = 1`，重算 `answeredCount`，`lastSavedTime = now`
+3. 返回答案项
 
 **本接口抛出错误码**：8102 / 8103 / 8104 / 8107 / 8133 / 8173
 
