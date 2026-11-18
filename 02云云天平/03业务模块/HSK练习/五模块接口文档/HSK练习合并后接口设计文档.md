@@ -221,15 +221,11 @@ Content-Type: application/json
 1. 按 `module` 解析模块，缺失或取值不合法即 `8133`
 2. `SELECT ... FOR UPDATE` 查未提交记录，`(userId, paperId, sectionMapping, section)` 定位，仅 `status IN (0,1)`
 3. 有未提交记录 → 直接返回该记录（不校验）；已提交的记录不在查询范围内，继续往下新建一次练习
-4. 校验试卷可用性 —— **两模块口径不同，本次未统一**：
-   - 听力：卷存在且未删除（`8107`）
-   - 阅读：`exam_paper.enabled_prac = 1` 且 `SharedPaperEligibility` 通过（`8166`）
-5. 校验板块开关 `practice_module_part_config`（听力 `8138` 语义 → `8107`；阅读 → `8167`）
-6. 取题、按题号排序、**冻结 `question_ids`**
-7. 插记录 + 逐题插 `practice_answer` 占位行：
-   - 听力：占位行带题目快照 + 共享音频解析结果
-   - 阅读：占位行带题目 / 题组 / 选项 / 标准答案 / 解析全量快照（后续作答直接读快照）
-8. 返回记录
+4. 校验试卷可用性 `exam_paper.enabled_prac = 1` 
+5. 取题、按题号排序、**冻结 `question_ids`**
+6. 插记录 + 逐题插 `practice_answer` 占位行：
+   - 占位行带题目 / 题组 / 选项 / 标准答案 / 解析全量快照
+7. 返回记录
 
 > 约束：同一 `(userId, paperId, sectionMapping, section)` 至多一条 `status IN (0,1)` 的记录。
 
