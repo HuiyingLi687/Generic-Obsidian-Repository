@@ -828,39 +828,35 @@ Content-Type: application/json
 
 **返回字段说明**
 
-| 字段                     | 类型         | 改动标记  | 说明                                  |
-| ---------------------- | ---------- | ----- | ----------------------------------- |
-| answerId               | Long       | 【新增】  | 答案行 ID；听力恒 null                     |
-| questionId             | Long       | 【修改】  | 题目 ID                               |
-| number                 | Integer    | 【修改】  | 题号；                                 |
-| layout                 | String     | 【无变更】 | 布局编码；                               |
-| typeId                 | String     | 【新增】  | 原始题型 ID；                            |
-| typeIdMapping          | String     | 【新增】  | 题型映射编码；                             |
-| content                | String     | 【新增】  | 题干；听力等于 `passage`                   |
-| passage                | String     | 【无变更】 | 文章 / 材料正文                           |
-| variant                | String     | 【修改】  | 细节题变体 short/long/interview；阅读恒 null |
-| optionContent          | Object     | 【修改】  | 扁平 `{"A":"文本"}`                     |
-| audioUrl               | String     | 【修改】  | 题目音频地址；**原听力字段名 `audio_url`**       |
-| shareAudioUrl          | String     | 【修改】  | 共享材料音频地址；阅读恒 null                   |
-| groupId                | Long       | 【新增】  | 题组 ID；听力恒 null                      |
-| group                  | Object     | 【新增】  | 题组共享内容；听力恒 null                     |
-| group.groupId          | Long       | 【新增】  | 题组 ID                               |
-| group.title1Number     | Integer    | 【新增】  | 一级标题序号                              |
-| group.title1Text       | String     | 【新增】  | 一级标题文本                              |
-| group.section          | String     | 【新增】  | 题组所属板块号                             |
-| group.startNumber      | Integer    | 【新增】  | 题组起始题号                              |
-| group.endNumber        | Integer    | 【新增】  | 题组结束题号                              |
-| group.passage          | String     | 【新增】  | 题组共用文章 / 材料                         |
-| group.audioUrl         | String     | 【新增】  | 题组音频地址                              |
-| group.optionContent    | Object     | 【新增】  | 题组共用选项，扁平结构                         |
-| optionPoolCode         | String     | 【新增】  | 共享选项池编码；听力恒 null                    |
-| exclusiveSharedOptions | Boolean    | 【新增】  | 固定 false；听力恒 null                   |
-| answered               | Boolean    | 【无变更】 | 是否已作答                               |
-| userAnswer             | String     | 【无变更】 | 用户答案；未作答为 null                      |
-| isCorrect              | Boolean    | 【无变更】 | 是否正确（未作答 false）                     |
-| standardAnswer         | String     | 【无变更】 | 正确答案；**原阅读同名字段不变**                  |
-| points                 | BigDecimal | 【新增】  | 本题得分；听力恒 null                       |
-| analysis               | String     | 【无变更】 | 解析；无解析时阅读回「未录入解析内容」，听力回 null        |
+| 字段                  | 类型         | 改动标记  | 说明                                  |
+| ------------------- | ---------- | ----- | ----------------------------------- |
+| questionId          | Long       | 【修改】  | 题目 ID                               |
+| number              | Integer    | 【修改】  | 题号；                                 |
+| layout              | String     | 【无变更】 | 布局编码；                               |
+| typeId              | String     | 【新增】  | 原始题型 ID；                            |
+| typeIdMapping       | String     | 【新增】  | 题型映射编码；                             |
+| content             | String     | 【新增】  | 题干；听力等于 `passage`                   |
+| passage             | String     | 【无变更】 | 文章 / 材料正文                           |
+| optionContent       | Object     | 【修改】  | 扁平 `{"A":"文本"}`                     |
+| audioUrl            | String     | 【修改】  | 题目音频地址；                             |
+| shareAudioUrl       | String     | 【修改】  | 共享材料音频地址；阅读恒 null                   |
+| groupId             | Long       | 【新增】  | 题组 ID；听力恒 null                      |
+| group               | Object     | 【新增】  | 题组共享内容；听力恒 null                     |
+| group.groupId       | Long       | 【新增】  | 题组 ID                               |
+| group.title1Number  | Integer    | 【新增】  | 一级标题序号                              |
+| group.title1Text    | String     | 【新增】  | 一级标题文本                              |
+| group.section       | String     | 【新增】  | 题组所属板块号                             |
+| group.startNumber   | Integer    | 【新增】  | 题组起始题号                              |
+| group.endNumber     | Integer    | 【新增】  | 题组结束题号                              |
+| group.passage       | String     | 【新增】  | 题组共用文章 / 材料                         |
+| group.audioUrl      | String     | 【新增】  | 题组音频地址                              |
+| group.optionContent | Object     | 【新增】  | 题组共用选项，扁平结构                         |
+| answered            | Boolean    | 【无变更】 | 是否已作答                               |
+| userAnswer          | String     | 【无变更】 | 用户答案；未作答为 null                      |
+| isCorrect           | Boolean    | 【无变更】 | 是否正确（未作答 false）                     |
+| standardAnswer      | String     | 【无变更】 | 正确答案；                               |
+| points              | BigDecimal | 【新增】  | 本题得分；听力恒 null                       |
+| analysis            | String     | 【无变更】 | 解析；无解析时阅读回「未录入解析内容」，听力回 null        |
 
 **本接口抛出错误码**：8102 / 8105 / 8133 / 8177 / 8181
 
@@ -872,50 +868,43 @@ Content-Type: application/json
 **鉴权**：需要登录
 **前置条件**：`reportStatus = FAILED` 且 `retryable = true`，否则 `8106`
 
-**返回字段说明**（重试后重新读一次报告视图，结构与交卷响应一致）
+**返回字段说明**
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| reportId | Long | 与 `recordId` 同值 |
-| recordId | Long | 练习记录 ID |
-| paperId | Long | 试卷 ID |
-| module | String | `listening` / `reading` |
-| sectionMapping | String | `SEC_LISTEN` / `SEC_READ` |
-| section | String | 板块号 |
-| status | Integer | 记录状态 |
-| reportStatus | String | 重试成功后回到 `GENERATING` 或 `READY` |
-| retryable | Boolean | 失败是否可重试 |
-| totalQuestions | Integer | 题目总数 |
-| answeredCount | Integer | 已答题数 |
-| correctCount | Integer | 答对数 |
-| wrongCount | Integer | 答错数（未作答计入错误） |
-| accuracyRate | BigDecimal | 正确率百分比，保留 2 位小数 |
-| durationSeconds | Integer | 用时秒数 |
-| submittedTime | Long | 提交时间戳毫秒 |
-| rows | Array | 题号矩阵，元素见下 |
-| rows[].number | Integer | 题号 |
-| rows[].questionId | Long | 题目 ID |
-| rows[].questionType | String | 题型名 |
-| rows[].layout | String | 布局；**阅读恒 null** |
-| rows[].answered | Boolean | 是否作答 |
-| rows[].isCorrect | Boolean | 是否正确 |
-| rows[].userAnswer | String | 用户答案 |
-| rows[].correctAnswer | String | 正确答案 |
-| items | Array | 单题明细，元素见下 |
-| items[].answerId | Long | 答案行 ID；**听力恒 null** |
-| items[].questionId | Long | 题目 ID |
-| items[].number | Integer | 题号 |
-| items[].typeId | String | 原始题型 ID；**听力恒 null** |
-| items[].typeIdMapping | String | 题型映射编码；听力复用 `questionType` |
-| items[].userAnswer | String | 用户答案 |
-| items[].standardAnswer | String | 标准答案 |
-| items[].answered | Boolean | 是否作答 |
-| items[].correct | Boolean | 是否答对 |
-| items[].points | BigDecimal | 得分；**听力恒 null** |
-| items[].analysis | String | 解析；**听力恒 null** |
-| items[].questionSnapshot | Object | 题目冻结快照；**听力恒 null** |
-| items[].groupSnapshot | Object | 题组冻结快照；**听力恒 null** |
-| items[].optionSnapshot | Array | 选项冻结快照；**听力恒 null** |
+| 字段                       | 类型         | 说明                                    |
+| ------------------------ | ---------- | ------------------------------------- |
+| recordId                 | Long       | 练习记录 ID                               |
+| paperId                  | Long       | 试卷 ID                                 |
+| module                   | String     | `listening` / `reading`               |
+| sectionMapping           | String     | `SEC_LISTEN` / `SEC_READ`             |
+| section                  | String     | 板块号                                   |
+| status                   | Integer    | 记录状态；正常为 3 已提交                        |
+| totalQuestions           | Integer    | 题目总数                                  |
+| answeredCount            | Integer    | 已答题数                                  |
+| correctCount             | Integer    | 答对数                                   |
+| wrongCount               | Integer    | 答错数（未作答计入错误）                          |
+| accuracyRate             | BigDecimal | 正确率百分比，保留 2 位小数                       |
+| durationSeconds          | Integer    | 用时秒数                                  |
+| submittedTime            | Long       | 提交时间戳毫秒                               |
+| rows                     | Array      | 题号矩阵，元素见下                             |
+| rows[].number            | Integer    | 题号，practice_record.question_ids数组下标+1 |
+| rows[].questionId        | Long       | 题目 ID                                 |
+| rows[].answered          | Boolean    | 是否作答                                  |
+| rows[].isCorrect         | Boolean    | 是否正确                                  |
+| items                    | Array      | 单题明细，元素见下                             |
+| items[].questionId       | Long       | 题目 ID                                 |
+| items[].number           | Integer    | 题号                                    |
+| items[].typeId           | String     | 原始题型 ID；                              |
+| items[].typeIdMapping    | String     | 题型映射编码；                               |
+| items[].layout           | String     | 布局；                                   |
+| items[].userAnswer       | String     | 用户答案                                  |
+| items[].standardAnswer   | String     | 标准答案                                  |
+| items[].answered         | Boolean    | 是否作答                                  |
+| items[].correct          | Boolean    | 是否答对                                  |
+| items[].points           | BigDecimal | 得分；                                   |
+| items[].analysis         | String     | 解析；                                   |
+| items[].questionSnapshot | Object     | 题目冻结快照；                               |
+| items[].groupSnapshot    | Object     | 题组冻结快照；                               |
+| items[].optionSnapshot   | Array      | 选项冻结快照；                               |
 
 **本接口抛出错误码**：8102 / 8105 / 8106 / 8133
 
