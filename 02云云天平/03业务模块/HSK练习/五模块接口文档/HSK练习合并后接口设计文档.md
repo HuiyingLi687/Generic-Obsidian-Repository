@@ -155,12 +155,12 @@
 
 **入参说明**
 
-| 参数名           | 位置     | 类型      | 必填   | 约束&说明                             |
-| ------------- | ------ | ------- | ---- | --------------------------------- |
-| module        | query  | String  | 必传 | 【新增】`listening` / `reading` |
-| paperId       | body   | Long    | 是    | 【无变更】练习试卷 ID                      |
-| section       | body   | String  | 是    | 【无变更】板块号 1..N                     |
-| X-Client-Type | header | String  | 否    | 【无变更】                             |
+| 参数名           | 位置     | 类型     | 必填  | 约束&说明                       |
+| ------------- | ------ | ------ | --- | --------------------------- |
+| module        | query  | String | 必传  | 【新增】`listening` / `reading` |
+| paperId       | body   | Long   | 是   | 【无变更】练习试卷 ID                |
+| section       | body   | String | 是   | 【无变更】板块号 1..N               |
+| X-Client-Type | header | String | 否   | 【无变更】                       |
 
 **请求示例**
 
