@@ -1859,18 +1859,18 @@ Content-Type: application/json
 
 **返回字段说明**
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| module | String | 模块编码，回显入参 |
-| level | String | 等级数字串，回显解析后的值 |
-| levelName | String | 等级显示名，取 `practice_module_level_config` 三列并按语言选一，不拼接、不换算 |
-| paperCount | Integer | 该等级卷数 = `papers` 长度；模块无内容时为 0 |
-| papers | Array | 该等级全部卷，元素见下 |
-| papers[].paperId | Long | 试卷 ID（口语为 `speaking_exam_paper.id`，其余为 `exam_paper.id`） |
-| papers[].paperCode | String | 试卷名称 |
-| papers[].status | String | `not_started` / `in_progress` / `completed`，未登录恒 `not_started` |
-| papers[].completedCount | Integer | 已作答题数（口语 = 已提交录音题数）；未登录恒 0 |
-| papers[].totalCount | Integer | 该模块在该卷下的总题数（已排除 `enabled_prac=0` 与示例题） |
+| 字段                      | 类型      | 说明                                                             |
+| ----------------------- | ------- | -------------------------------------------------------------- |
+| module                  | String  | 模块编码，回显入参                                                      |
+| level                   | String  | 等级数字串，回显解析后的值                                                  |
+| levelName               | String  | 等级显示名，取 `practice_module_level_config` 三列并按语言选一，不拼接、不换算        |
+| paperCount              | Integer | 该等级卷数 = `papers` 长度；模块无内容时为 0                                  |
+| papers                  | Array   | 该等级全部卷，元素见下                                                    |
+| papers[].paperId        | Long    | 试卷 ID（口语为 `speaking_exam_paper.id`，其余为 `exam_paper.id`）        |
+| papers[].paperCode      | String  | 试卷名称                                                           |
+| papers[].status         | String  | `not_started` / `in_progress` / `completed`，未登录恒 `not_started` |
+| papers[].completedCount | Integer | 已作答题数（口语 = 已提交录音题数）；未登录恒 0                                     |
+| papers[].totalCount     | Integer | 该模块在该卷下的总题数（已排除 `enabled_prac=0` 与示例题）                         |
 
 **服务端内部执行顺序**
 
