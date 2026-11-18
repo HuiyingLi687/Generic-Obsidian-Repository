@@ -202,29 +202,29 @@ Content-Type: application/json
 
 **返回字段说明**
 
-| 字段 | 类型 | 改动标记 | 说明 |
-|---|---|---|---|
-| recordId | Long | 【无变更】 | 练习记录 ID（`practice_record.id`） |
-| paperId | Long | 【无变更】 | 试卷 ID |
-| section | String | 【无变更】 | 板块号 |
-| module | String | 【新增】 | `listening` / `reading` |
-| status | Integer | 【无变更】 | 0 已创建、1 进行中、2 已放弃、3 已提交 |
-| reportStatus | String | 【无变更】 | `PENDING/GENERATING/READY/FAILED` |
-| version | Integer | 【新增】 | 乐观锁版本号，回传给 `baseVersion` |
-| currentQuestionId | Long | 【无变更】 | 当前停留题目 ID |
-| currentQuestionNumber | Integer | 【无变更】 | 当前停留题号 |
-| currentPassageItemIndex | Integer | 【修改】 | 听力 passageGroup 子题位置（原恒 0）；**阅读恒 null** |
-| durationSeconds | Integer | 【无变更】 | 在场累计秒数 |
-| paused | Boolean | 【无变更】 | 是否已离开（true 时前端不要自动续走计时器） |
-| pausedAt | Long | 【无变更】 | 上次离开时刻毫秒；`paused=false` 时为 null |
-| answeredCount | Integer | 【无变更】 | 已答题数 |
-| totalQuestions | Integer | 【无变更】 | 本次练习总题数 |
-| answers | Array | 【修改】 | 元素结构见下（阅读侧 `conflict`/`currentVersion` 恒为 false/null） |
-| answers[].questionId | Long | 【无变更】 | 题目 ID |
-| answers[].answer | String | 【无变更】 | 用户答案（选项编码） |
-| answers[].answered | Boolean | 【无变更】 | 是否已作答 |
-| answers[].conflict | Boolean | 【无变更】 | 版本冲突标记；**阅读恒 false** |
-| answers[].currentVersion | Integer | 【无变更】 | 云端最新版本；**阅读恒 null** |
+| 字段                       | 类型      | 改动标记  | 说明                                                    |
+| ------------------------ | ------- | ----- | ----------------------------------------------------- |
+| recordId                 | Long    | 【无变更】 | 练习记录 ID（`practice_record.id`）                         |
+| paperId                  | Long    | 【无变更】 | 试卷 ID                                                 |
+| section                  | String  | 【无变更】 | 板块号                                                   |
+| module                   | String  | 【新增】  | `listening` / `reading`                               |
+| status                   | Integer | 【无变更】 | 0 已创建、1 进行中、2 已放弃、3 已提交                               |
+| reportStatus             | String  | 【无变更】 | `PENDING/GENERATING/READY/FAILED`                     |
+| version                  | Integer | 【新增】  | 乐观锁版本号，回传给 `baseVersion`                              |
+| currentQuestionId        | Long    | 【无变更】 | 当前停留题目 ID                                             |
+| currentQuestionNumber    | Integer | 【无变更】 | 当前停留题号                                                |
+| currentPassageItemIndex  | Integer | 【修改】  | 听力 passageGroup 子题位置（原恒 0）；**阅读恒 null**               |
+| durationSeconds          | Integer | 【无变更】 | 在场累计秒数                                                |
+| paused                   | Boolean | 【无变更】 | 是否已离开（true 时前端不要自动续走计时器）                              |
+| pausedAt                 | Long    | 【无变更】 | 上次离开时刻毫秒；`paused=false` 时为 null                       |
+| answeredCount            | Integer | 【无变更】 | 已答题数                                                  |
+| totalQuestions           | Integer | 【无变更】 | 本次练习总题数                                               |
+| answers                  | Array   | 【修改】  | 元素结构见下（阅读侧 `conflict`/`currentVersion` 恒为 false/null） |
+| answers[].questionId     | Long    | 【无变更】 | 题目 ID                                                 |
+| answers[].answer         | String  | 【无变更】 | 用户答案（选项编码）                                            |
+| answers[].answered       | Boolean | 【无变更】 | 是否已作答                                                 |
+| answers[].conflict       | Boolean | 【无变更】 | 版本冲突标记；**阅读恒 false**                                  |
+| answers[].currentVersion | Integer | 【无变更】 | 云端最新版本；**阅读恒 null**                                   |
 
 **服务端内部执行顺序（重要，后端&测试阅读）**
 
