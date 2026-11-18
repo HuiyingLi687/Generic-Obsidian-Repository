@@ -109,12 +109,12 @@
 
 ### 4.1 模块参数规则（两族通用）
 
-| 写法 | `module` 是否必传 | 取值 |
-|---|---|---|
-| `/hsk/objective/records/**` | **必传** | `listening` / `reading` |
-| `/listening/records/**`、`/reading/records/**` | 不需要（从路径推断） | — |
-| `/hsk/subjective/records/**` | **必传** | `writing` / `translation` / `speaking` |
-| `/writing/records/**` 等三条旧路径 | 不需要（从路径推断） | — |
+| 写法                                            | `module` 是否必传 | 取值                                     |
+| --------------------------------------------- | ------------- | -------------------------------------- |
+| `/hsk/objective/records/**`                   | **必传**        | `listening` / `reading`                |
+| `/listening/records/**`、`/reading/records/**` | 不需要（从路径推断）    | —                                      |
+| `/hsk/subjective/records/**`                  | **必传**        | `writing` / `translation` / `speaking` |
+| `/writing/records/**` 等三条旧路径                  | 不需要（从路径推断）    | —                                      |
 
 `module` 大小写与首尾空格不敏感。取值不在白名单 → `8133`。新路径缺 `module` → `8133`。
 
