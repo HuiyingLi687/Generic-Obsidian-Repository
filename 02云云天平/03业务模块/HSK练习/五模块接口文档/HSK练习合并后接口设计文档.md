@@ -857,15 +857,13 @@ Content-Type: application/json
 
 **入参说明**
 
-| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
-|---|---|---|---|---|
-| module | query | String | 是 | `writing` / `translation` / `speaking` |
-| paperId | body | Long | 是 | 练习试卷 ID |
-| sectionMapping | body | String | 是 | `SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAKING`，必须与 `module` 一致；口语额外接受历史值 `SEC_SPEAK` |
-| section | body | String | 是 | 板块号，服务端 `trim` 后使用 |
-| X-Client-Type | header | String | 否 | 客户端类型 |
-
-> 与客观族的差异：客观族 `start` 不需要 `sectionMapping`（由 `module` 推出），主观族要求显式传，用来拦住「拿写作的板块号打翻译入口」。
+| 参数名            | 位置     | 类型     | 必填  | 约束&说明                                                             |
+| -------------- | ------ | ------ | --- | ----------------------------------------------------------------- |
+| module         | query  | String | 是   | `writing` / `translation` / `speaking`                            |
+| paperId        | body   | Long   | 是   | 练习试卷 ID                                                           |
+| sectionMapping | body   | String | 是   | `SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAKING`，必须与 `module` 一致； |
+| section        | body   | String | 是   | 板块号，服务端 `trim` 后使用                                                |
+| X-Client-Type  | header | String | 否   | 客户端类型                                                             |
 
 **请求示例**
 
