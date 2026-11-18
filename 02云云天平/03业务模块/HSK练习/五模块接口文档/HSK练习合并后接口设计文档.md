@@ -765,21 +765,7 @@ Content-Type: application/json
 | rows[].questionId        | Long       | 题目 ID                                 |
 | rows[].answered          | Boolean    | 是否作答                                  |
 | rows[].isCorrect         | Boolean    | 是否正确                                  |
-| items                    | Array      | 单题明细，元素见下                             |
-| items[].questionId       | Long       | 题目 ID                                 |
-| items[].number           | Integer    | 题号                                    |
-| items[].typeId           | String     | 原始题型 ID；                              |
-| items[].typeIdMapping    | String     | 题型映射编码；                               |
-| items[].layout           | String     | 布局；                                   |
-| items[].userAnswer       | String     | 用户答案                                  |
-| items[].standardAnswer   | String     | 标准答案                                  |
-| items[].answered         | Boolean    | 是否作答                                  |
-| items[].correct          | Boolean    | 是否答对                                  |
-| items[].points           | BigDecimal | 得分；                                   |
-| items[].analysis         | String     | 解析；                                   |
-| items[].questionSnapshot | Object     | 题目冻结快照；                               |
-| items[].groupSnapshot    | Object     | 题组冻结快照；                               |
-| items[].optionSnapshot   | Array      | 选项冻结快照；                               |
+
 
 **服务端内部执行顺序**
 
@@ -890,21 +876,7 @@ Content-Type: application/json
 | rows[].questionId        | Long       | 题目 ID                                 |
 | rows[].answered          | Boolean    | 是否作答                                  |
 | rows[].isCorrect         | Boolean    | 是否正确                                  |
-| items                    | Array      | 单题明细，元素见下                             |
-| items[].questionId       | Long       | 题目 ID                                 |
-| items[].number           | Integer    | 题号                                    |
-| items[].typeId           | String     | 原始题型 ID；                              |
-| items[].typeIdMapping    | String     | 题型映射编码；                               |
-| items[].layout           | String     | 布局；                                   |
-| items[].userAnswer       | String     | 用户答案                                  |
-| items[].standardAnswer   | String     | 标准答案                                  |
-| items[].answered         | Boolean    | 是否作答                                  |
-| items[].correct          | Boolean    | 是否答对                                  |
-| items[].points           | BigDecimal | 得分；                                   |
-| items[].analysis         | String     | 解析；                                   |
-| items[].questionSnapshot | Object     | 题目冻结快照；                               |
-| items[].groupSnapshot    | Object     | 题组冻结快照；                               |
-| items[].optionSnapshot   | Array      | 选项冻结快照；                               |
+
 
 **本接口抛出错误码**：8102 / 8105 / 8106 / 8133
 
@@ -1557,7 +1529,6 @@ Content-Type: application/json
 | questions                     | Array      | 【无变更】                                 | 逐题摘要，元素见下              |
 | questions[].order             | Integer    | 【无变更】                                 | 题序 = 冻结下标 + 1          |
 | questions[].questionId        | Long       | 【无变更】                                 | 题目 ID                  |
-| questions[].layout            | String     | 【无变更】                                 | 题面形态                   |
 | questions[].hasStandardAnswer | Integer    | 【无变更】                                 | 1 客观 / 0 主观            |
 | questions[].answered          | Boolean    | 【无变更】                                 | 是否已作答                  |
 | questions[].gradingState      | Integer    | 【无变更】                                 | 0 待评 / 1 已评 / 2 未答或失败  |
@@ -1565,26 +1536,7 @@ Content-Type: application/json
 | questions[].maxScore          | BigDecimal | 【无变更】                                 | 单题满分                   |
 | questions[].isFullScore       | Integer    | 【无变更】                                 | 1 满分 / 0 非满分；待评时为 null |
 | questions[].correct           | Boolean    | 【无变更】                                 | 客观题对错；主观题恒 null        |
-| rows                          | Array      | 题号矩阵，元素见下                             |                        |
-| rows[].number                 | Integer    | 题号，practice_record.question_ids数组下标+1 |                        |
-| rows[].questionId             | Long       | 题目 ID                                 |                        |
-| rows[].answered               | Boolean    | 是否作答                                  |                        |
-| rows[].isCorrect              | Boolean    | 是否正确                                  |                        |
-| items                         | Array      | 单题明细，元素见下                             |                        |
-| items[].questionId            | Long       | 题目 ID                                 |                        |
-| items[].number                | Integer    | 题号                                    |                        |
-| items[].typeId                | String     | 原始题型 ID；                              |                        |
-| items[].typeIdMapping         | String     | 题型映射编码；                               |                        |
-| items[].layout                | String     | 布局；                                   |                        |
-| items[].userAnswer            | String     | 用户答案                                  |                        |
-| items[].standardAnswer        | String     | 标准答案                                  |                        |
-| items[].answered              | Boolean    | 是否作答                                  |                        |
-| items[].correct               | Boolean    | 是否答对                                  |                        |
-| items[].points                | BigDecimal | 得分；                                   |                        |
-| items[].analysis              | String     | 解析；                                   |                        |
-| items[].questionSnapshot      | Object     | 题目冻结快照；                               |                        |
-| items[].groupSnapshot         | Object     | 题组冻结快照；                               |                        |
-| items[].optionSnapshot        | Array      | 选项冻结快照；                               |                        |
+
 
 **服务端内部执行顺序**
 
