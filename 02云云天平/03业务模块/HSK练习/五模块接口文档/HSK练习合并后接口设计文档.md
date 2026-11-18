@@ -31,6 +31,10 @@
 | 11 | 内部实现 | 客观族保留两套 service（听力回 `question` 表、阅读读 `answer` 快照），门面层只做分派与 DTO 转换 |
 | 12 | 开练语义 | `start` 只负责开新的练习：有未提交记录直接返回该记录，已提交后再调用则新建一次练习。不提供重开接口，未提交的继续练习走 `resume` |
 | 13 | 模块级端点 | 主观族全部端点三模块通用，不再有「单题作答仅口语」「翻译无判分重试」这类限制，`8120` 随之删除 |
+| 14 | 付费时机 | 交卷与评分都**不扣费**，改为用户在报告页主动解锁时按卷扣一次；顺序仍是免费次数 → AI 解析次数 → 考试点数，扣到一级即停 |
+| 15 | 报告遮蔽 | 后端**不遮蔽**内容，报告与单题反馈统一返回 `aiUnlocked` 布尔标志，解析是否显示由前端控制 |
+| 16 | 解锁落表 | 仍是 `practice_subjective_record` 单表：`ai_deduct_state`（`0` 未解锁 / `1` 已解锁 / `3` 无需解锁）+ `deduct_type` + `ai_deduct_time` |
+| 17 | 解锁失败 | 扣减失败直接抛 `8118` 并回滚，本地不写解锁状态，用户付费后重试即可 |
 
 ## 1. 现状问题列表（本次要修复的 bug）
 
@@ -53,6 +57,17 @@
 
 唯一涉及的取值口径修正：口语板块域的新写入统一为 `SEC_SPEAKING`，`SEC_SPEAK` 仅作为历史值被兼容读取（`practice_module_part_config` 存量 24 行、`practice_module_level_config` 存量 8 行未做数据订正，见 §10）。
 
+**`ai_deduct_state` 取值口径**（列已存在，本次不新增列，只改写入时机）：
+
+| 值 | 含义 | 写入时机 |
+|---|---|---|
+| `0` | 未解锁 | 创建记录时的默认值；卷内有 AI 题且用户还没付费 |
+| `1` | 已解锁 | 用户调 `POST /{recordId}/unlock` 扣减成功 |
+| `2` | 欠费 | 历史值，旧链路扣费失败留下的记录，读时按已解锁处理；当前链路不再写入 |
+| `3` | 无需解锁 | 交卷时判定卷内没有可评分的 AI 题 |
+
+`deduct_type` 与 `ai_deduct_time` 只在 `ai_deduct_state=1` 时有意义，分别为实际走通的扣减级别（`0` 免费次数 / `1` AI 解析次数 / `2` 考试点数）与解锁时间。
+
 ### 2.2 枚举更新
 
 | 枚举 | 值 | 含义 |
@@ -60,6 +75,7 @@
 | `ObjectiveModule`【新增】 | `listening` / `reading` | 客观族模块码，`module` 参数取值 |
 | `SubjectiveModule` | `writing` / `translation` / `speaking` | 【无变更】主观族模块码，直接作为 `module` 参数取值 |
 | `AnswerCardModule.SPEAKING.sectionMapping` | `SEC_SPEAKING`【修改】 | 原值 `SEC_SPEAK`（拼写错误）；校验时仍接受旧值 |
+| `AiUnlockState`【新增】 | `LOCKED(0)` / `UNLOCKED(1)` / `OWED(2)` / `NOT_REQUIRED(3)` | 主观题 AI 解析的解锁状态，对应 `ai_deduct_state` |
 
 ## 3. 接口总览清单
 
@@ -105,8 +121,10 @@
 | 10  | GET    | `{主观前缀}/{recordId}/report`                         | 报告详情   | 改造   | 响应体不变                   |
 | 11  | GET    | `{主观前缀}/{recordId}/report/questions/{questionId}`  | 逐题反馈   | 改造   | 响应体不变                   |
 | 12  | POST   | `{主观前缀}/{recordId}/report/retry`                   | 判分重试   | 改造   | 三模块通用                    |
+| 13  | GET    | `{主观前缀}/{recordId}/unlock/precheck`                | 解锁预检   | 新增   | 返回三级余额、单价与弹窗文案          |
+| 14  | POST   | `{主观前缀}/{recordId}/unlock`                         | 执行解锁   | 新增   | 按卷扣一次权益，失败抛 8118，限流 5 次/秒 |
 
-> 主观族响应体（`SubjectiveRecordResponse` / `SubjectiveQuestionResponse` / `SubjectiveReportResponse` 等）本次**不做字段改动** —— 三模块本来就共用一套 DTO，合并只是去掉两份重复的控制器。
+> 主观族响应体只有一处字段变更：`SubjectiveReportResponse` 与 `SubjectiveQuestionReportResponse` 新增布尔字段 `aiUnlocked`，其余结构不变。报告内容不因未解锁而清空。
 
 ## 4. 改动接口详情
 
@@ -849,6 +867,133 @@ POST /practice/hsk/subjective/records/start?module=writing
 
 交卷幂等键由服务端按 `{module}-{recordId}-submit` 拼（`writing-900812-submit`），不再取客户端 `Idempotency-Key` 头作为唯一来源。客户端传了也接受，但同一记录的重复交卷以服务端拼的键去重。
 
+**AI 解析解锁**
+
+交卷与评分都不涉及扣费，扣费只发生在用户主动解锁时。打开报告页先看 `aiUnlocked`：
+
+| 值 | 含义 | 前端行为 |
+|---|---|---|
+| `true` | 可直接展示解析 | 正常渲染 |
+| `false` | 解析需要解锁 | 调 precheck，按返回文案弹窗 |
+
+未解锁时报告与单题反馈的 `analysis`、`standardAnswer` 字段**照常返回全文**，是否展示完全由前端按 `aiUnlocked` 控制。后端不做内容遮蔽，也不返回「锁定占位文案」。
+
+扣减顺序：免费次数（场景 `report_unlock`，新用户默认 3 次）→ AI 解析次数（场景 `ai_analysis`）→ 考试点数（场景 `report_unlock`），扣到一级即停，走过的级别写入 `deduct_type`。
+
+---
+
+#### 4.3.1 GET `{主观前缀}/{recordId}/unlock/precheck`
+
+**用途**：解锁预检，供弹窗直接渲染
+**鉴权**：需要登录
+**前置条件**：记录已交卷，否则 `8105`；记录不属于当前用户或模块不匹配，`8102`
+
+**入参说明**
+
+| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
+|---|---|---|---|---|
+| recordId | path | Long | 是 | 练习记录 ID |
+| module | query | String | 是 | `writing` / `translation` / `speaking` |
+| language | header | String | 否 | 弹窗文案语言，`zh` / `en` / `vi`，缺省中文；不识别时回退中文 |
+
+**返回字段**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| recordId | Long | 练习记录 ID |
+| alreadyUnlocked | Boolean | 已解锁或卷内无可评分 AI 题时为 `true`，此时只看文案、不再引导支付 |
+| price | Integer | 本次消耗数量，来自权益中心的场景单价；已解锁时为 null |
+| vip | Boolean | 会员赠送的 AI 次数大于 0 即为 `true` |
+| freeCount | Integer | 剩余免费解锁次数 |
+| aiQuotaTotal | Integer | AI 解析次数总余额（会员 + 永久） |
+| examPointTotal | Integer | 考试点数总余额（会员 + 永久） |
+| recommendedMethod | String | `free` / `ai_quota` / `exam_point` / `none` |
+| content | String | 弹窗正文，已按语言填好数量 |
+| buttonLabel | String | 确认按钮文案 |
+| bottomLabel | String | 底部余额栏名称；已解锁时为 null |
+| bottomValue | Integer | 底部余额栏数值；已解锁时为 null |
+
+**返回完整示例**
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "recordId": 900812,
+    "alreadyUnlocked": false,
+    "price": 1,
+    "vip": false,
+    "freeCount": 2,
+    "aiQuotaTotal": 0,
+    "examPointTotal": 0,
+    "recommendedMethod": "free",
+    "content": "新用户可免费解锁 2 次，本次将使用 1 次免费解锁，解锁后可查看本次练习的全部题目自然解析。",
+    "buttonLabel": "免费解锁",
+    "bottomLabel": "当前免费解锁次数",
+    "bottomValue": 2
+  }
+}
+```
+
+`recommendedMethod` 的判定顺序与扣减顺序一致：`freeCount > 0` 取 `free`，否则看 `aiQuotaTotal > 0` 取 `ai_quota`，再看 `examPointTotal > 0` 取 `exam_point`，都为 0 取 `none`。
+
+**本接口抛出错误码**：8102 / 8105 / 8133
+
+---
+
+#### 4.3.2 POST `{主观前缀}/{recordId}/unlock`
+
+**用途**：执行解锁，扣减一次权益并把记录置为已解锁
+**鉴权**：需要登录
+**限流**：5 次/秒
+**前置条件**：记录已交卷，否则 `8105`
+
+**入参说明**
+
+| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
+|---|---|---|---|---|
+| recordId | path | Long | 是 | 练习记录 ID |
+| module | query | String | 是 | `writing` / `translation` / `speaking` |
+
+无请求体。
+
+**返回字段**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| recordId | Long | 练习记录 ID |
+| aiUnlocked | Boolean | 恒为 `true` |
+| deductType | Integer | 实际扣减方式：`0` 免费次数 / `1` AI 解析次数 / `2` 考试点数；扣费开关关闭时为 null |
+| remainingFreeCount | Integer | 扣减后剩余免费次数，查询失败为 null |
+| remainingAiQuota | Integer | 扣减后 AI 解析次数总余额，查询失败为 null |
+| remainingExamPoint | Integer | 扣减后考试点数总余额，查询失败为 null |
+
+**返回完整示例**
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "recordId": 900812,
+    "aiUnlocked": true,
+    "deductType": 0,
+    "remainingFreeCount": 1,
+    "remainingAiQuota": 0,
+    "remainingExamPoint": 0
+  }
+}
+```
+
+**幂等**：已解锁的记录重复调用直接返回成功，`deductType` 取库里已有的值，不再扣减任何权益。并发请求在行锁下串行执行，第二个请求进来时状态已是已解锁。
+
+**失败处理**：三级权益都扣不到时抛 `8118`，本地不写解锁状态，用户可以购买后重试。解锁过程先扣减后写库，远程扣减成功而本地写库失败仍会多扣一次，这是接入外部计费服务的固有代价。
+
+**本接口抛出错误码**：8102 / 8105 / 8118 / 8119 / 8133
+
+---
+
 **本族抛出错误码**：8101–8119（通用）、8201+（写作）、8251+（翻译）、8281+（口语）
 
 ## 5. 错误码更新
@@ -859,6 +1004,9 @@ POST /practice/hsk/subjective/records/start?module=writing
 | 8141 / 8142 | practice-service | 【无变更】听力续练时卷内容 / 板块配置已下架 |
 | 8166 / 8167 / 8168 | practice-service | 【无变更】阅读试卷 / 板块不可练习、板块无题 |
 | 8104 | practice-service | 【无变更】`baseVersion` 不一致；本次对阅读也要求传 `baseVersion`（但不校验） |
+| 8105 | practice-service | 【修改】解锁预检与执行解锁要求记录已交卷，未交卷同样回该码 |
+| 8118 | practice-service | 【新增】解锁时免费次数、AI 解析次数、考试点数三级都不足 |
+| 8119 | practice-service | 【新增】解锁状态写回冲突：扣减已完成但状态位被行锁之外的写操作改过 |
 
 ## 6. 前端对接注意事项
 
@@ -870,6 +1018,9 @@ POST /practice/hsk/subjective/records/start?module=writing
 6. **报告状态判断收敛**：不再有 `PROCESSING` / `FAILED_RETRYABLE` / `FAILED_FINAL`。用 `reportStatus == FAILED && retryable` 判断是否显示重试按钮。
 7. **`currentPassageItemIndex` 阅读恒 null**：阅读侧不要再读这个字段判断翻页。
 8. **口语板块域**：新数据用 `SEC_SPEAKING`；若前端有硬编码 `SEC_SPEAK` 的分支，本次要一并改（服务端两种都接受）。
+9. **主观题报告多了一个解锁步骤**：报告与单题反馈新增 `aiUnlocked`，为 `false` 时解析需要用户主动解锁。后端不再替你遮挡内容，`analysis` 字段有值但**不应直接渲染**，必须先判 `aiUnlocked`，否则付费墙形同虚设。
+10. **解锁弹窗文案由后端下发**：`content` / `buttonLabel` / `bottomLabel` / `bottomValue` 直接渲染即可，不要在客户端拼「将消耗 N 次」这类句子，服务端已按 `language` 头和实际余额填好。`recommendedMethod = none` 时按钮应跳权益中心而不是调 unlock。
+11. **交卷不再因余额不足被拦**：旧版交卷前会校验权益，现在交卷只看作答与判分，未解锁只影响报告页的解析展示。
 
 ## 7. 关键业务流程&事务边界
 
@@ -896,6 +1047,7 @@ Controller（2 族 6 个类）
 | 暂停 / 恢复 | `@Transactional` | 时长结算与位置更新同事务；`resume` 清 `paused_time` 必须走显式 UPDATE 并同时写 `resumed_time` |
 | 交卷 | `@Transactional` | 落 finalAnswers → 判分 → 汇总 → 置 `reportStatus`，同一事务；幂等命中直接返回 |
 | 报告重试 | `@Transactional` | 置 `GENERATING` → 重算 → 置 `READY` |
+| 解锁 | `@Transactional` | 行锁查记录 → 校验已交卷与归属 → 三级扣减（远程，不参与本地事务）→ 写 `ai_deduct_state=1` + `deduct_type` + `ai_deduct_time`。先扣后写，扣失败抛 8118 回滚，行锁串行化并发请求 |
 
 ### 7.3 时长口径（未变，重申）
 
@@ -927,6 +1079,12 @@ Controller（2 族 6 个类）
 | 17 | `/hsk/objective/records/{id}/answer-card?module=reading` | 200，返回阅读答题卡；`/reading/records/{id}/answer-card` 回 `404` |
 | 18 | 同一试卷同一板块，未提交时再调 `start` | 返回同一条记录，`recordId` 与进度不变 |
 | 19 | 已交卷后调 `start` | 新建一条记录，`recordId` 与上次不同，进度归零 |
+| 20 | 主观题交卷后查报告（未解锁） | `aiUnlocked=false`，`analysis` 与 `standardAnswer` 仍有值，不返回锁定占位文案 |
+| 21 | 未解锁时调 `GET /{recordId}/unlock/precheck?module=writing` | 200，`recommendedMethod` 按「免费 → AI 次数 → 点数」顺序取第一个有余额的 |
+| 22 | 有免费次数时调 `POST /{recordId}/unlock` | 200，`deductType=0`，`ai_deduct_state` 置 `1`，再查报告 `aiUnlocked=true` |
+| 23 | 三级权益都为 0 时调 `POST /{recordId}/unlock` | `8118`，`ai_deduct_state` 仍为 `0`，报告 `aiUnlocked` 仍为 `false` |
+| 24 | 已解锁后再调一次 `POST /{recordId}/unlock` | 200，`deductType` 与首次一致，余额不再减少 |
+| 25 | 卷内全客观题交卷后查报告 | `aiUnlocked=true`（`ai_deduct_state=3`），不需要解锁 |
 
 ## 9. 上线执行事项【P0阻断项】
 
@@ -940,14 +1098,14 @@ Controller（2 族 6 个类）
 
 | 文件路径 | 改动内容 |
 |---|---|
-| `hsk/objective/enums/ObjectiveModule.java` | 【新增】客观族模块枚举 |
-| `hsk/objective/dto/*.java`（14 个） | 【新增】客观族统一 DTO |
-| `hsk/objective/support/ObjectiveModuleResolver.java` | 【新增】模块解析，只认 `module` 参数，缺失 / 非法回 8133 |
-| `hsk/objective/support/ObjectiveDtoMapper.java` | 【新增】两套内部 DTO → 统一契约转换 |
-| `hsk/objective/service/ObjectivePracticeService.java` + `impl` | 【新增】门面分派 |
-| `hsk/objective/controller/*.java`（3 个） | 【新增】客观族 11 个端点（答题卡端点另计，见下方 `AnswerCardController` 行） |
-| `hsk/subjective/controller/SubjectivePracticeController.java` | 【新增】写 / 译 / 说 12 个端点合一 |
-| `hsk/subjective/support/SubjectiveModuleResolver.java` | 【新增】模块解析，只认 `module` 参数，缺失 / 非法回 8133 |
+| `hsk/objective/api/enums/ObjectiveModule.java` | 【新增】客观族模块枚举 |
+| `hsk/objective/api/dto/*.java`（14 个） | 【新增】客观族统一 DTO |
+| `hsk/objective/api/support/ObjectiveModuleResolver.java` | 【新增】模块解析，只认 `module` 参数，缺失 / 非法回 8133 |
+| `hsk/objective/api/support/ObjectiveDtoMapper.java` | 【新增】两套内部 DTO → 统一契约转换 |
+| `hsk/objective/api/service/ObjectivePracticeService.java` + `impl` | 【新增】门面分派 |
+| `hsk/objective/api/controller/*.java`（3 个） | 【新增】客观族 11 个端点（答题卡端点另计，见下方 `AnswerCardController` 行） |
+| `hsk/subjective/api/controller/SubjectivePracticeController.java` | 【新增】写 / 译 / 说 12 个端点合一 |
+| `hsk/subjective/api/support/SubjectiveModuleResolver.java` | 【新增】模块解析，只认 `module` 参数，缺失 / 非法回 8133 |
 | `listening/controller/*.java`（3 个） | 【删除】由客观族控制器接管 |
 | `reading/controller/*.java`（3 个） | 【删除】同上 |
 | `subjective/controller/{Writing,Translation,Speaking}PracticeController.java` | 【删除】由主观族控制器接管 |
@@ -957,6 +1115,16 @@ Controller（2 族 6 个类）
 | `listening/dto/ListeningRecordResponse.java`、`reading/dto/ReadingRecordResponse.java` | 新增 `version` 字段 |
 | `listening/service/impl/ListeningRecordServiceImpl.java`、`reading/service/impl/ReadingRecordServiceImpl.java` | `toResponse` 回填 `version` |
 | `hsk/support/HskPracticeErrorCode.java` | 删除 `MODULE_ENDPOINT_NOT_SUPPORTED(8120)`，模块级端点限制取消后无引用 |
+| `hsk/subjective/api/enums/AiUnlockState.java` | 【新增】解锁状态枚举，含 `isUnlocked` / `needsUnlock` 判定 |
+| `hsk/subjective/api/dto/SubjectiveUnlockPrecheckResponse.java` | 【新增】解锁预检响应 |
+| `hsk/subjective/api/dto/SubjectiveUnlockResponse.java` | 【新增】解锁结果响应 |
+| `hsk/subjective/api/config/SubjectiveUnlockProperties.java` | 【新增】解锁扣费开关 `subjective.unlock.deduct-enabled` |
+| `hsk/subjective/api/service/SubjectiveUnlockService.java` + `impl` | 【新增】预检与解锁，含三级扣减链 |
+| `hsk/subjective/api/controller/SubjectivePracticeController.java` | 【修改】新增 `unlock/precheck` 与 `unlock` 两个端点 |
+| `hsk/subjective/api/service/impl/SubjectivePracticeServiceImpl.java` | 交卷去掉权益预检；报告与单题反馈回填 `aiUnlocked` |
+| `hsk/subjective/grading/SubjectiveGradingService.java` | 评分完成后不再触发扣费，只重算统计 |
+| `hsk/subjective/grading/SubjectiveAiDeductService.java` | 【删除】由 `SubjectiveUnlockService` 接管 |
+| `common/mapper/PracticeSubjectiveRecordMapper.java` + XML | `casAiDeductState` / `markAiDeductType` 合并为 `markAiUnlocked` |
 | `csca/controller/CscaFavoriteController.java` | 补回缺失的类闭合大括号（原本导致全模块编译失败） |
 
 ### 9.3 环境状态

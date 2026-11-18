@@ -1001,3 +1001,73 @@ Authorization: Bearer {{token}}
                       "message=" + response.body.message);
     });
 %}
+
+
+### ============================================================================
+### 七、AI 解析解锁（写 / 译 / 说通用，必须交卷后才能调）
+### ============================================================================
+
+### 66 解锁预检（recommendedMethod 按 免费 → AI次数 → 点数 取第一个有余额的）
+GET {{practice}}/hsk/subjective/records/{{wrRecordId}}/unlock/precheck?module=writing
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+language: zh
+
+> {%
+    client.test("预检可读", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    var d = response.body.data;
+    client.log("alreadyUnlocked=" + d.alreadyUnlocked +
+               " method=" + d.recommendedMethod +
+               " free=" + d.freeCount +
+               " ai=" + d.aiQuotaTotal +
+               " point=" + d.examPointTotal);
+%}
+
+### 67 执行解锁（三级都扣不到回 8118；重复调用幂等，不再扣减）
+POST {{practice}}/hsk/subjective/records/{{wrRecordId}}/unlock?module=writing
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    client.test("解锁成功或权益不足", function () {
+        client.assert(response.body.code === 200 || response.body.code === 8118,
+                      "code=" + response.body.code);
+    });
+    if (response.body.code === 200) {
+        var d = response.body.data;
+        client.log("deductType=" + d.deductType +
+                   " remainingFree=" + d.remainingFreeCount +
+                   " remainingAi=" + d.remainingAiQuota +
+                   " remainingPoint=" + d.remainingExamPoint);
+    } else {
+        client.log("权益不足，需先去权益中心购买");
+    }
+%}
+
+### 68 报告复查（aiUnlocked 应为 true；后端不遮蔽内容，由前端按该标志决定是否展示）
+GET {{practice}}/hsk/subjective/records/{{wrRecordId}}/report?module=writing
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+> {%
+    client.test("报告带解锁标志", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+        client.assert(typeof response.body.data.aiUnlocked === "boolean",
+                      "aiUnlocked 必须是布尔值");
+    });
+    client.log("aiUnlocked=" + response.body.data.aiUnlocked);
+%}
+
+### 69 反向用例 · 解锁别人的 / 不存在的记录（应得 8102）
+GET {{practice}}/hsk/subjective/records/999999999/unlock/precheck?module=writing
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+language: zh
+
+> {%
+    client.test("越权解锁被拒", function () {
+        client.assert(response.body.code === 8102, "期望 8102，实际 " + response.body.code);
+    });
+%}
