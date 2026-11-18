@@ -646,8 +646,7 @@ Content-Type: application/json
 **服务端内部执行顺序**
 
 1. 解析模块，锁记录校验归属与状态
-2. 听力：校验 `baseVersion` → 批量 upsert `practice_answer` → 重算 `answeredCount` → 返回记录
-3. 阅读：校验答案项属于本次记录（`8173`）、去重（`8169`）→ 批量 upsert → **补一次记录读取**后返回
+2. 校验 `baseVersion` → 批量 upsert `practice_answer` → 重算 `answeredCount` → 返回记录
 
 **本接口抛出错误码**：8102 / 8103 / 8104 / 8133 / 8169 / 8170 / 8171 / 8172 / 8173
 
@@ -660,22 +659,21 @@ Content-Type: application/json
 
 **入参说明**
 
-| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
-|---|---|---|---|---|
-| module | query | String | 必传 | 【新增】模块码 |
-| baseVersion | body | Integer | 是 | 【新增】不一致回 `8104` |
-| finalAnswers | body | Array | 否 | 【修改】元素 `{questionId, answer}` |
-| idempotencyKey | body | String | 否 | 【无变更】不传由服务端拼 `{module}-{recordId}-submit` |
-| Idempotency-Key | header | String | 否 | 【无变更】body 未带时使用该头 |
-| clientSequence | body | Integer | 否 | 【无变更】 |
+| 参数名             | 位置     | 类型      | 必填  | 约束&说明                                     |
+| --------------- | ------ | ------- | --- | ----------------------------------------- |
+| module          | query  | String  | 必传  | 【新增】模块码                                   |
+| baseVersion     | body   | Integer | 是   | 【新增】不一致回 `8104`                           |
+| finalAnswers    | body   | Array   | 否   | 【修改】元素 `{questionId, answer}`             |
+| idempotencyKey  | body   | String  | 否   | 【无变更】不传由服务端拼 `{module}-{recordId}-submit` |
+| Idempotency-Key | header | String  | 否   | 【无变更】body 未带时使用该头                         |
+
 
 **请求示例**
 
 ```json
 {
   "baseVersion": 12,
-  "finalAnswers": [{ "questionId": 55120, "answer": "C" }],
-  "clientSequence": 204
+  "finalAnswers": [{ "questionId": 55120, "answer": "C" }]
 }
 ```
 
@@ -693,7 +691,6 @@ Content-Type: application/json
     "sectionMapping": "SEC_LISTEN",
     "section": "1",
     "status": 3,
-    "reportStatus": "READY",
     "retryable": false,
     "totalQuestions": 20,
     "answeredCount": 20,
