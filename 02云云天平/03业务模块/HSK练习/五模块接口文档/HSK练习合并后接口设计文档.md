@@ -1956,7 +1956,7 @@ Content-Type: application/json
 | parts[].questionCount   | Integer | 该板块实际题量（现算，已排除 `enabled_prac=0` 与示例题） |
 | parts[].sortOrder       | Integer | 排序号                                   |
 | parts[].durationMinutes | Integer | 板块级建议时长（分钟）；只有口语下发，其余模块该键不出现          |
-| parts[].                |         |                                       |
+
 
 **服务端内部执行顺序**
 
@@ -2020,40 +2020,40 @@ Content-Type: application/json
 
 **返回字段说明**
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| module | String | 模块编码，回显入参 |
-| paperId | Long | 试卷 ID |
-| paperCode | String | 试卷名称 |
-| parts | Array | 板块列表，元素见下 |
-| parts[].section | Integer | 板块号 1..N |
-| parts[].partName | String | 部分名（中文） |
-| parts[].partNameEn | String | 部分名（英文） |
-| parts[].partNameVi | String | 部分名（越南语） |
-| parts[].typeCode | String | 题型编码 |
-| parts[].typeName | String | 题型名（中文） |
-| parts[].typeNameEn | String | 题型名（英文） |
-| parts[].typeNameVi | String | 题型名（越南语） |
-| parts[].questionCount | Integer | 板块实际题量（现算） |
-| parts[].sortOrder | Integer | 排序号 |
-| parts[].durationMinutes | Integer | 板块级建议时长（分钟），仅口语有值 |
-| parts[].status | String | `not_started` / `in_progress` / `completed`，未登录恒 `not_started` |
-| parts[].doneCount | Integer | 已作答题数（口语 = 已录音题数），未登录为 0 |
-| parts[].correctCount | Integer | 正确数；只在听力 / 阅读的已提交板块有值，写 / 译 / 说恒 `null` |
-| parts[].wrongCount | Integer | 错误数，规则同上 |
-| parts[].draft | Object | 进行中草稿块，无则 `null`；子字段见下 |
-| parts[].draft.id | Long | 草稿主键（听 / 读 = `practice_record.id`，写 / 译 / 说 = 主观记录 ID），即 `recordId`，直接拿去 `resume` |
-| parts[].draft.answeredCount | Integer | 草稿已答题数 |
-| parts[].draft.currentQuestionId | Long | 停在哪道题；无则 `null` |
-| parts[].report | Object | 最近一次已出报告块，无则 `null`；子字段见下 |
-| parts[].report.id | Long | 报告主键（听 / 读恒等于记录 ID） |
-| parts[].report.hasReport | Boolean | 是否已有可看报告 |
-| parts[].report.status | String | `READY` / `GRADING` / `FAILED` / `UNAVAILABLE`；听 / 读恒 `READY` |
-| parts[].stats | Object | 口语专属计数块，其余模块恒 `null`；子字段见下 |
-| parts[].stats.recordedCount | Integer | 已录音题数 |
-| parts[].stats.scoredCount | Integer | 已评分题数 |
-| parts[].stats.unansweredCount | Integer | 未录音题数 |
-| parts[].stats.failedCount | Integer | 录音或评分失败题数 |
+| 字段                              | 类型      | 说明                                                                                |
+| ------------------------------- | ------- | --------------------------------------------------------------------------------- |
+| module                          | String  | 模块编码，回显入参                                                                         |
+| paperId                         | Long    | 试卷 ID                                                                             |
+| paperCode                       | String  | 试卷名称                                                                              |
+| parts                           | Array   | 板块列表，元素见下                                                                         |
+| parts[].section                 | Integer | 板块号 1..N                                                                          |
+| parts[].partName                | String  | 部分名（中文）                                                                           |
+| parts[].partNameEn              | String  | 部分名（英文）                                                                           |
+| parts[].partNameVi              | String  | 部分名（越南语）                                                                          |
+| parts[].typeCode                | String  | 题型编码                                                                              |
+| parts[].typeName                | String  | 题型名（中文）                                                                           |
+| parts[].typeNameEn              | String  | 题型名（英文）                                                                           |
+| parts[].typeNameVi              | String  | 题型名（越南语）                                                                          |
+| parts[].questionCount           | Integer | 板块实际题量（现算）                                                                        |
+| parts[].sortOrder               | Integer | 排序号                                                                               |
+| parts[].durationMinutes         | Integer | 板块级建议时长（分钟），仅口语有值                                                                 |
+| parts[].status                  | String  | `not_started` / `in_progress` / `completed`，未登录恒 `not_started`                    |
+| parts[].doneCount               | Integer | 已作答题数（口语 = 已录音题数），未登录为 0                                                          |
+| parts[].correctCount            | Integer | 正确数；只在听力 / 阅读的已提交板块有值，写 / 译 / 说恒 `null`                                           |
+| parts[].wrongCount              | Integer | 错误数，规则同上                                                                          |
+| parts[].draft                   | Object  | 进行中草稿块，无则 `null`；子字段见下                                                            |
+| parts[].draft.id                | Long    | 草稿主键（听 / 读 = `practice_record.id`，写 / 译 / 说 = 主观记录 ID），即 `recordId`，直接拿去 `resume` |
+| parts[].draft.answeredCount     | Integer | 草稿已答题数                                                                            |
+| parts[].draft.currentQuestionId | Long    | 停在哪道题；无则 `null`                                                                   |
+| parts[].report                  | Object  | 最近一次已出报告块，无则 `null`；子字段见下                                                         |
+| parts[].report.id               | Long    | 报告主键（听 / 读恒等于记录 ID）                                                               |
+| parts[].report.hasReport        | Boolean | 是否已有可看报告                                                                          |
+| parts[].report.status           | String  | `READY` / `GRADING` / `FAILED` / `UNAVAILABLE`；听 / 读恒 `READY`                     |
+| parts[].stats                   | Object  | 口语专属计数块，其余模块恒 `null`；子字段见下                                                        |
+| parts[].stats.recordedCount     | Integer | 已录音题数                                                                             |
+| parts[].stats.scoredCount       | Integer | 已评分题数                                                                             |
+| parts[].stats.unansweredCount   | Integer | 未录音题数                                                                             |
+| parts[].stats.failedCount       | Integer | 录音或评分失败题数                                                                         |
 
 **服务端内部执行顺序**
 
