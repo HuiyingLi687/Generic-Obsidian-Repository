@@ -828,35 +828,35 @@ Content-Type: application/json
 
 **返回字段说明**
 
-| 字段                  | 类型         | 改动标记  | 说明                                  |
-| ------------------- | ---------- | ----- | ----------------------------------- |
-| questionId          | Long       | 【修改】  | 题目 ID                               |
-| number              | Integer    | 【修改】  | 题号；                                 |
-| layout              | String     | 【无变更】 | 布局编码；                               |
-| typeId              | String     | 【新增】  | 原始题型 ID；                            |
-| typeIdMapping       | String     | 【新增】  | 题型映射编码；                             |
-| content             | String     | 【新增】  | 题干；听力等于 `passage`                   |
-| passage             | String     | 【无变更】 | 文章 / 材料正文                           |
-| optionContent       | Object     | 【修改】  | 扁平 `{"A":"文本"}`                     |
-| audioUrl            | String     | 【修改】  | 题目音频地址；                             |
-| shareAudioUrl       | String     | 【修改】  | 共享材料音频地址；阅读恒 null                   |
-| groupId             | Long       | 【新增】  | 题组 ID；听力恒 null                      |
-| group               | Object     | 【新增】  | 题组共享内容；听力恒 null                     |
-| group.groupId       | Long       | 【新增】  | 题组 ID                               |
-| group.title1Number  | Integer    | 【新增】  | 一级标题序号                              |
-| group.title1Text    | String     | 【新增】  | 一级标题文本                              |
-| group.section       | String     | 【新增】  | 题组所属板块号                             |
-| group.startNumber   | Integer    | 【新增】  | 题组起始题号                              |
-| group.endNumber     | Integer    | 【新增】  | 题组结束题号                              |
-| group.passage       | String     | 【新增】  | 题组共用文章 / 材料                         |
-| group.audioUrl      | String     | 【新增】  | 题组音频地址                              |
-| group.optionContent | Object     | 【新增】  | 题组共用选项，扁平结构                         |
-| answered            | Boolean    | 【无变更】 | 是否已作答                               |
-| userAnswer          | String     | 【无变更】 | 用户答案；未作答为 null                      |
-| isCorrect           | Boolean    | 【无变更】 | 是否正确（未作答 false）                     |
-| standardAnswer      | String     | 【无变更】 | 正确答案；                               |
-| points              | BigDecimal | 【新增】  | 本题得分；听力恒 null                       |
-| analysis            | String     | 【无变更】 | 解析；无解析时阅读回「未录入解析内容」，听力回 null        |
+| 字段                  | 类型         | 改动标记  | 说明                |
+| ------------------- | ---------- | ----- | ----------------- |
+| questionId          | Long       | 【修改】  | 题目 ID             |
+| number              | Integer    | 【修改】  | 题号；               |
+| layout              | String     | 【无变更】 | 布局编码；             |
+| typeId              | String     | 【新增】  | 原始题型 ID；          |
+| typeIdMapping       | String     | 【新增】  | 题型映射编码；           |
+| content             | String     | 【新增】  | 题干；听力等于 `passage` |
+| passage             | String     | 【无变更】 | 文章 / 材料正文         |
+| optionContent       | Object     | 【修改】  | 扁平 `{"A":"文本"}`   |
+| audioUrl            | String     | 【修改】  | 题目音频地址；           |
+| shareAudioUrl       | String     | 【修改】  | 共享材料音频地址；阅读恒 null |
+| groupId             | Long       | 【新增】  | 题组 ID；听力恒 null    |
+| group               | Object     | 【新增】  | 题组共享内容；听力恒 null   |
+| group.groupId       | Long       | 【新增】  | 题组 ID             |
+| group.title1Number  | Integer    | 【新增】  | 一级标题序号            |
+| group.title1Text    | String     | 【新增】  | 一级标题文本            |
+| group.section       | String     | 【新增】  | 题组所属板块号           |
+| group.startNumber   | Integer    | 【新增】  | 题组起始题号            |
+| group.endNumber     | Integer    | 【新增】  | 题组结束题号            |
+| group.passage       | String     | 【新增】  | 题组共用文章 / 材料       |
+| group.audioUrl      | String     | 【新增】  | 题组音频地址            |
+| group.optionContent | Object     | 【新增】  | 题组共用选项，扁平结构       |
+| answered            | Boolean    | 【无变更】 | 是否已作答             |
+| userAnswer          | String     | 【无变更】 | 用户答案；未作答为 null    |
+| isCorrect           | Boolean    | 【无变更】 | 是否正确（未作答 false）   |
+| standardAnswer      | String     | 【无变更】 | 正确答案；             |
+| points              | BigDecimal | 【新增】  | 本题得分；             |
+| analysis            | String     | 【无变更】 | 解析；               |
 
 **本接口抛出错误码**：8102 / 8105 / 8133 / 8177 / 8181
 
@@ -866,7 +866,7 @@ Content-Type: application/json
 
 **用途**：报告生成失败后重试
 **鉴权**：需要登录
-**前置条件**：`reportStatus = FAILED` 且 `retryable = true`，否则 `8106`
+**前置条件**：`practice_record.status = 3` ，`practice_record.idempotency_key NOT NULL`否则 `8106`
 
 **返回字段说明**
 
