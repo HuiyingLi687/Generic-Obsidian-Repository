@@ -220,7 +220,7 @@ Content-Type: application/json
 
 1. 按 `module` 解析模块，缺失或取值不合法即 `8133`
 2. `SELECT ... FOR UPDATE` 查未提交记录，`(userId, paperId, sectionMapping, section)` 定位，仅 `status IN (0,1)`
-3. 有未提交记录 → 直接返回该记录（**听力额外校验卷内容与板块配置是否下架**，回 `8141` / `8142`；阅读不校验）；已提交的记录不在查询范围内，继续往下新建一次练习
+3. 有未提交记录 → 直接返回该记录（不校验）；已提交的记录不在查询范围内，继续往下新建一次练习
 4. 校验试卷可用性 —— **两模块口径不同，本次未统一**：
    - 听力：卷存在且未删除（`8107`）
    - 阅读：`exam_paper.enabled_prac = 1` 且 `SharedPaperEligibility` 通过（`8166`）
