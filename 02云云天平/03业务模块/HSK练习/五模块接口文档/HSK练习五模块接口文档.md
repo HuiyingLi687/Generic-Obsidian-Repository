@@ -924,10 +924,10 @@ GET /listening/records/{recordId}/answer-card?currentQuestionNumber=5
 
 🔴 **选项结构比听力多一层 `options`**：
 
-| 模块 | 字段 | 形态 |
-|---|---|---|
-| 听力 | `option_content` | `{"A":"文本","B":"文本"}` 扁平 |
-| 阅读 | `optionContent.options` | `{"options":{"A":"文本"}}` 多一层 |
+| 模块  | 字段                      | 形态                           |
+| --- | ----------------------- | ---------------------------- |
+| 听力  | `option_content`        | `{"A":"文本","B":"文本"}` 扁平     |
+| 阅读  | `optionContent.options` | `{"options":{"A":"文本"}}` 多一层 |
 
 这是两套 DTO 的历史差异（听力用 `Map<String,String>`，阅读用 `PracticeOptionContent`），**不能共用同一段渲染逻辑**。
 
