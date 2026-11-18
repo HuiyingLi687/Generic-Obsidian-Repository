@@ -1196,28 +1196,27 @@ Content-Type: application/json
 
 **返回字段说明**（记录响应，恢复后 `paused = false`、`pausedAt = null`、`durationSeconds` 不变）
 
-| 字段                    | 类型         | 说明                                           |
-| --------------------- | ---------- | -------------------------------------------- |
-| recordId              | Long       | 练习记录 ID                                      |
-| paperId               | Long       | 试卷 ID                                        |
-| sectionMapping        | String     | 板块域                                          |
-| section               | String     | 板块号                                          |
-| levelCode             | String     | HSK 等级码                                      |
-| status                | tinyint    | 0进行中，1已完成，2已废弃                               |
-| reportStatus          | String     | `NOT_READY` / `GRADING` / `READY` / `FAILED` |
-| totalQuestions        | Integer    | 本次练习总题数                                      |
-| answeredCount         | Integer    | 已作答题目数                                       |
-| currentQuestionId     | Long       | 当前停留题目 ID                                    |
-| currentQuestionNumber | Integer    | 当前停留题序                                       |
-| durationSeconds       | Integer    | 累计在场秒数，本次调用不增加                               |
-| paused                | Boolean    | 本次调用后为 `false`                               |
-| pausedAt              | Long       | 恒 null                                       |
-| objectiveCount        | Integer    | 客观题数                                         |
-| objectiveCorrectCount | Integer    | 客观题答对数                                       |
-| aiQuestionCount       | Integer    | 需 AI 评分的题数                                   |
-| aiScoredCount         | Integer    | AI 已评出分的题数                                   |
-| finalScore            | BigDecimal | 当前已得总分                                       |
-| totalScore            | BigDecimal | 本卷满分                                         |
+| 字段                    | 类型         | 说明             |
+| --------------------- | ---------- | -------------- |
+| recordId              | Long       | 练习记录 ID        |
+| paperId               | Long       | 试卷 ID          |
+| sectionMapping        | String     | 板块域            |
+| section               | String     | 板块号            |
+| levelCode             | String     | HSK 等级码        |
+| status                | tinyint    | 0进行中，1已完成，2已废弃 |
+| totalQuestions        | Integer    | 本次练习总题数        |
+| answeredCount         | Integer    | 已作答题目数         |
+| currentQuestionId     | Long       | 当前停留题目 ID      |
+| currentQuestionNumber | Integer    | 当前停留题序         |
+| durationSeconds       | Integer    | 累计在场秒数，本次调用不增加 |
+| paused                | Boolean    | 本次调用后为 `false` |
+| pausedAt              | Long       | 恒 null         |
+| objectiveCount        | Integer    | 客观题数           |
+| objectiveCorrectCount | Integer    | 客观题答对数         |
+| aiQuestionCount       | Integer    | 需 AI 评分的题数     |
+| aiScoredCount         | Integer    | AI 已评出分的题数     |
+| finalScore            | BigDecimal | 当前已得总分         |
+| totalScore            | BigDecimal | 本卷满分           |
 
 **服务端内部执行顺序**
 
