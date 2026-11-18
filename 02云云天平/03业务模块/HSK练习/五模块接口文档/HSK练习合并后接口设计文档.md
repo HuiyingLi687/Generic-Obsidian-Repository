@@ -948,7 +948,7 @@ Controller（2 族 6 个类）
 | `listening/controller/*.java`（3 个） | 【删除】由客观族控制器接管 |
 | `reading/controller/*.java`（3 个） | 【删除】同上 |
 | `subjective/controller/{Writing,Translation,Speaking}PracticeController.java` | 【删除】由主观族控制器接管 |
-| `hsk/answer/enums/AnswerCardModule.java` | `SPEAKING` 板块域改 `SEC_SPEAKING`，新增 `fromCodeOrNull` |
+| `hsk/answer/enums/AnswerCardModule.java` | `SPEAKING` 板块域改 `SEC_SPEAKING`，新增 `fromCodeOrNull`，`pathSegment` 字段更名 `code` |
 | `hsk/answer/controller/AnswerCardController.java` | 【修改】删除五条按模块的旧路径，只保留两条合并路径 |
 | `hsk/answer/service/impl/AnswerCardServiceImpl.java` | 注释订正（`SEC_SPEAKING` 为官方值） |
 | `listening/dto/ListeningRecordResponse.java`、`reading/dto/ReadingRecordResponse.java` | 新增 `version` 字段 |
