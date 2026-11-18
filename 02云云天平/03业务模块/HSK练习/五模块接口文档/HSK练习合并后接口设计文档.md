@@ -525,8 +525,8 @@ Content-Type: application/json
 **服务端内部执行顺序**
 
 1. 解析模块，校验归属与 `status=1`
-2. 听力：按 `question_ids` 顺序回 `question` 表取题，按 layout 匹配 `question_shared_audio` 得 `shareAudioUrl` + `variant`
-3. 阅读：直接读 `practice_answer` 冻结快照（`questionSnapshot` / `groupSnapshot` / `optionSnapshot`），不查 `question` 表
+2. 听力：按 `question_ids` 顺序回 `question` 表取题，按 `question_id` 取 `question_shared_audio` 得 `shareAudioUrl` 
+3. 阅读：按 `question_ids` 顺序回 `question` 表取题
 4. 回填答案与 `answered`
 5. 统一转成客观族题目结构
 
