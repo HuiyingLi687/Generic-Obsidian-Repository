@@ -63,7 +63,7 @@ Accept-Language: zh
 %}
 
 
-### 02 U1 等级概览 + 卷列表 → 取第一张卷的 paperId
+### 02 U1 等级概览 + 卷列表 → 取第一张卷的 paperId（免登录；带头才返回用户进度）
 GET {{practice}}/hsk/levels?module={{module}}&version={{version}}&level={{level}}
 X-Client-Type: APP
 Authorization: Bearer {{token}}
@@ -83,7 +83,7 @@ Accept-Language: zh
 %}
 
 
-### 03 U2 等级备考说明（展示用，无进度）
+### 03 U2 等级备考说明（展示用，无进度；免登录）
 GET {{practice}}/hsk/levels/{{level}}/intro?module={{module}}&version={{version}}
 X-Client-Type: APP
 Authorization: Bearer {{token}}
@@ -99,7 +99,7 @@ Accept-Language: zh
 %}
 
 
-### 04 U3 卷内板块 + 进度 → 取第一个板块的 section
+### 04 U3 卷内板块 + 进度 → 取第一个板块的 section（免登录；带头才有 status/draft）
 GET {{practice}}/hsk/papers/{{paperId}}/parts?module={{module}}&version={{version}}
 X-Client-Type: APP
 Authorization: Bearer {{token}}
