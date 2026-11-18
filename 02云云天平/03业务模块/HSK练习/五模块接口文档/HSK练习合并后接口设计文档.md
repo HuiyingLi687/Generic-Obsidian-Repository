@@ -26,7 +26,7 @@
 | 6 | 答案字段 | 客观族统一 `answer`（原听力叫 `selectedOptionId`），值为选项编码 A/B/C/D/E/F |
 | 7 | 乐观锁 | `baseVersion` 统一**必传**，取自记录响应的 `version`；听读两个模块都强校验，不一致回 `8104` |
 | 8 | 报告结构 | 交卷、查报告、重试返回**同一结构**：顶部摘要 + 题号矩阵 `rows`。`items` 不再下发，逐题明细走逐题回顾端点 |
-| 9 | 报告状态 | 客观族不再返回 `reportStatus` / `retryable`：报告能不能看只取决于 `status = SUBMITTED` 与 `rows` 是否有值；重试前置条件是 `status = SUBMITTED` 且 `idempotency_key` 非空，否则 `8106` |
+| 9 | 报告状态 | 客观族不再返回 `reportStatus` / `retryable`：报告能不能看只取决于 `status = COMPLETED` 与 `rows` 是否有值；重试前置条件是 `status = COMPLETED` 且 `idempotency_key` 非空，否则 `8106` |
 | 10 | 口语板块域 | `AnswerCardModule.SPEAKING` 的 `sectionMapping` 由拼写错误的历史值 `SEC_SPEAK` 改为 `SEC_SPEAKING`，校验时仍兼容旧值 |
 | 11 | 内部实现 | 客观族保留两套 service（听力回 `question` 表、阅读读 `answer` 快照），门面层只做分派与 DTO 转换 |
 | 12 | 开练语义 | `start` 只负责开新的练习：有未提交记录直接返回该记录，已提交后再调用则新建一次练习。不提供重开接口，未提交的继续练习走 `resume` |
@@ -78,11 +78,18 @@
 | `SubjectiveModule` | `writing` / `translation` / `speaking` | 【无变更】主观族模块码，直接作为 `module` 参数取值 |
 | `AnswerCardModule.SPEAKING.sectionMapping` | `SEC_SPEAKING`【修改】 | 原值 `SEC_SPEAK`（拼写错误）；校验时仍接受旧值 |
 | `AiUnlockState`【新增】 | `LOCKED(0)` / `UNLOCKED(1)` / `OWED(2)` / `NOT_REQUIRED(3)` | 主观题 AI 解析的解锁状态，对应 `ai_deduct_state` |
-| `PracticeRecordStatus`【修改】 | `CREATED(0)` / `IN_PROGRESS(1)` / `ABANDONED(2)` / `SUBMITTED(3)` | 客观练习记录状态，落 `practice_record.status`。**库里仍存数字，响应改为返回枚举名** |
-| `SubjectiveRecordStatus`【修改】 | `IN_PROGRESS(0)` / `COMPLETED(1)` / `DISCARDED(2)` | 主观练习记录状态，落 `practice_subjective_record.status`。**库里仍存数字，响应改为返回枚举名** |
-| `PracticeCatalogStatus`【修改】 | `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED` | 目录与板块进度状态，`papers[].status` / `parts[].status` 取值。库里没有对应列，按草稿与报告现算 |
+| 练习状态【修改】 | `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED` / `ABANDONED` | 客观记录、主观记录、目录与板块进度**共用这一套状态名**。库里存数字，出参一律返回枚举名 |
 
-> 三组状态统一用大写枚举名出参：`PracticeRecordStatus`、`SubjectiveRecordStatus` 落库存数字，只在响应里换成枚举名；`PracticeCatalogStatus` 库里没有列，按草稿与报告现算。服务端内部判库仍按数字比较。
+**同一套状态名在三处的码值**
+
+| 状态 | 客观记录 `practice_record.status` | 主观记录 `practice_subjective_record.status` | 目录 / 板块进度 `papers[].status`、`parts[].status` |
+|---|---|---|---|
+| `NOT_STARTED` | `0` | 无此态（建记录即进行中） | 无草稿、无报告 |
+| `IN_PROGRESS` | `1` | `0` | 有草稿、无报告 |
+| `COMPLETED` | `3` | `1` | 有报告 |
+| `ABANDONED` | `2` | `2` | 不出现 |
+
+> 三处的码值不同，状态名相同：服务端判库仍按数字比较，只在拼装响应时换成枚举名。目录与板块进度没有落库列，按草稿与报告现算。
 
 ## 3. 接口总览清单
 
@@ -104,7 +111,7 @@
 | 8 | POST | `{客观前缀}/{recordId}/submit` | 交卷 | 改造 | 返回摘要 + 题号矩阵 `rows`，`items` 不再下发 → §4.2.8 |
 | 9 | GET | `{客观前缀}/{recordId}/report` | 报告详情 | 改造 | 与交卷同一结构：摘要 + `rows` → §4.2.9 |
 | 10 | GET | `{客观前缀}/{recordId}/report/questions/{questionId}` | 逐题回顾 | 改造 | 统一为「题目结构 + 判分字段」→ §4.2.10 |
-| 11 | POST | `{客观前缀}/{recordId}/report/retry` | 报告重试 | 改造 | 前置 `status = SUBMITTED` 且幂等键非空（否则 `8106`）；返回摘要 + `rows` → §4.2.11 |
+| 11 | POST | `{客观前缀}/{recordId}/report/retry` | 报告重试 | 改造 | 前置 `status = COMPLETED` 且幂等键非空（否则 `8106`）；返回摘要 + `rows` → §4.2.11 |
 | 12 | GET | `{客观前缀}/{recordId}/answer-card` | 答题卡 | 改造 | 五模块同一响应，模块由 `module` 必传指定 → §4.2.12 |
 
 > 答题卡的旧路径（`/listening/records/{id}/answer-card` 等五条）与其余旧路径一并下线。
@@ -224,7 +231,7 @@ Content-Type: application/json
 | paperId               | Long    | 【无变更】 | 试卷 ID                           |
 | section               | String  | 【无变更】 | 板块号                             |
 | module                | String  | 【新增】  | `listening` / `reading`         |
-| status                | String  | 【修改】  | 记录状态枚举 `CREATED` 已创建 / `IN_PROGRESS` 进行中 / `ABANDONED` 已放弃 / `SUBMITTED` 已提交；库中存 0/1/2/3 |
+| status                | String  | 【修改】  | 状态枚举 `NOT_STARTED` 未开始 / `IN_PROGRESS` 进行中 / `ABANDONED` 已放弃 / `COMPLETED` 已完成；库中存 0/1/2/3 |
 | version               | Integer | 【新增】  | 乐观锁版本号，回传给 `baseVersion`        |
 | currentQuestionId     | Long    | 【无变更】 | 当前停留题目 ID；刚开练为 null             |
 | currentQuestionNumber | Integer | 【无变更】 | 当前停留题号；刚开练为 null                |
@@ -243,7 +250,7 @@ Content-Type: application/json
 **服务端内部执行顺序（重要，后端&测试阅读）**
 
 1. 按 `module` 解析模块，缺失或取值不合法即 `8133`
-2. `SELECT ... FOR UPDATE` 查未提交记录，`(userId, paperId, sectionMapping, section)` 定位，仅 `status IN (0, 1)`（`CREATED` / `IN_PROGRESS`）
+2. `SELECT ... FOR UPDATE` 查未提交记录，`(userId, paperId, sectionMapping, section)` 定位，仅 `status IN (0, 1)`（`NOT_STARTED` / `IN_PROGRESS`）
 3. 有未提交记录 → 直接返回该记录（不校验）；已提交的记录不在查询范围内，继续往下新建一次练习
 4. 校验试卷可用性 `exam_paper.enabled_prac = 1` 
 5. 取题、按题号排序、**冻结 `question_ids`**
@@ -251,7 +258,7 @@ Content-Type: application/json
    - 占位行带题目 / 题组 / 选项 / 标准答案 / 解析全量快照
 7. 返回记录
 
-> 约束：同一 `(userId, paperId, sectionMapping, section)` 至多一条 `status IN (0, 1)`（`CREATED` / `IN_PROGRESS`）的记录。
+> 约束：同一 `(userId, paperId, sectionMapping, section)` 至多一条 `status IN (0, 1)`（`NOT_STARTED` / `IN_PROGRESS`）的记录。
 
 **本接口抛出错误码**：8107 / 8133 / 8141 / 8142 / 8166 / 8167 / 8168
 
@@ -308,7 +315,7 @@ Content-Type: application/json
 | paperId | Long | 试卷 ID |
 | section | String | 板块号 |
 | module | String | `listening` / `reading` |
-| status | String | 枚举 `CREATED` / `IN_PROGRESS` / `ABANDONED` / `SUBMITTED`（库中存 0/1/2/3） |
+| status | String | 枚举 `NOT_STARTED` / `IN_PROGRESS` / `ABANDONED` / `COMPLETED`（库中存 0/1/2/3） |
 | version | Integer | 乐观锁版本号，回传给 `baseVersion` |
 | currentQuestionId | Long | 当前停留题目 ID；未开始为 null |
 | currentQuestionNumber | Integer | 当前停留题号；未开始为 null |
@@ -363,7 +370,7 @@ Content-Type: application/json
 | paperId               | Long    | 试卷 ID                    |
 | section               | String  | 板块号                      |
 | module                | String  | `listening` / `reading`  |
-| status                | String  | 枚举 `CREATED` / `IN_PROGRESS` / `ABANDONED` / `SUBMITTED`（库中存 0/1/2/3）  |
+| status                | String  | 枚举 `NOT_STARTED` / `IN_PROGRESS` / `ABANDONED` / `COMPLETED`（库中存 0/1/2/3）  |
 | version               | Integer | 乐观锁版本号，回传给 `baseVersion` |
 | currentQuestionId     | Long    | 当前停留题目 ID；请求体未带则保持原值     |
 | currentQuestionNumber | Integer | 当前停留题号                   |
@@ -413,7 +420,7 @@ Content-Type: application/json
 | paperId | Long | 试卷 ID |
 | section | String | 板块号 |
 | module | String | `listening` / `reading` |
-| status | String | 枚举 `CREATED` / `IN_PROGRESS` / `ABANDONED` / `SUBMITTED`（库中存 0/1/2/3） |
+| status | String | 枚举 `NOT_STARTED` / `IN_PROGRESS` / `ABANDONED` / `COMPLETED`（库中存 0/1/2/3） |
 | version | Integer | 乐观锁版本号，回传给 `baseVersion` |
 | currentQuestionId | Long | 当前停留题目 ID |
 | currentQuestionNumber | Integer | 当前停留题号 |
@@ -652,7 +659,7 @@ Content-Type: application/json
 | paperId | Long | 试卷 ID |
 | section | String | 板块号 |
 | module | String | `listening` / `reading` |
-| status | String | 枚举 `CREATED` / `IN_PROGRESS` / `ABANDONED` / `SUBMITTED`（库中存 0/1/2/3） |
+| status | String | 枚举 `NOT_STARTED` / `IN_PROGRESS` / `ABANDONED` / `COMPLETED`（库中存 0/1/2/3） |
 | version | Integer | 本次写入后的记录版本号，回传给 `baseVersion` |
 | currentQuestionId | Long | 当前停留题目 ID；请求体未带则保持原值 |
 | currentQuestionNumber | Integer | 当前停留题号 |
@@ -712,7 +719,7 @@ Content-Type: application/json
     "module": "listening",
     "sectionMapping": "SEC_LISTEN",
     "section": "1",
-    "status": "SUBMITTED",
+    "status": "COMPLETED",
     "totalQuestions": 20,
     "answeredCount": 20,
     "correctCount": 17,
@@ -733,7 +740,7 @@ Content-Type: application/json
 | module          | String     | 【新增】  | `listening` / `reading`      |
 | sectionMapping  | String     | 【新增】  | `SEC_LISTEN` / `SEC_READ`    |
 | section         | String     | 【新增】  | 板块号                          |
-| status          | String     | 【修改】  | 恒 `SUBMITTED`；记录状态枚举               |
+| status          | String     | 【修改】  | 恒 `COMPLETED`；状态枚举                  |
 | totalQuestions  | Integer    | 【修改】  | 题目总数；                        |
 | answeredCount   | Integer    | 【无变更】 | 已答题数                         |
 | correctCount    | Integer    | 【无变更】 | 答对数                          |
@@ -775,7 +782,7 @@ Content-Type: application/json
 | module                   | String     | `listening` / `reading`               |
 | sectionMapping           | String     | `SEC_LISTEN` / `SEC_READ`             |
 | section                  | String     | 板块号                                   |
-| status                   | String     | 记录状态枚举，报告场景恒 `SUBMITTED`             |
+| status                   | String     | 状态枚举，报告场景恒 `COMPLETED`               |
 | totalQuestions           | Integer    | 题目总数                                  |
 | answeredCount            | Integer    | 已答题数                                  |
 | correctCount             | Integer    | 答对数                                   |
@@ -792,7 +799,7 @@ Content-Type: application/json
 
 **服务端内部执行顺序**
 
-1. 解析模块，校验归属与 `status = SUBMITTED`（未交卷回 `8105` / `8179`）
+1. 解析模块，校验归属与 `status = COMPLETED`（未交卷回 `8105` / `8179`）
 2. 读 `practice_record` 行作为统计来源（**报告即记录本身**）
 3. 按 `practice_answer` 快照组装矩阵；未就绪时 `rows` 为空、统计为 0
 4. 统一填 `module`  / `rows` 
@@ -875,7 +882,7 @@ Content-Type: application/json
 
 **用途**：报告生成失败后重试
 **鉴权**：需要登录
-**前置条件**：`practice_record.status = 3`（`SUBMITTED`），`practice_record.idempotency_key NOT NULL`否则 `8106`
+**前置条件**：`practice_record.status = 3`（`COMPLETED`），`practice_record.idempotency_key NOT NULL`否则 `8106`
 
 **返回字段说明**
 
@@ -886,7 +893,7 @@ Content-Type: application/json
 | module                   | String     | `listening` / `reading`               |
 | sectionMapping           | String     | `SEC_LISTEN` / `SEC_READ`             |
 | section                  | String     | 板块号                                   |
-| status                   | String     | 记录状态枚举，报告场景恒 `SUBMITTED`             |
+| status                   | String     | 状态枚举，报告场景恒 `COMPLETED`               |
 | totalQuestions           | Integer    | 题目总数                                  |
 | answeredCount            | Integer    | 已答题数                                  |
 | correctCount             | Integer    | 答对数                                   |
@@ -1025,7 +1032,7 @@ Content-Type: application/json
 | sectionMapping        | String     | 板块域，库里原值                                 |
 | section               | String     | 板块号                                      |
 | levelCode             | String     | HSK 等级码                                  |
-| status                | String     | 枚举 `IN_PROGRESS` 进行中 / `COMPLETED` 已完成 / `DISCARDED` 已废弃；库中存 0/1/2                           |
+| status                | String     | 枚举 `IN_PROGRESS` 进行中 / `COMPLETED` 已完成 / `ABANDONED` 已放弃；库中存 0/1/2                           |
 | totalQuestions        | Integer    | 本次练习总题数（开练时冻结）                           |
 | answeredCount         | Integer    | 已作答题目数                                   |
 | currentQuestionId     | Long       | 当前停留题目 ID                                |
@@ -1081,7 +1088,7 @@ Content-Type: application/json
 | sectionMapping        | String     | 板块域，库里原值                                 |
 | section               | String     | 板块号                                      |
 | levelCode             | String     | HSK 等级码                                  |
-| status                | String     | 枚举 `IN_PROGRESS` 进行中 / `COMPLETED` 已完成 / `DISCARDED` 已废弃；库中存 0/1/2                           |
+| status                | String     | 枚举 `IN_PROGRESS` 进行中 / `COMPLETED` 已完成 / `ABANDONED` 已放弃；库中存 0/1/2                           |
 | totalQuestions        | Integer    | 本次练习总题数（开练时冻结）                           |
 | answeredCount         | Integer    | 已作答题目数                                   |
 | currentQuestionId     | Long       | 当前停留题目 ID；未开始为 null                      |
@@ -1145,7 +1152,7 @@ Content-Type: application/json
 | sectionMapping        | String     | 板块域                   |
 | section               | String     | 板块号                   |
 | levelCode             | String     | HSK 等级码               |
-| status                | String     | 枚举 `IN_PROGRESS` 进行中 / `COMPLETED` 已完成 / `DISCARDED` 已废弃；库中存 0/1/2        |
+| status                | String     | 枚举 `IN_PROGRESS` 进行中 / `COMPLETED` 已完成 / `ABANDONED` 已放弃；库中存 0/1/2        |
 | totalQuestions        | Integer    | 本次练习总题数               |
 | answeredCount         | Integer    | 已作答题目数                |
 | currentQuestionId     | Long       | 当前停留题目 ID；请求体未带则保持原值  |
@@ -1198,7 +1205,7 @@ Content-Type: application/json
 | sectionMapping        | String     | 板块域            |
 | section               | String     | 板块号            |
 | levelCode             | String     | HSK 等级码        |
-| status                | String     | 枚举 `IN_PROGRESS` 进行中 / `COMPLETED` 已完成 / `DISCARDED` 已废弃；库中存 0/1/2 |
+| status                | String     | 枚举 `IN_PROGRESS` 进行中 / `COMPLETED` 已完成 / `ABANDONED` 已放弃；库中存 0/1/2 |
 | totalQuestions        | Integer    | 本次练习总题数        |
 | answeredCount         | Integer    | 已作答题目数         |
 | currentQuestionId     | Long       | 当前停留题目 ID      |
@@ -1480,7 +1487,7 @@ Content-Type: application/json
 | recordId              | Long          | 练习记录 ID                |
 | paperId               | Long          | 试卷 ID                  |
 | module                | String        | 模块码                    |
-| status                | String        | 枚举 `IN_PROGRESS` 进行中 / `COMPLETED` 已完成 / `DISCARDED` 已废弃；库中存 0/1/2         |
+| status                | String        | 枚举 `IN_PROGRESS` 进行中 / `COMPLETED` 已完成 / `ABANDONED` 已放弃；库中存 0/1/2         |
 | totalQuestions        | Integer       | 总题数                    |
 | answeredCount         | Integer       | 已作答题目数                 |
 | objectiveCount        | Integer       | 客观题数                   |
@@ -1537,7 +1544,7 @@ Content-Type: application/json
 | module                        | String     | 【新增】  | 模块码                    |
 | sectionMapping                | String     | 【无变更】 | 板块域                    |
 | section                       | String     | 【无变更】 | 板块号                    |
-| status                        | String     | 【修改】  | 枚举 `IN_PROGRESS` / `COMPLETED` / `DISCARDED`；库中存 0/1/2         |
+| status                        | String     | 【修改】  | 枚举 `IN_PROGRESS` / `COMPLETED` / `ABANDONED`；库中存 0/1/2         |
 | totalQuestions                | Integer    | 【无变更】 | 总题数                    |
 | answeredCount                 | Integer    | 【无变更】 | 已作答题目数                 |
 | objectiveCount                | Integer    | 【无变更】 | 客观题数                   |
@@ -1649,7 +1656,7 @@ Content-Type: application/json
 | sectionMapping        | String     | 板块域                               |
 | section               | String     | 板块号                               |
 | levelCode             | String     | HSK 等级码                           |
-| status                | String     | 枚举 `IN_PROGRESS` 进行中 / `COMPLETED` 已完成 / `DISCARDED` 已废弃；库中存 0/1/2                    |
+| status                | String     | 枚举 `IN_PROGRESS` 进行中 / `COMPLETED` 已完成 / `ABANDONED` 已放弃；库中存 0/1/2                    |
 | totalQuestions        | Integer    | 本次练习总题数                           |
 | answeredCount         | Integer    | 已作答题目数                            |
 | currentQuestionId     | Long       | 当前停留题目 ID                         |
@@ -2010,7 +2017,7 @@ Content-Type: application/json
         "questionCount": 10,
         "sortOrder": 1,
         "durationMinutes": 5,
-        "status": "in_progress",
+        "status": "IN_PROGRESS",
         "doneCount": 4,
         "correctCount": null,
         "wrongCount": null,
@@ -2237,7 +2244,7 @@ Content-Type: application/json
 3. **阅读选项结构简化**：`optionContent` 从 `{"options":{"A":"…"}}` 变成 `{"A":"…"}`，取选项少拆一层。
 4. **`baseVersion` 必传且两个模块都校验**：取自记录响应的 `version`。听读任一模块传旧版本都回 `8104`，前端应就地刷新记录后重发，不要静默吞掉。
 5. **报告页只写一套**：交卷、查报告、报告重试返回同一结构 = 顶部摘要 + 题号矩阵 `rows`。`items` 已不再下发，单题明细与解析走逐题回顾端点，不要按旧字段取值。
-6. **客观报告不再有 `reportStatus` / `retryable`**：报告能不能看只取决于 `status = SUBMITTED` 与 `rows` 是否有值；重试按钮的前置条件与后端一致（未交卷不给重试），重试后重新拉一次报告即可。
+6. **客观报告不再有 `reportStatus` / `retryable`**：报告能不能看只取决于 `status = COMPLETED` 与 `rows` 是否有值；重试按钮的前置条件与后端一致（未交卷不给重试），重试后重新拉一次报告即可。
 7. **答题卡只表态不判对错**：`questions[]` 只有 `order` / `questionId` / `answered` / `current`，当前题用响应里的 `currentQuestionNumber`，也可用 query 传入覆盖。
 8. **口语板块域**：新数据用 `SEC_SPEAKING`；若前端有硬编码 `SEC_SPEAK` 的分支，本次要一并改（服务端两种都接受）。
 9. **主观题报告多了一个解锁步骤**：报告与单题反馈新增 `aiUnlocked`，为 `false` 时解析需要用户主动解锁。后端不再替你遮挡内容，`analysis` 字段有值但**不应直接渲染**，必须先判 `aiUnlocked`，否则付费墙形同虚设。
@@ -2274,9 +2281,9 @@ Controller（2 族 6 个类 + 4 个跨族只读类）
 | 单题 / 批量保存（客观） | `@Transactional` | 锁记录 → 锁答案行 → 写答案 → 重算 `answeredCount`，同一事务 |
 | 单题 / 批量保存（主观） | `@Transactional` | 行锁记录 → 逐条 upsert 作答 → 按模块落列（口语 `answer`，写作与翻译 `answerText`）→ 重算 `answeredCount` 与进度 |
 | 暂停 / 恢复（两族） | `@Transactional` | 时长结算与位置更新同事务；`resume` 清 `paused_time` 必须走显式 UPDATE 并同时写 `resumed_time` |
-| 交卷（客观） | `@Transactional` | 落 `finalAnswers` → 比对标准答案判分 → 写对错与 `points` → 汇总统计 → 置 `status = 3`（`SUBMITTED`）、`end_time`、结算在场时长，同一事务；幂等命中直接返回 |
+| 交卷（客观） | `@Transactional` | 落 `finalAnswers` → 比对标准答案判分 → 写对错与 `points` → 汇总统计 → 置 `status = 3`（`COMPLETED`）、`end_time`、结算在场时长，同一事务；幂等命中直接返回 |
 | 交卷（主观） | `@Transactional` | 落 finalAnswers → 冻结快照 → 客观题即判、主观题置待评 → 写统计与 `idempotency_key` → `afterCommit` 投递 AI。**报告状态不落库**（表里没有该列），读时按逐题 `grading_state` 现算 |
-| 报告重试（客观） | `@Transactional` | 前置 `status = 3`（`SUBMITTED`）且 `idempotency_key` 非空（否则 `8106`）→ 按冻结快照重算统计与矩阵；不改记录状态 |
+| 报告重试（客观） | `@Transactional` | 前置 `status = 3`（`COMPLETED`）且 `idempotency_key` 非空（否则 `8106`）→ 按冻结快照重算统计与矩阵；不改记录状态 |
 | 判分重试（主观） | `@Transactional` | 一条 SQL 重置入选行的 `grading_state` 与退避字段 → `grading_attempts + 1` → `afterCommit` 重新投递；不改报告状态（现算） |
 | 解锁（主观） | `@Transactional` | 行锁查记录 → 校验已交卷与归属 → 三级扣减（远程，不参与本地事务）→ 写 `ai_deduct_state=1` + `deduct_type` + `ai_deduct_time`。先扣后写，扣失败抛 8118 回滚，行锁串行化并发请求 |
 | 详情 / 拉题 / 报告读取（两族） | 无事务 | 只读、不加锁；`aiUnlocked` 在读时按 `ai_deduct_state` 现算 |
