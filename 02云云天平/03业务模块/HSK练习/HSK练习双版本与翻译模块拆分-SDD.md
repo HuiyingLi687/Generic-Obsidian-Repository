@@ -394,7 +394,7 @@ WHERE paper_id = ? AND deleted = 0 AND enabled_prac = 1 AND number > 0
 - 前导 4 类（`opening_music` / `confirm_name` / `confirm_nationality` / `number_confirmation`，`section='0'`，`number` 为 `-4..-1`）被 `section = ?`（1/2/3）天然排除；
 - 夹在板块内的 `instructions`（1/2/3 部分各 37/37/19 行）与 `outline`（25/19 行）**`number` 恒为 0**（TEST 实测），本来就已被 `number > 0` 排掉，所以最后一行只是**零成本保险**，不是必须；它的清单固定为这两个词，**不是业务题型白名单**，新题型不受影响。
 
-同理，`PartCodeCase`（`PART_1/2/3` 硬编码映射）整段可以删掉。
+同理，`PartCodeCase`（`PART_1/2/3` 硬编码映射）整段可以删掉。✅ 已落地（2026-11-18）：`selectByPart` 改名 `selectBySection(paperId, section)`、条件换 `section = #{section}`，`PartCodeCase` 与孤儿语句 `selectCountsByPapers` 已删；TEST/PROD 各 547/517 行验证 section 与 CASE 推导零不一致。
 
 #### 3.2.5 `practice_record` 改造
 
@@ -1173,7 +1173,7 @@ POST /translation/records/start {paperId, section}
 | B-17 | `SharedPaperEligibility.isEligible` 只判 `deleted` + `examType`，**不判 `enabledPrac`**；而 4 个 Catalog 已改为 `enabled_prac = 1` | 4 处调用（阅读/写作 Catalog、Record） | **口径已经分叉**：目录看不到下架卷，详情 / 开始作答却能进入 → 下架卷可直达。补一行 `&& enabledPrac == 1` 即修 | 🔴 高（P0-i 必改，建议提前到 P0-c 后立刻做） |
 | B-18 | `practice_module_part_config` 只有 `PRIMARY (id)`，无唯一键 | TEST 实际表 | 同一 `(version, level, section_mapping, section)` 可重复插入 → 开关判定出现两行矛盾（一行 `enabled=1` 一行 `enabled=0`，取哪行决定板块开不开）。实测 132 行当前无重复，补键只防未来 | 🟡 中（P0-c2 补 `uk_module_part`） |
 | B-20 | `enabled_prac` / `enabled_exam` 双开关在同一行并存，练习侧若误用 `AND enabled_exam = 1` 或 `OR` | 各 Mapper / Service | 运营为「只关考试」而下架的内容会连带从练习消失；反向漏判则已下架内容仍在练习出现 | 🟡 中（R12b 卡点 + Code Review grep `enabled_exam` 仅允许出现在考试服务） |
-| B-19 | 口语取题靠 `PartCodeCase` 硬编码 8 个题型 → `PART_1/2/3`，`selectByPart` 的题型白名单同样只列这 8 个 | `SpeakingSourceQuestionMapper.xml` | 新配置里 6 个 `type_code` 不在白名单：3.0 L4/L5/L6 的 `listen_retell`、L7 的 `applied_read_speak` / `listen_material_answer` / `viewpoint_express` → **这些板块取题返回空**，用户看到"有题但点进去没题" | 🔴 高（P0-e 必改） |
+| B-19 ✅ 已修（2026-11-18，`0bccffd1`：按 `section` 列取题，比 type_code 方案更简） | 口语取题靠 `PartCodeCase` 硬编码 8 个题型 → `PART_1/2/3`，`selectByPart` 的题型白名单同样只列这 8 个 | `SpeakingSourceQuestionMapper.xml` | 新配置里 6 个 `type_code` 不在白名单：3.0 L4/L5/L6 的 `listen_retell`、L7 的 `applied_read_speak` / `listen_material_answer` / `viewpoint_express` → **这些板块取题返回空**，用户看到"有题但点进去没题" | 🔴 高（P0-e 必改） |
 
 > B-01 / B-02 / B-03 **不等本次改造上线就该修**：前两条现网已发生，第三条是 3.0 放开的必炸点。
 

@@ -76,7 +76,7 @@
 | 6 | `SharedPaperEligibility.isEligible` 只判 `deleted` + `examType`，**不判 `enabled_prac`** | 目录已过滤下架卷，但详情 / 开始作答仍可进入 → **下架卷可直达** |
 | 7 | 板块列表 `structureId` 与结构表强绑定 | 结构表 drop 后前端拿不到定位键；且 `structureId` 是 `(paper_id, section_mapping, section)` 的代理键，冗余 |
 | 8 | 板块名 / 题型名只有中文单语（听力除外） | 靠 `Accept-Language` 服务端选一个语言，切换语言要重发请求 |
-| 9 | 口语取题靠 `PartCodeCase` 硬编码 8 个题型 | 3.0 L4/L5/L6 的 `listen_retell`、L7 的 `applied_read_speak` / `listen_material_answer` / `viewpoint_express` 取不到题 |
+| 9 ✅ 已修（2026-11-18） | 口语取题靠 `PartCodeCase` 硬编码 8 个题型 | 3.0 L4/L5/L6 的 `listen_retell`、L7 的 `applied_read_speak` / `listen_material_answer` / `viewpoint_express` 取不到题。**落地方式**：`selectByPart` → `selectBySection(paperId, section)`，按 2026-11-11 新增的 `section` 列取题（而非原设计的 type_code 白名单），`PartCodeCase`/`selectCountsByPapers` 已删 |
 | 10 | 翻译挂在写作模块内，无独立入口 | 3.0 首页无法出「翻译」卡片 |
 
 ---
@@ -3155,7 +3155,7 @@ ALTER TABLE practice_subjective_record
 | `reading/service/impl/ReadingCatalogServiceImpl.java` | 常量改参数；`level IN 候选集`；`parseDbLevel` |
 | `writing/service/impl/WritingCatalogServiceImpl.java` | 常量改参数；`parseLevel` 扩到 `HSK7-9`；`introSections` 补 7 分支 |
 | `speaking/service/impl/SpeakingCatalogServiceImpl.java` | 常量改参数；板块换源；取题改按 `type_code` |
-| `speaking/mapper/SpeakingSourceQuestionMapper.xml` | **删 `PartCodeCase` 硬编码 8 题型**，改按 `part_config.type_code` 取题（B-19） |
+| `speaking/mapper/SpeakingSourceQuestionMapper.xml` | **删 `PartCodeCase` 硬编码 8 题型**，改按 `part_config.type_code` 取题（B-19）✅ 实际落地改为按 `section` 列取题（`selectBySection`），见 2026-11-18 `0bccffd1` |
 | `hsk/controller/PracticeCatalogController.java`（新增） | **U1–U3 统一目录端点**：`module` 参数路由到 5 个模块的装配逻辑；**U3 的 `module` 必填**（决策 16b），按 `(paperId, module→sectionMapping)` 只装该模块的板块，`paperId` 仅用于判卷域与取卷元信息。原 4 个模块 Catalog Controller 的目录端点全部摘除 |
 | `translation/service/impl/TranslationCatalogServiceImpl.java` | 新增：`SEC_TRANSLATION` 目录装配 |
 | `writing/service/impl/WritingAttemptServiceImpl.java` | **`validatePart` 放宽 `contentType` 白名单**（唯一侵入点） |
