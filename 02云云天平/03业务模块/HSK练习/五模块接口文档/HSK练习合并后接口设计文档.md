@@ -1876,7 +1876,7 @@ Content-Type: application/json
 
 1. 解析 `module` / `version` / `level`，缺失或非法分别回 `8133` / `8131` / `8132`
 2. 读 `practice_module_level_config`：等级未配置，或模块在该等级 `enabled=0` → 返回空目录（`paperCount=0`、`papers=[]`），不报错
-3. 按版本 + 等级候选集取启用卷（`enabled_prac=1`、`exam_type=1`、`deleted=0`；口语走口语卷表），`7` 展开成 `('7','7-9')`
+3. 按版本 + 等级候选集取启用卷（`enabled_prac=1`、`exam_type=1`、`deleted=0`；口语走口语卷表），`7` 不要展开成 `('7','7-9')`只要 `7`
 4. 逐卷现算该模块题量，题量为 0 的卷不进目录
 5. 登录态下逐卷算进度；`userId == null` 时进度走 EMPTY 兜底，不查作答表
 6. 组装并返回
