@@ -1543,9 +1543,8 @@ Content-Type: application/json
 1. 查记录并校验归属（`8102`），不加锁
 2. 按冻结顺序加载题目行，一次查出全部作答行
 3. 逐题组装摘要：`correct` 只在客观题且已评时给值，主观题一律 `null`
-4. 现算 `reportStatus`：有 `grading_state = 0` → `GRADING`；有值 `2` 的**已作答**题 → `FAILED`；否则 `READY`
-5. `aiUnlocked = ai_deduct_state ∈ {1, 2, 3}`（`2` 是历史欠费，读时按已解锁处理）
-6. 返回
+4. `aiUnlocked = ai_deduct_state ∈ {1, 2, 3}`（`2` 是历史欠费，读时按已解锁处理）
+5. 返回
 
 > **不遮蔽内容**：报告本身不带解析正文，逐题解析在 §4.3.11 里，同样全文返回。是否展示由前端按 `aiUnlocked` 决定，后端不做付费墙。
 
