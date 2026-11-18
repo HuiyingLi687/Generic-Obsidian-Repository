@@ -107,22 +107,22 @@
 
 前缀：`/hsk/subjective/records`（唯一前缀，旧路径已下线）
 
-| #   | Method | Path                                               | 用途     | 接口类型 | 改动简述                    |
-| --- | ------ | -------------------------------------------------- | ------ | ---- | ----------------------- |
-| 1   | POST   | `{主观前缀}/start`                                     | 开练     | 改造   | 三个控制器合一，`module` 决定模块   |
-| 2   | GET    | `{主观前缀}/{recordId}`                                | 记录详情   | 改造   | 响应体不变                   |
-| 3   | POST   | `{主观前缀}/{recordId}/pause`                          | 暂停     | 改造   | 响应体不变                   |
-| 4   | POST   | `{主观前缀}/{recordId}/resume`                         | 恢复     | 改造   | 响应体不变                   |
-| 5   | GET    | `{主观前缀}/{recordId}/questions`                      | 拉题     | 改造   | 响应体不变                   |
-| 6   | PUT    | `{主观前缀}/{recordId}/answers`                        | 批量保存答案 | 改造   | 响应体不变                   |
-| 7   | POST   | `{主观前缀}/{recordId}/questions/{questionId}/answers` | 单题作答   | 改造   | 三模块通用；写 / 译填文本，口语填录音地址 |
-| 8   | PUT    | `{主观前缀}/{recordId}/questions/{questionId}/draft`   | 保存草稿   | 改造   | 响应体不变                   |
-| 9   | POST   | `{主观前缀}/{recordId}/submit`                         | 交卷     | 改造   | 幂等键改为服务端按模块拼            |
-| 10  | GET    | `{主观前缀}/{recordId}/report`                         | 报告详情   | 改造   | 响应体不变                   |
-| 11  | GET    | `{主观前缀}/{recordId}/report/questions/{questionId}`  | 逐题反馈   | 改造   | 响应体不变                   |
-| 12  | POST   | `{主观前缀}/{recordId}/report/retry`                   | 判分重试   | 改造   | 三模块通用                    |
-| 13  | GET    | `{主观前缀}/{recordId}/unlock/precheck`                | 解锁预检   | 新增   | 返回三级余额、单价与弹窗文案          |
-| 14  | POST   | `{主观前缀}/{recordId}/unlock`                         | 执行解锁   | 新增   | 按卷扣一次权益，失败抛 8118，限流 5 次/秒 |
+| # | Method | Path | 用途 | 接口类型 | 改动简述 |
+|---|---|---|---|---|---|
+| 1 | POST | `{主观前缀}/start` | 开练 | 改造 | 三个控制器合一，`module` 决定模块 → §4.3.1 |
+| 2 | GET | `{主观前缀}/{recordId}` | 记录详情 | 改造 | 响应体不变 → §4.3.2 |
+| 3 | POST | `{主观前缀}/{recordId}/pause` | 暂停 | 改造 | 响应体不变；请求无时长 → §4.3.3 |
+| 4 | POST | `{主观前缀}/{recordId}/resume` | 恢复 | 改造 | 响应体不变 → §4.3.4 |
+| 5 | GET | `{主观前缀}/{recordId}/questions` | 拉题 | 改造 | 响应体不变 → §4.3.5 |
+| 6 | PUT | `{主观前缀}/{recordId}/answers` | 批量保存答案 | 改造 | 响应体不变 → §4.3.6 |
+| 7 | POST | `{主观前缀}/{recordId}/questions/{questionId}/answers` | 单题作答 | 改造 | 三模块通用；写 / 译填文本，口语填录音地址 → §4.3.7 |
+| 8 | PUT | `{主观前缀}/{recordId}/questions/{questionId}/draft` | 保存草稿 | 改造 | 响应体不变 → §4.3.8 |
+| 9 | POST | `{主观前缀}/{recordId}/submit` | 交卷 | 改造 | 幂等键改为服务端按模块拼 → §4.3.9 |
+| 10 | GET | `{主观前缀}/{recordId}/report` | 报告详情 | 改造 | 新增 `aiUnlocked` → §4.3.10 |
+| 11 | GET | `{主观前缀}/{recordId}/report/questions/{questionId}` | 逐题反馈 | 改造 | 新增 `aiUnlocked` → §4.3.11 |
+| 12 | POST | `{主观前缀}/{recordId}/report/retry` | 判分重试 | 改造 | 三模块通用 → §4.3.12 |
+| 13 | GET | `{主观前缀}/{recordId}/unlock/precheck` | 解锁预检 | 新增 | 返回三级余额、单价与弹窗文案 → §4.3.13 |
+| 14 | POST | `{主观前缀}/{recordId}/unlock` | 执行解锁 | 新增 | 按卷扣一次权益，失败抛 8118，限流 5 次/秒 → §4.3.14 |
 
 > 主观族响应体只有一处字段变更：`SubjectiveReportResponse` 与 `SubjectiveQuestionReportResponse` 新增布尔字段 `aiUnlocked`，其余结构不变。报告内容不因未解锁而清空。
 
@@ -142,11 +142,6 @@
 ---
 
 ### 4.2 客观族端点
-
-客观族有多个端点返回同一条记录（`ObjectiveRecordResponse`），下文统一简称「记录响应」，字段定义见 §4.2.1 的返回字段说明，不再逐段重复。两处共性差异先说明：
-
-- `answers[]` 元素为 `{questionId, answer, answered, conflict, currentVersion}`；`conflict` / `currentVersion` 只有听力会产生，阅读恒为 `false` / `null`
-- `currentPassageItemIndex` 只有听力使用（passageGroup 子题位置），阅读恒 `null`
 
 #### 4.2.1 POST `{客观前缀}/start`
 
@@ -185,11 +180,9 @@ Content-Type: application/json
     "section": "1",
     "module": "listening",
     "status": 1,
-    "reportStatus": "PENDING",
     "version": 1,
     "currentQuestionId": null,
     "currentQuestionNumber": null,
-    "currentPassageItemIndex": 0,
     "durationSeconds": 0,
     "paused": false,
     "pausedAt": null,
@@ -202,29 +195,26 @@ Content-Type: application/json
 
 **返回字段说明**
 
-| 字段                       | 类型      | 改动标记  | 说明                                                    |
-| ------------------------ | ------- | ----- | ----------------------------------------------------- |
-| recordId                 | Long    | 【无变更】 | 练习记录 ID（`practice_record.id`）                         |
-| paperId                  | Long    | 【无变更】 | 试卷 ID                                                 |
-| section                  | String  | 【无变更】 | 板块号                                                   |
-| module                   | String  | 【新增】  | `listening` / `reading`                               |
-| status                   | Integer | 【无变更】 | 0 已创建、1 进行中、2 已放弃、3 已提交                               |
-| reportStatus             | String  | 【无变更】 | `PENDING/GENERATING/READY/FAILED`                     |
-| version                  | Integer | 【新增】  | 乐观锁版本号，回传给 `baseVersion`                              |
-| currentQuestionId        | Long    | 【无变更】 | 当前停留题目 ID                                             |
-| currentQuestionNumber    | Integer | 【无变更】 | 当前停留题号                                                |
-| currentPassageItemIndex  | Integer | 【修改】  | 听力 passageGroup 子题位置（原恒 0）；**阅读恒 null**               |
-| durationSeconds          | Integer | 【无变更】 | 在场累计秒数                                                |
-| paused                   | Boolean | 【无变更】 | 是否已离开（true 时前端不要自动续走计时器）                              |
-| pausedAt                 | Long    | 【无变更】 | 上次离开时刻毫秒；`paused=false` 时为 null                       |
-| answeredCount            | Integer | 【无变更】 | 已答题数                                                  |
-| totalQuestions           | Integer | 【无变更】 | 本次练习总题数                                               |
-| answers                  | Array   | 【修改】  | 元素结构见下（阅读侧 `conflict`/`currentVersion` 恒为 false/null） |
-| answers[].questionId     | Long    | 【无变更】 | 题目 ID                                                 |
-| answers[].answer         | String  | 【无变更】 | 用户答案（选项编码）                                            |
-| answers[].answered       | Boolean | 【无变更】 | 是否已作答                                                 |
-| answers[].conflict       | Boolean | 【无变更】 | 版本冲突标记；**阅读恒 false**                                  |
-| answers[].currentVersion | Integer | 【无变更】 | 云端最新版本；**阅读恒 null**                                   |
+| 字段                    | 类型      | 改动标记  | 说明                              |
+| --------------------- | ------- | ----- | ------------------------------- |
+| recordId              | Long    | 【无变更】 | 练习记录 ID（`practice_record.id`）   |
+| paperId               | Long    | 【无变更】 | 试卷 ID                           |
+| section               | String  | 【无变更】 | 板块号                             |
+| module                | String  | 【新增】  | `listening` / `reading`         |
+| status                | Integer | 【无变更】 | 0 已创建、1 进行中、2 已放弃、3 已提交         |
+| version               | Integer | 【新增】  | 乐观锁版本号，回传给 `baseVersion`        |
+| currentQuestionId     | Long    | 【无变更】 | 当前停留题目 ID                       |
+| currentQuestionNumber | Integer | 【无变更】 | 当前停留题号                          |
+| durationSeconds       | Integer | 【无变更】 | 在场累计秒数                          |
+| paused                | Boolean | 【无变更】 | 是否已离开（true 时前端不要自动续走计时器）        |
+| pausedAt              | Long    | 【无变更】 | 上次离开时刻毫秒；`paused=false` 时为 null |
+| answeredCount         | Integer | 【无变更】 | 已答题数                            |
+| totalQuestions        | Integer | 【无变更】 | 本次练习总题数                         |
+| answers               | Array   | 【修改】  | 元素结构见下                          |
+| answers[].answer      | String  | 【无变更】 | 用户答案（选项编码）                      |
+| answers[].answered    | Boolean | 【无变更】 | 是否已作答                           |
+
+
 
 **服务端内部执行顺序（重要，后端&测试阅读）**
 
@@ -845,36 +835,643 @@ Content-Type: application/json
 
 ### 4.3 主观族端点
 
-主观族 12 个端点的清单见 §3.2。**请求体与响应体结构本次不变**，改动只有四处。
+主观族 14 个端点（含 2 个解锁端点），全部挂在 `/hsk/subjective/records` 下。写 / 译 / 说三模块共用同一套端点，`module` 必传，端点本身不做模块级放行。旧的 `/writing/records/**`、`/translation/records/**`、`/speaking/records/**` 已下线。
 
-**路径与 `module` 解析**
+**两条通用规则**
+
+- `module` 缺失或取值不认识 → `8133`；与记录实际板块不匹配 → `8102`。用 `8102` 而非 404，避免被拿来探测他人记录是否存在
+- 记录级端点统一按 `(recordId, userId)` 校验归属，`deleted = 1` 的记录同样回 `8102`
+
+**响应体复用**
+
+| 响应体 | 使用端点 | 字段表 |
+|---|---|---|
+| `SubjectiveRecordResponse` | start / get / pause / resume / retry | §4.3.1 |
+| `SubjectiveQuestionResponse` | questions | §4.3.5 |
+| `SubjectiveReportResponse` | report | §4.3.10 |
+| `SubjectiveQuestionReportResponse` | report/questions/{questionId} | §4.3.11 |
+
+---
+
+#### 4.3.1 POST `{主观前缀}/start`
+
+**用途**：开练。同一试卷同一板块已有未提交记录时直接返回该记录；已提交后再调用则新建一次练习
+**鉴权**：需要登录
+**幂等**：按 `(userId, paperId, sectionMapping, section)` 命中 `status = 0`（进行中）的记录即返回，不重复建记录、不重置进度与计时
+
+**入参说明**
+
+| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
+|---|---|---|---|---|
+| module | query | String | 是 | `writing` / `translation` / `speaking` |
+| paperId | body | Long | 是 | 练习试卷 ID |
+| sectionMapping | body | String | 是 | `SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAKING`，必须与 `module` 一致；口语额外接受历史值 `SEC_SPEAK` |
+| section | body | String | 是 | 板块号，服务端 `trim` 后使用 |
+| X-Client-Type | header | String | 否 | 客户端类型 |
+
+> 与客观族的差异：客观族 `start` 不需要 `sectionMapping`（由 `module` 推出），主观族要求显式传，用来拦住「拿写作的板块号打翻译入口」。
+
+**请求示例**
 
 ```http
 POST /practice/hsk/subjective/records/start?module=writing
+Authorization: Bearer xxx
+X-Client-Type: APP
+Content-Type: application/json
+
+{
+  "paperId": 100231,
+  "sectionMapping": "SEC_WRITE",
+  "section": "1"
+}
 ```
 
-旧的 `POST /practice/writing/records/start` 已下线，新路径必须带 `module`。
+**返回字段说明**（`SubjectiveRecordResponse`，start / get / pause / resume / retry 共用）
 
-**开练语义**
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| recordId | Long | 练习记录 ID（`practice_subjective_record.id`） |
+| paperId | Long | 试卷 ID |
+| sectionMapping | String | 板块域，库里原值 |
+| section | String | 板块号 |
+| levelCode | String | HSK 等级码 |
+| status | String | `IN_PROGRESS` / `COMPLETED` / `DISCARDED`；库列是 tinyint，这里转展示值 |
+| reportStatus | String | `NOT_READY` / `GRADING` / `READY` / `FAILED`，按逐题 `grading_state` 现算 |
+| totalQuestions | Integer | 本次练习总题数（开练时冻结） |
+| answeredCount | Integer | 已作答题目数 |
+| currentQuestionId | Long | 当前停留题目 ID |
+| currentQuestionNumber | Integer | 当前停留题序（`question_ids` 下标 + 1） |
+| durationSeconds | Integer | 累计在场秒数，退出期间不计 |
+| paused | Boolean | 是否处于「已离开」状态；为 true 时前端不要自动续走计时器 |
+| pausedAt | Long | 上次离开时刻（毫秒）；`paused=false` 时为 null |
+| objectiveCount | Integer | 客观题数（`has_standard_answer = 1`） |
+| objectiveCorrectCount | Integer | 客观题答对数 |
+| aiQuestionCount | Integer | 需 AI 评分的题数（已排除满分 0 的流程题） |
+| aiScoredCount | Integer | AI 已评出分的题数 |
+| finalScore | BigDecimal | 当前已得总分；AI 未评完时只有客观分 |
+| totalScore | BigDecimal | 本卷满分 |
 
-`start` 只负责开新的练习：同一试卷同一板块已有未提交记录时直接返回该记录，不重置进度与计时；已提交后再调用则新建一条记录。服务端不提供重开接口，未提交的练习要继续用 `resume`，想从头再练一遍就在交卷后重新 `start`。
+**服务端内部执行顺序**
 
-**单题作答与判分重试**
+1. 校验 `sectionMapping` 与 `module` 一致，不一致回 `8108`
+2. `section` 去空白
+3. 查未提交记录 `(userId, paperId, sectionMapping, section)`，条件只有 `status = 0`：命中直接返回，**不再校验卷与板块配置**
+4. 校验试卷存在，不存在回 `8107`
+5. 按三元组 `(paperId, sectionMapping, section)` 现取题、按题号排序，**冻结 `question_ids`**；之后拉题与交卷只认这份冻结顺序
+6. 统计客观题数，算出 `totalQuestions` / `totalScore` / `objectiveCount` / `aiQuestionCount`
+7. 插记录：`status = IN_PROGRESS`、`start_time = now`、`duration = 0`、`ai_deduct_state = 0`（未解锁）
+8. 返回记录。此时逐题作答行还没有，首次保存作答时才建
 
-这两个端点三个模块通用，不做模块级放行。单题作答按模块落不同列：写作与翻译填 `answerText`，口语填 `answer`（音频地址）+ `durationMs`。判分重试只挑「已作答、有标准答案之外的 AI 评分题、且评分状态为失败」的行重新入队，三模块判定口径一致。
+> 服务端不提供重开接口：未提交要继续练走 `resume`，想从头再来就在交卷后重新 `start`。
+> 记录按 `userId` 查，不可能命中他人记录，因此本端点不会抛 `8102`。
 
-**幂等键口径**
+**本接口抛出错误码**：8107 / 8108 / 8133
 
-交卷幂等键由服务端按 `{module}-{recordId}-submit` 拼（`writing-900812-submit`），不再取客户端 `Idempotency-Key` 头作为唯一来源。客户端传了也接受，但同一记录的重复交卷以服务端拼的键去重。
+---
 
-**AI 解析解锁**
+#### 4.3.2 GET `{主观前缀}/{recordId}`
+
+**用途**：查询记录详情，续练时用来恢复进度
+**鉴权**：需要登录
+**前置条件**：记录存在、属于当前用户、板块与 `module` 匹配，否则 `8102`
+
+**入参说明**
+
+| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
+|---|---|---|---|---|
+| recordId | path | Long | 是 | 练习记录 ID |
+| module | query | String | 是 | `writing` / `translation` / `speaking` |
+| X-Client-Type | header | String | 否 | 客户端类型 |
+
+**返回字段说明**
+
+同 §4.3.1 的 `SubjectiveRecordResponse`。
+
+**服务端内部执行顺序**
+
+1. 按 `recordId` 查记录（不加锁）
+2. 校验归属、板块、`deleted`，任一不符回 `8102`
+3. 现算 `reportStatus`（读逐题 `grading_state`）
+4. 返回
+
+> 只读接口，不加行锁。已交卷的记录也能查，用于报告页回看。
+
+**本接口抛出错误码**：8102 / 8133
+
+---
+
+#### 4.3.3 POST `{主观前缀}/{recordId}/pause`
+
+**用途**：暂停。结算本段在场时长并记录当前停留位置，供切后台、锁屏与定时存档调用
+**鉴权**：需要登录
+**前置条件**：记录进行中，已交卷回 `8103`
+
+**入参说明**
+
+| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
+|---|---|---|---|---|
+| recordId | path | Long | 是 | 练习记录 ID |
+| module | query | String | 是 | `writing` / `translation` / `speaking` |
+| currentQuestionId | body | Long | 否 | 当前停留题目 ID；不传则不改进度位置 |
+| X-Client-Type | header | String | 否 | 客户端类型 |
+
+> 请求体整体可省略（`visibilitychange` 触发时没有位置上下文）。**请求体不含时长**，时长由服务端算。
+
+**请求示例**
+
+```http
+POST /practice/hsk/subjective/records/900812/pause?module=writing
+Authorization: Bearer xxx
+Content-Type: application/json
+
+{ "currentQuestionId": 55120331 }
+```
+
+**返回字段说明**
+
+同 §4.3.1 的 `SubjectiveRecordResponse`，此时 `paused = true`、`pausedAt` 有值。
+
+**服务端内部执行顺序**
+
+1. `SELECT ... FOR UPDATE` 查记录并校验归属（`8102`）
+2. 非进行中状态回 `8103`
+3. 结算本段时长：`now − max(start_time, paused_time, resumed_time)`，累加到 `duration`，单段上界 1800 秒
+4. `currentQuestionId` 在冻结题集内时，同时更新 `current_question_number`（下标 + 1）；不在题集内则忽略，不报错
+5. `paused_time = now`，写回记录
+6. 返回记录
+
+> 重复调用 `pause` 是安全的：结算基点是 `max(...)`，没有新起一段时该段结算结果趋近 0。
+
+**本接口抛出错误码**：8102 / 8103 / 8133
+
+---
+
+#### 4.3.4 POST `{主观前缀}/{recordId}/resume`
+
+**用途**：恢复。结束停表状态，计时器从已累计时长继续累加
+**鉴权**：需要登录
+**前置条件**：记录进行中，已交卷回 `8103`
+
+**入参说明**
+
+| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
+|---|---|---|---|---|
+| recordId | path | Long | 是 | 练习记录 ID |
+| module | query | String | 是 | `writing` / `translation` / `speaking` |
+| X-Client-Type | header | String | 否 | 客户端类型 |
+
+**返回字段说明**
+
+同 §4.3.1 的 `SubjectiveRecordResponse`，此时 `paused = false`、`pausedAt = null`。
+
+**服务端内部执行顺序**
+
+1. `SELECT ... FOR UPDATE` 查记录并校验归属（`8102`）
+2. 非进行中状态回 `8103`
+3. `paused_time` 非空时执行一条显式 UPDATE：`paused_time = NULL` + `resumed_time = now`
+4. 回查记录并返回
+
+> 时间列清零必须走显式 UPDATE：MyBatis-Plus 的 `updateById` 默认忽略 null 字段，用它会清不掉 `paused_time`。
+> `resume` 只推进新段起点，**不做任何累加**；累加只发生在 `pause` 与 `submit`。因此重复调用 `resume` 是幂等的。
+
+**本接口抛出错误码**：8102 / 8103 / 8133
+
+---
+
+#### 4.3.5 GET `{主观前缀}/{recordId}/questions`
+
+**用途**：拉取本次练习的题目，按开练时冻结的顺序下发，逐题带作答形式与已存草稿
+**鉴权**：需要登录
+**前置条件**：记录存在且属于当前用户，否则 `8102`
+
+**入参说明**
+
+| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
+|---|---|---|---|---|
+| recordId | path | Long | 是 | 练习记录 ID |
+| module | query | String | 是 | `writing` / `translation` / `speaking` |
+| X-Client-Type | header | String | 否 | 客户端类型 |
+
+**返回字段说明**（`SubjectiveQuestionResponse`，数组，按题序）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| questionId | Long | 题目 ID |
+| order | Integer | 题序 = `question_ids` 下标 + 1，**前端翻页/定位以此为准** |
+| no | Integer | 卷面题号（`question.number`），可能跳号，只用于展示 |
+| layout | String | 题面形态，`question.layout` 原值：`input` / `record` / `shortInput` 等 |
+| typeName | String | 题型名 |
+| sectionTitle | String | 板块标题 |
+| content | String | 题干 |
+| passage | String | 题级材料 |
+| audioUrl | String | 题目音频地址 |
+| shareAudioUrl | String | 共享材料音频地址 |
+| optionContent | Object | 选项，扁平结构 `{"A":"文本","B":"文本"}` |
+| groupContent | String | 题组题干 |
+| groupPassage | String | 题组共用材料 |
+| groupOptionContent | Object | 题组共用选项，结构同上 |
+| hasStandardAnswer | Integer | `1` 客观题（交卷即判）、`0` 主观题（交 AI） |
+| answered | Boolean | 是否已保存正式作答（草稿不算） |
+| answerText | String | 已保存的文本作答：写作正文 / 笔译译文 / 口语转写 |
+| answer | String | 已保存的音频 URL：口语 / 口译 |
+| durationMs | Long | 录音时长（毫秒） |
+| answerDraft | Object | 草稿块，结构 `{text, graphemeCount, version, savedTime}`；从未存过为 `null` |
+
+**服务端内部执行顺序**
+
+1. 查记录并校验归属（`8102`），不加锁
+2. 按 `question_ids` 冻结顺序加载题目行
+3. 一次查出该记录全部作答行，按 `questionId` 建索引
+4. 逐题组装：`order = i + 1`、`no = 卷面题号`、作答字段取自作答行
+5. 返回数组
+
+> 草稿块的 `null` 与空串含义不同：`answerDraft = null` 表示从没存过草稿；`answerDraft.text = ""` 表示用户清空后保存过。前端靠 `savedTime` 区分「恢复了一个空草稿」与「压根没草稿」。
+> 题目全部从冻结的 `question_ids` 取，**不重新按板块查题**，所以中途改题库配置不会影响进行中的练习。
+> 冻结题集里的题若在题库中已被删除，服务端**静默跳过、只打 warn**，本接口不报错，返回的数组会比 `totalQuestions` 少。前端不要假设数组长度等于总题数。
+
+**本接口抛出错误码**：8102 / 8133
+
+---
+
+#### 4.3.6 PUT `{主观前缀}/{recordId}/answers`（批量保存）
+
+**用途**：批量保存正式作答。写作与笔译一次提交整段文字，口语与口译提交录音地址
+**鉴权**：需要登录
+**前置条件**：记录进行中，已交卷回 `8103`
+
+**入参说明**
+
+| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
+|---|---|---|---|---|
+| recordId | path | Long | 是 | 练习记录 ID |
+| module | query | String | 是 | `writing` / `translation` / `speaking` |
+| answers | body | Array | 是 | 作答列表，元素见下 |
+| answers[].questionId | body | Long | 是 | 题目 ID，必须在冻结题集内，否则 `8107` |
+| answers[].answerText | body | String | 否 | 文本作答：写作正文 / 笔译译文 / 口语转写 |
+| answers[].answer | body | String | 否 | 音频 URL：口语 / 口译 |
+| answers[].durationMs | body | Long | 否 | 录音时长（毫秒） |
+| answers[].answerVersion | body | Long | 否 | 客户端持有的版本，**当前不参与校验**（见下） |
+| currentQuestionId | body | Long | 否 | 当前题，用于更新进度位置；不传则不改进度 |
+| X-Client-Type | header | String | 否 | 客户端类型 |
+
+**请求示例**
+
+```http
+PUT /practice/hsk/subjective/records/900812/answers?module=writing
+Authorization: Bearer xxx
+Content-Type: application/json
+
+{
+  "answers": [
+    { "questionId": 55120331, "answerText": "我最近看了一部很有意思的电影……" }
+  ],
+  "currentQuestionId": 55120331
+}
+```
+
+**返回字段说明**（`SubjectiveAnswerSaveResponse`）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| recordId | Long | 练习记录 ID |
+| answeredCount | Integer | 保存后全卷已作答题目数 |
+| currentQuestionId | Long | 当前停留题目 ID |
+| currentQuestionNumber | Integer | 当前停留题序 |
+| answers | Array | 本次保存涉及的题目 |
+| answers[].questionId | Long | 题目 ID |
+| answers[].answerVersion | Long | 保存后的行版本号，供下次带回 |
+
+**服务端内部执行顺序**
+
+1. `SELECT ... FOR UPDATE` 查记录并校验归属（`8102`）
+2. 非进行中状态回 `8103`
+3. 一次加载冻结题集，建 `questionId → 题目行` 索引
+4. 逐条处理作答项：
+   - 题目不在题集内 → `8107`（防串记录、防塞脏题）
+   - 按模块决定落哪一列：**口语**落 `answer` + `durationMs`，**写作与翻译**落 `answerText` 并清空音频列
+   - 重算 `answered`：文本非空白或音频非空即为已作答
+   - 改写答案会把 `points` / `isFullScore` / `analysis` 清空、`grading_state` 重置为待评（主观题）或未答，**旧评分作废**
+   - 行版本 `answerVersion + 1`，首次作答时补 `first_answered_time`
+5. `currentQuestionId` 非空时同步更新 `current_question_number`
+6. 重算 `answeredCount`，写回记录
+7. 返回
+
+> `answerVersion` 这个字段请求与响应都有，但服务端**只自增、不比对**：目前没有"版本不一致就拒绝"的逻辑，多端同时改是最后写入者生效。想做强校验需要在此处补一次 `WHERE answer_version = ?`，会影响客户端契约，暂时不做。
+
+**本接口抛出错误码**：8102 / 8103 / 8107 / 8133
+
+---
+
+#### 4.3.7 POST `{主观前缀}/{recordId}/questions/{questionId}/answers`
+
+**用途**：单题作答。题目 ID 走路径，请求体可省略
+**鉴权**：需要登录
+**前置条件**：同 §4.3.6
+
+**入参说明**
+
+| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
+|---|---|---|---|---|
+| recordId | path | Long | 是 | 练习记录 ID |
+| questionId | path | Long | 是 | 题目 ID |
+| module | query | String | 是 | `writing` / `translation` / `speaking` |
+| answerText | body | String | 否 | 文本作答：写作 / 笔译 / 口语转写 |
+| answer | body | String | 否 | 音频 URL：口语 / 口译 |
+| durationMs | body | Long | 否 | 录音时长（毫秒） |
+| X-Client-Type | header | String | 否 | 客户端类型 |
+
+**返回字段说明**
+
+同 §4.3.6 的 `SubjectiveAnswerSaveResponse`。
+
+**服务端内部执行顺序**
+
+1. 把请求体包装成只含一个元素的作答列表，`currentQuestionId` 置为路径里的 `questionId`
+2. 直接复用 §4.3.6 的批量保存链路，行为与返回完全一致
+
+> **请求体可省略**：不传或传空对象时，该题的两个作答字段都为空，结果等于「清空这道题的作答」——`answered` 置 0、旧分作废。前端要做"清除作答"可以直接利用这个语义。
+> 该端点写、译、说三模块通用，不做模块级放行。落列规则与批量保存一致。
+
+**本接口抛出错误码**：8102 / 8103 / 8107 / 8133
+
+---
+
+#### 4.3.8 PUT `{主观前缀}/{recordId}/questions/{questionId}/draft`
+
+**用途**：保存题目级草稿。PUT 语义整份覆盖，只写草稿列
+**鉴权**：需要登录
+**前置条件**：记录进行中，已交卷回 `8109`
+
+**入参说明**
+
+| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
+|---|---|---|---|---|
+| recordId | path | Long | 是 | 练习记录 ID |
+| questionId | path | Long | 是 | 题目 ID，必须在冻结题集内，否则 `8107` |
+| module | query | String | 是 | `writing` / `translation` / `speaking` |
+| text | body | String | 是 | 草稿全文；清空请传空串（`null` 由校验拦下） |
+| expectedVersion | body | Long | 否 | 期望的草稿版本；传了就必须与库里一致，否则 `8111` |
+| X-Client-Type | header | String | 否 | 客户端类型 |
+
+**请求示例**
+
+```http
+PUT /practice/hsk/subjective/records/900812/questions/55120331/draft?module=writing
+Authorization: Bearer xxx
+Content-Type: application/json
+
+{ "text": "我最近看了一部很有意思的电影……", "expectedVersion": 3 }
+```
+
+**返回字段说明**（`SubjectiveDraftResponse`）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| questionId | Long | 题目 ID |
+| version | Long | 保存后的草稿版本，首次保存为 1；同文本重复保存不增 |
+| savedTime | Long | 服务端保存时刻（毫秒） |
+| graphemeCount | Integer | 不含空白字符的字素数 |
+
+**服务端内部执行顺序**
+
+1. 查记录并校验归属（`8102`），不加锁
+2. 非进行中状态回 `8109`（草稿冻结只读，保留供回看）
+3. 校验题目在冻结题集内，否则 `8107`
+4. 数字素数，超上限回 `8110`：写作与笔译 5000 字，**口语与口译（翻译 `section = 2`）不限**
+5. 库里还没有该题作答行 → 插入一行「空答案 + 草稿」：
+   - `answered = 0`、`grading_state = 未答`，答题卡仍显示未答
+   - `expectedVersion` 传了非 0 值 → 说明客户端拿到了脏版本，回 `8111`
+   - 并发首存撞唯一键 → 退化成更新，不让用户白写
+6. 已有行 → 版本比对：`expectedVersion` 与库里不一致回 `8111`；文本完全相同就直接返回现值不增版本（避免每次失焦重写几 KB）
+7. 条件更新，命中 0 行说明期间被别的请求改了版本 → 回 `8111`
+8. 返回新版本号与保存时刻
+
+> 草稿**不是作答**：不写 `answer_text`、不置 `answered`、不动 `grading_state` 与 `points`。
+> 交卷时服务端不会拿草稿兜底变答案，只在交卷响应里回 `draftNotSubmitted` 提示哪几题只有草稿。所以交卷前必须调一次 §4.3.6 把编辑器内容落成正式答案。
+
+**本接口抛出错误码**：8102 / 8107 / 8109 / 8110 / 8111 / 8133
+
+---
+
+#### 4.3.9 POST `{主观前缀}/{recordId}/submit`
+
+**用途**：交卷。冻结题目与答案快照，客观题当次判分，主观题转入 AI 评分队列
+**鉴权**：需要登录
+**前置条件**：记录存在且属于当前用户，否则 `8102`；未交卷且非进行中回 `8103`
+**幂等**：服务端按 `{module}-{recordId}-submit` 拼幂等键写入记录，重复交卷直接返回当前结果
+
+**入参说明**
+
+| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
+|---|---|---|---|---|
+| recordId | path | Long | 是 | 练习记录 ID |
+| module | query | String | 是 | `writing` / `translation` / `speaking` |
+| finalAnswers | body | Array | 否 | 交卷这一刻的最后一批作答，元素结构同 §4.3.6 |
+| idempotencyKey | body | String | 否 | 兼容旧前端的字段，**服务端忽略其值** |
+| Idempotency-Key | header | String | 否 | 同上，仅打日志，不参与去重 |
+| X-Client-Type | header | String | 否 | 客户端类型 |
+
+> 请求体整体可省略。若前端在交卷前才把编辑器内容提交，可以放进 `finalAnswers` 一起落库，省一次往返。
+
+**返回字段说明**（`SubjectiveSubmitResponse`）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| recordId | Long | 练习记录 ID |
+| paperId | Long | 试卷 ID |
+| module | String | 模块码 |
+| status | String | 交卷后为 `COMPLETED` |
+| reportStatus | String | 交卷后通常是 `GRADING`；无 AI 题时直接 `READY` |
+| totalQuestions | Integer | 总题数 |
+| answeredCount | Integer | 已作答题目数 |
+| objectiveCount | Integer | 客观题数 |
+| objectiveCorrectCount | Integer | 客观题答对数 |
+| aiQuestionCount | Integer | 需 AI 评分的题数 |
+| aiScoredCount | Integer | 已评出分的 AI 题数（交卷瞬间通常为 0） |
+| finalScore | BigDecimal | 当前总分（交卷瞬间只有客观分） |
+| totalScore | BigDecimal | 本卷满分 |
+| idempotencyKey | String | 服务端拼的交卷幂等键，重复交卷返回同一个 |
+| draftNotSubmitted | Array\<Long\> | 只有草稿、没落正式答案的题目 ID 列表 |
+
+**服务端内部执行顺序**
+
+1. `SELECT ... FOR UPDATE` 查记录并校验归属（`8102`）
+2. 幂等判断：已交卷，或记录的幂等键已等于服务端拼的键 → **直接返回当前口径，不做任何写入**
+3. 未交卷且非进行中 → `8103`
+4. `finalAnswers` 落库（复用 §4.3.6 的 upsert，并额外冻结快照）
+5. 逐题冻结快照 + 分流：
+   - 题集里有、但一行答案都没有的题 → 补一条占位行，`grading_state = 未答`，报告才能逐题列出
+   - 客观题（`has_standard_answer = 1`）：已作答则当次比对判分、写 `points` 与对错、置已评；未作答则 0 分、置未答
+   - 主观题且**满分 0**（口语卷的姓名确认 / 引导语 / 开场音乐、写作例题）→ 不判分、不进 AI 队列，直接 0 分置已评
+   - 主观题且满分 > 0：已作答置**待评**并收集 `answer_id`；未作答置未答
+6. 写回记录：`status = COMPLETED`、`end_time`、结算在场时长、全量统计、`idempotency_key`
+7. **本卷没有可评的 AI 题**时直接把 `ai_deduct_state` 置为 `3 无需解锁`；有 AI 题则停在 `0 未解锁`，等用户在报告页主动解锁
+8. 事务提交后再把待评作答投进评分线程池（`afterCommit`），不拖慢交卷响应
+9. 返回
+
+> 交卷**不做任何权益校验与扣减**，余额不够也能交卷、也能看到分数，只是解析要等解锁。
+> AI 投递放在事务提交之后：评分线程读不到未提交数据，交卷也不会被 AI 调用阻塞。
+
+**本接口抛出错误码**：8102 / 8103 / 8107 / 8133
+
+---
+
+#### 4.3.10 GET `{主观前缀}/{recordId}/report`
+
+**用途**：查询报告，含总分、逐题摘要、评分状态与解锁标志
+**鉴权**：需要登录
+**前置条件**：记录存在且属于当前用户，否则 `8102`
+
+**入参说明**
+
+| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
+|---|---|---|---|---|
+| recordId | path | Long | 是 | 练习记录 ID |
+| module | query | String | 是 | `writing` / `translation` / `speaking` |
+| X-Client-Type | header | String | 否 | 客户端类型 |
+
+**返回字段说明**（`SubjectiveReportResponse`）
+
+| 字段 | 类型 | 改动标记 | 说明 |
+|---|---|---|---|
+| recordId | Long | 【无变更】 | 练习记录 ID |
+| paperId | Long | 【无变更】 | 试卷 ID |
+| module | String | 【新增】 | 模块码 |
+| sectionMapping | String | 【无变更】 | 板块域 |
+| section | String | 【无变更】 | 板块号 |
+| reportStatus | String | 【无变更】 | `NOT_READY` / `GRADING` / `READY` / `FAILED` |
+| totalQuestions | Integer | 【无变更】 | 总题数 |
+| answeredCount | Integer | 【无变更】 | 已作答题目数 |
+| objectiveCount | Integer | 【无变更】 | 客观题数 |
+| objectiveCorrectCount | Integer | 【无变更】 | 客观题答对数 |
+| aiQuestionCount | Integer | 【无变更】 | AI 题数 |
+| aiScoredCount | Integer | 【无变更】 | AI 已评出分的题数 |
+| finalScore | BigDecimal | 【无变更】 | 当前总分 |
+| totalScore | BigDecimal | 【无变更】 | 本卷满分 |
+| durationSeconds | Integer | 【无变更】 | 累计在场秒数 |
+| startTime | Long | 【无变更】 | 开练时刻（毫秒） |
+| endTime | Long | 【无变更】 | 交卷时刻（毫秒） |
+| aiUnlocked | Boolean | 【新增】 | 解析是否已解锁；内容不因未解锁而清空 |
+| questions | Array | 【无变更】 | 逐题摘要，元素见下 |
+| questions[].order | Integer | 【无变更】 | 题序 = 冻结下标 + 1 |
+| questions[].questionId | Long | 【无变更】 | 题目 ID |
+| questions[].layout | String | 【无变更】 | 题面形态 |
+| questions[].hasStandardAnswer | Integer | 【无变更】 | 1 客观 / 0 主观 |
+| questions[].answered | Boolean | 【无变更】 | 是否已作答 |
+| questions[].gradingState | Integer | 【无变更】 | 0 待评 / 1 已评 / 2 未答或失败 |
+| questions[].points | BigDecimal | 【无变更】 | 得分；待评时为 null |
+| questions[].maxScore | BigDecimal | 【无变更】 | 单题满分 |
+| questions[].isFullScore | Integer | 【无变更】 | 1 满分 / 0 非满分；待评时为 null |
+| questions[].correct | Boolean | 【无变更】 | 客观题对错；主观题恒 null |
+
+**服务端内部执行顺序**
+
+1. 查记录并校验归属（`8102`），不加锁
+2. 按冻结顺序加载题目行，一次查出全部作答行
+3. 逐题组装摘要：`correct` 只在客观题且已评时给值，主观题一律 `null`
+4. 现算 `reportStatus`：有 `grading_state = 0` → `GRADING`；有值 `2` 的**已作答**题 → `FAILED`；否则 `READY`
+5. `aiUnlocked = ai_deduct_state ∈ {1, 2, 3}`（`2` 是历史欠费，读时按已解锁处理）
+6. 返回
+
+> **不遮蔽内容**：报告本身不带解析正文，逐题解析在 §4.3.11 里，同样全文返回。是否展示由前端按 `aiUnlocked` 决定，后端不做付费墙。
+
+**本接口抛出错误码**：8102 / 8133
+
+---
+
+#### 4.3.11 GET `{主观前缀}/{recordId}/report/questions/{questionId}`
+
+**用途**：查询单题反馈，含用户作答、参考答案、得分、AI 点评与题目快照
+**鉴权**：需要登录
+**前置条件**：记录属于当前用户，否则 `8102`；该题没有作答行或不在冻结题集内，回 `8107`
+
+**入参说明**
+
+| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
+|---|---|---|---|---|
+| recordId | path | Long | 是 | 练习记录 ID |
+| questionId | path | Long | 是 | 题目 ID |
+| module | query | String | 是 | `writing` / `translation` / `speaking` |
+| X-Client-Type | header | String | 否 | 客户端类型 |
+
+**返回字段说明**（`SubjectiveQuestionReportResponse`）
+
+| 字段 | 类型 | 改动标记 | 说明 |
+|---|---|---|---|
+| order | Integer | 【无变更】 | 题序 = 冻结下标 + 1 |
+| questionId | Long | 【无变更】 | 题目 ID |
+| layout | String | 【无变更】 | 题面形态 |
+| hasStandardAnswer | Integer | 【无变更】 | 1 客观 / 0 主观 |
+| answered | Boolean | 【无变更】 | 是否已作答 |
+| gradingState | Integer | 【无变更】 | 0 待评 / 1 已评 / 2 未答或失败 |
+| points | BigDecimal | 【无变更】 | 得分；待评时为 null |
+| maxScore | BigDecimal | 【无变更】 | 单题满分 |
+| isFullScore | Integer | 【无变更】 | 1 满分 / 0 非满分 |
+| correct | Boolean | 【无变更】 | 客观题对错；主观题恒 null |
+| analysis | String | 【无变更】 | 主观题是 AI 点评，客观题是题目解析；优先取作答行上冻结的评语 |
+| standardAnswer | String | 【无变更】 | 标准答案；主观题通常为空 |
+| answerText | String | 【无变更】 | 用户文本作答 |
+| answer | String | 【无变更】 | 用户音频 URL |
+| snapshot | Object | 【无变更】 | 交卷时冻结的题目快照（题干 / 题组 / 选项） |
+| aiUnlocked | Boolean | 【新增】 | 解析是否已解锁；内容不因未解锁而清空 |
+
+**服务端内部执行顺序**
+
+1. 查记录并校验归属（`8102`），不加锁
+2. 查该题作答行，没有回 `8107`
+3. 按冻结题集加载这一题，没有回 `8107`
+4. 组装：`order` 用冻结下标、`analysis` 优先取作答行上冻结的 AI 评语，为空再回退到题目解析
+5. 返回
+
+> 交卷后 AI 还没评完时，`gradingState = 0`、`points` 为 `null`、`analysis` 可能为空，前端应按"评分中"展示而不是"无解析"。
+
+**本接口抛出错误码**：8102 / 8107 / 8133
+
+---
+
+#### 4.3.12 POST `{主观前缀}/{recordId}/report/retry`
+
+**用途**：判分重试。把已作答但评分失败的题重新置为待评并再次投递
+**鉴权**：需要登录
+**前置条件**：记录存在且属于当前用户，否则 `8102`
+
+**入参说明**
+
+| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
+|---|---|---|---|---|
+| recordId | path | Long | 是 | 练习记录 ID |
+| module | query | String | 是 | `writing` / `translation` / `speaking` |
+| X-Client-Type | header | String | 否 | 客户端类型 |
+
+**返回字段说明**
+
+同 §4.3.1 的 `SubjectiveRecordResponse`，可据 `reportStatus` 判断是否已重新进入 `GRADING`。
+
+**服务端内部执行顺序**
+
+1. `SELECT ... FOR UPDATE` 查记录并校验归属（`8102`）
+2. 加载冻结题集，建 `questionId → 是否客观题` 索引
+3. 遍历该记录全部作答行，同时满足四条才入选：
+   - `grading_state = 2`（未答或评分失败）
+   - 主观题（非客观题）
+   - 单题满分 > 0（满分 0 的流程题不进 AI 队列）
+   - 已作答
+4. 用**一条 SQL** 批量重置入选行的评分字段（`grading_state = 0`、清 `grading_next_time` 与 `grading_error`、重排租约）
+5. `grading_attempts + 1`，写回记录
+6. 事务提交后把入选的作答 ID 投进评分线程池，用户不用等下一轮兜底扫描
+7. 返回记录
+
+> 三模块口径完全一致，不做模块级放行。
+> 用一条 SQL 重置而不是逐行 `updateById`：MyBatis-Plus 默认忽略 null 字段，`grading_next_time` / `grading_error` 清不掉的话，重试的题会一直卡在退避里。
+> 该端点不校验"是否已交卷"：未交卷时已答题是待评、未答题是未答，都不满足入选条件，因此不会误重排；但 `grading_attempts` 仍会 +1。
+
+**本接口抛出错误码**：8102 / 8133
+
+---
+
+**AI 解析解锁口径**
 
 交卷与评分都不涉及扣费，扣费只发生在用户主动解锁时。打开报告页先看 `aiUnlocked`：
-
-| 值 | 含义 | 前端行为 |
-|---|---|---|
-| `true` | 可直接展示解析 | 正常渲染 |
-| `false` | 解析需要解锁 | 调 precheck，按返回文案弹窗 |
 
 未解锁时报告与单题反馈的 `analysis`、`standardAnswer` 字段**照常返回全文**，是否展示完全由前端按 `aiUnlocked` 控制。后端不做内容遮蔽，也不返回「锁定占位文案」。
 
@@ -882,7 +1479,7 @@ POST /practice/hsk/subjective/records/start?module=writing
 
 ---
 
-#### 4.3.1 GET `{主观前缀}/{recordId}/unlock/precheck`
+#### 4.3.13 GET `{主观前缀}/{recordId}/unlock/precheck`
 
 **用途**：解锁预检，供弹窗直接渲染
 **鉴权**：需要登录
@@ -942,7 +1539,7 @@ POST /practice/hsk/subjective/records/start?module=writing
 
 ---
 
-#### 4.3.2 POST `{主观前缀}/{recordId}/unlock`
+#### 4.3.14 POST `{主观前缀}/{recordId}/unlock`
 
 **用途**：执行解锁，扣减一次权益并把记录置为已解锁
 **鉴权**：需要登录
@@ -1042,12 +1639,18 @@ Controller（2 族 6 个类）
 
 | 操作 | 事务 | 要点 |
 |---|---|---|
-| 开练 | `@Transactional` | 行锁查草稿 → 废弃旧草稿 → 插记录 + 逐题占位行，同一事务 |
-| 单题 / 批量保存 | `@Transactional` | 锁记录 → 锁答案行 → 写答案 → 重算 `answeredCount`，同一事务 |
-| 暂停 / 恢复 | `@Transactional` | 时长结算与位置更新同事务；`resume` 清 `paused_time` 必须走显式 UPDATE 并同时写 `resumed_time` |
-| 交卷 | `@Transactional` | 落 finalAnswers → 判分 → 汇总 → 置 `reportStatus`，同一事务；幂等命中直接返回 |
-| 报告重试 | `@Transactional` | 置 `GENERATING` → 重算 → 置 `READY` |
-| 解锁 | `@Transactional` | 行锁查记录 → 校验已交卷与归属 → 三级扣减（远程，不参与本地事务）→ 写 `ai_deduct_state=1` + `deduct_type` + `ai_deduct_time`。先扣后写，扣失败抛 8118 回滚，行锁串行化并发请求 |
+| 开练（客观） | `@Transactional` | 行锁查未提交记录 → 校验卷与板块配置 → 取题冻结 → 插记录 + **逐题插作答占位行** |
+| 开练（主观） | `@Transactional` | 按 `userId` 查进行中记录（不加锁）→ 校验卷 → 冻结题集 → 插记录；**不建占位行**，占位行在首次保存作答或交卷时补 |
+| 保存草稿（主观） | `@Transactional` | 不锁记录 → 校验题在冻结题集内 → 版本比对 → 只写草稿三列，不碰 `answered` / `grading_state` / `points` |
+| 单题 / 批量保存（客观） | `@Transactional` | 锁记录 → 锁答案行 → 写答案 → 重算 `answeredCount`，同一事务 |
+| 单题 / 批量保存（主观） | `@Transactional` | 行锁记录 → 逐条 upsert 作答 → 按模块落列（口语 `answer`，写作与翻译 `answerText`）→ 重算 `answeredCount` 与进度 |
+| 暂停 / 恢复（两族） | `@Transactional` | 时长结算与位置更新同事务；`resume` 清 `paused_time` 必须走显式 UPDATE 并同时写 `resumed_time` |
+| 交卷（客观） | `@Transactional` | 判分 → 汇总 → 置 `reportStatus = PENDING`，同一事务；幂等命中直接返回 |
+| 交卷（主观） | `@Transactional` | 落 finalAnswers → 冻结快照 → 客观题即判、主观题置待评 → 写统计与 `idempotency_key` → `afterCommit` 投递 AI。**`reportStatus` 不落库**（表里没有该列），读时按 `grading_state` 现算 |
+| 报告重试（客观） | `@Transactional` | 置 `GENERATING` → 重算 → 置 `READY` |
+| 判分重试（主观） | `@Transactional` | 一条 SQL 重置入选行的 `grading_state` 与退避字段 → `grading_attempts + 1` → `afterCommit` 重新投递；不改报告状态（现算） |
+| 解锁（主观） | `@Transactional` | 行锁查记录 → 校验已交卷与归属 → 三级扣减（远程，不参与本地事务）→ 写 `ai_deduct_state=1` + `deduct_type` + `ai_deduct_time`。先扣后写，扣失败抛 8118 回滚，行锁串行化并发请求 |
+| 详情 / 拉题 / 报告读取（两族） | 无事务 | 只读、不加锁；`reportStatus` 与 `aiUnlocked` 均在读时计算 |
 
 ### 7.3 时长口径（未变，重申）
 
