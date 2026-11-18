@@ -1,7 +1,7 @@
 # HSK 练习 · 五模块接口合并（客观族 / 主观族）接口设计文档
 
-> 版本：v2.1｜更新日期：2026-11-18
-> 本版变更：旧路径（五条模块前缀 + 五条答题卡）全部下线，模块只能由 `?module=` 指定
+> 版本：v2.2｜更新日期：2026-11-18
+> 本版变更：删除开练请求的 `restart` 字段（不再提供重开机制）；主观族单题作答与判分重试改为三模块通用，`8120` 随之下线
 > 影响服务：practice-service（改造，无 DDL 变更）
 > 关联文档：《HSK练习五模块接口文档》（v1.x，按模块拆路径的旧版）
 > 配套文件：`hsk-practice.http`（需按本文档同步路径与字段）
@@ -29,6 +29,8 @@
 | 9 | 报告状态 | 收敛为 4 值 `PENDING/GENERATING/READY/FAILED`，可重试性改由布尔 `retryable` 表达 |
 | 10 | 口语板块域 | `AnswerCardModule.SPEAKING` 的 `sectionMapping` 由拼写错误的历史值 `SEC_SPEAK` 改为 `SEC_SPEAKING`，校验时仍兼容旧值 |
 | 11 | 内部实现 | 客观族保留两套 service（听力回 `question` 表、阅读读 `answer` 快照），门面层只做分派与 DTO 转换 |
+| 12 | 开练语义 | `start` 只负责开新的练习：有未提交记录直接返回该记录，已提交后再调用则新建一次练习。不提供重开接口，未提交的继续练习走 `resume` |
+| 13 | 模块级端点 | 主观族全部端点三模块通用，不再有「单题作答仅口语」「翻译无判分重试」这类限制，`8120` 随之删除 |
 
 ## 1. 现状问题列表（本次要修复的 bug）
 
@@ -69,7 +71,7 @@
 
 | # | Method | Path | 用途 | 接口类型 | 改动简述 |
 |---|---|---|---|---|---|
-| 1 | POST | `{客观前缀}/start` | 开练 | 改造 | 请求体统一；`module` 必传 → §4.2.1 |
+| 1 | POST | `{客观前缀}/start` | 开练 | 改造 | 请求体统一、删除 `restart`；`module` 必传 → §4.2.1 |
 | 2 | GET | `{客观前缀}/{recordId}` | 记录详情 | 改造 | 响应加 `module` / `version`；`answers[]` 并集化 → §4.2.2 |
 | 3 | POST | `{客观前缀}/{recordId}/pause` | 暂停 | 改造 | 请求体并集化；阅读必须带 `currentQuestionId` → §4.2.3 |
 | 4 | POST | `{客观前缀}/{recordId}/resume` | 恢复 | 改造 | 响应同记录详情 → §4.2.4 |
@@ -97,12 +99,12 @@
 | 4   | POST   | `{主观前缀}/{recordId}/resume`                         | 恢复     | 改造   | 响应体不变                   |
 | 5   | GET    | `{主观前缀}/{recordId}/questions`                      | 拉题     | 改造   | 响应体不变                   |
 | 6   | PUT    | `{主观前缀}/{recordId}/answers`                        | 批量保存答案 | 改造   | 响应体不变                   |
-| 7   | POST   | `{主观前缀}/{recordId}/questions/{questionId}/answers` | 单题作答   | 改造   | **仅口语**；写 / 译调用回 `8120` |
+| 7   | POST   | `{主观前缀}/{recordId}/questions/{questionId}/answers` | 单题作答   | 改造   | 三模块通用；写 / 译填文本，口语填录音地址 |
 | 8   | PUT    | `{主观前缀}/{recordId}/questions/{questionId}/draft`   | 保存草稿   | 改造   | 响应体不变                   |
 | 9   | POST   | `{主观前缀}/{recordId}/submit`                         | 交卷     | 改造   | 幂等键改为服务端按模块拼            |
 | 10  | GET    | `{主观前缀}/{recordId}/report`                         | 报告详情   | 改造   | 响应体不变                   |
 | 11  | GET    | `{主观前缀}/{recordId}/report/questions/{questionId}`  | 逐题反馈   | 改造   | 响应体不变                   |
-| 12  | POST   | `{主观前缀}/{recordId}/report/retry`                   | 判分重试   | 改造   | **翻译无此端点**，调用回 `8120`   |
+| 12  | POST   | `{主观前缀}/{recordId}/report/retry`                   | 判分重试   | 改造   | 三模块通用                    |
 
 > 主观族响应体（`SubjectiveRecordResponse` / `SubjectiveQuestionResponse` / `SubjectiveReportResponse` 等）本次**不做字段改动** —— 三模块本来就共用一套 DTO，合并只是去掉两份重复的控制器。
 
@@ -130,7 +132,7 @@
 
 #### 4.2.1 POST `{客观前缀}/start`
 
-**用途**：创建或续练一条听 / 读练习记录
+**用途**：开练。有未提交记录时直接返回该记录，已提交后再调用则新建一次练习
 **鉴权**：需要登录
 
 **入参说明**
@@ -140,7 +142,6 @@
 | module        | query  | String  | 必传 | 【新增】`listening` / `reading` |
 | paperId       | body   | Long    | 是    | 【无变更】练习试卷 ID                      |
 | section       | body   | String  | 是    | 【无变更】板块号 1..N                     |
-| restart       | body   | Boolean | 否    | 【无变更】true 放弃旧草稿重开；缺省续练            |
 | X-Client-Type | header | String  | 否    | 【无变更】                             |
 
 **请求示例**
@@ -151,7 +152,7 @@ Authorization: Bearer xxx
 X-Client-Type: APP
 Content-Type: application/json
 
-{ "paperId": 100231, "section": "1", "restart": false }
+{ "paperId": 100231, "section": "1" }
 ```
 
 **返回完整示例**
@@ -209,9 +210,9 @@ Content-Type: application/json
 
 **服务端内部执行顺序（重要，后端&测试阅读）**
 
-1. 解析 `module`（参数优先，其次路径段），非法即 `8133`
-2. `SELECT ... FOR UPDATE` 查进行中草稿，`(userId, paperId, sectionMapping, section)` 定位
-3. 有草稿且 `restart != true` → 直接返回（**听力额外校验卷内容与板块配置是否下架**，回 `8141` / `8142`；阅读不校验）
+1. 按 `module` 解析模块，缺失或取值不合法即 `8133`
+2. `SELECT ... FOR UPDATE` 查未提交记录，`(userId, paperId, sectionMapping, section)` 定位，仅 `status IN (0,1)`
+3. 有未提交记录 → 直接返回该记录（**听力额外校验卷内容与板块配置是否下架**，回 `8141` / `8142`；阅读不校验）；已提交的记录不在查询范围内，继续往下新建一次练习
 4. 校验试卷可用性 —— **两模块口径不同，本次未统一**：
    - 听力：卷存在且未删除（`8107`）
    - 阅读：`exam_paper.enabled_prac = 1` 且 `SharedPaperEligibility` 通过（`8166`）
@@ -826,7 +827,7 @@ Content-Type: application/json
 
 ### 4.3 主观族端点
 
-主观族 12 个端点的清单见 §3.2。**请求体与响应体结构本次不变**，改动只有三处。
+主观族 12 个端点的清单见 §3.2。**请求体与响应体结构本次不变**，改动只有四处。
 
 **路径与 `module` 解析**
 
@@ -836,24 +837,24 @@ POST /practice/hsk/subjective/records/start?module=writing
 
 旧的 `POST /practice/writing/records/start` 已下线，新路径必须带 `module`。
 
-**两个按模块拦截的端点**
+**开练语义**
 
-| 端点 | 允许的模块 | 其他模块调用 |
-|---|---|---|
-| `POST /{recordId}/questions/{questionId}/answers` | `speaking` | `8120` 当前模块不支持该操作 |
-| `POST /{recordId}/report/retry` | `writing`、`speaking` | `translation` 回 `8120` |
+`start` 只负责开新的练习：同一试卷同一板块已有未提交记录时直接返回该记录，不重置进度与计时；已提交后再调用则新建一条记录。服务端不提供重开接口，未提交的练习要继续用 `resume`，想从头再练一遍就在交卷后重新 `start`。
+
+**单题作答与判分重试**
+
+这两个端点三个模块通用，不做模块级放行。单题作答按模块落不同列：写作与翻译填 `answerText`，口语填 `answer`（音频地址）+ `durationMs`。判分重试只挑「已作答、有标准答案之外的 AI 评分题、且评分状态为失败」的行重新入队，三模块判定口径一致。
 
 **幂等键口径**
 
 交卷幂等键由服务端按 `{module}-{recordId}-submit` 拼（`writing-900812-submit`），不再取客户端 `Idempotency-Key` 头作为唯一来源。客户端传了也接受，但同一记录的重复交卷以服务端拼的键去重。
 
-**本族抛出错误码**：8101–8120（通用）、8201+（写作）、8251+（翻译）、8281+（口语），新增 8120
+**本族抛出错误码**：8101–8119（通用）、8201+（写作）、8251+（翻译）、8281+（口语）
 
 ## 5. 错误码更新
 
 | 错误码 | 服务 | 场景 |
 |---|---|---|
-| 8120 | practice-service | 【新增】当前模块不支持该操作（写 / 译调口语单题端点、翻译调报告重试） |
 | 8133 | practice-service | 【修改】合并路径后承担更多职责：`module` 缺失、取值不在白名单、与路径段冲突 |
 | 8141 / 8142 | practice-service | 【无变更】听力续练时卷内容 / 板块配置已下架 |
 | 8166 / 8167 / 8168 | practice-service | 【无变更】阅读试卷 / 板块不可练习、板块无题 |
@@ -919,11 +920,13 @@ Controller（2 族 6 个类）
 | 10 | 阅读交卷 | 返回完整报告，`items` 带快照，`rows` 由明细投影、题号一致 |
 | 11 | 报告状态为 `FAILED` | `retryable=true`，重试后回到 `READY` |
 | 12 | `POST /hsk/subjective/records/start?module=translation` | 正常开练 |
-| 13 | `POST /hsk/subjective/records/{id}/report/retry?module=translation` | `8120` |
-| 14 | `POST /hsk/subjective/records/{id}/questions/1/answers?module=writing` | `8120` |
-| 15 | `POST /hsk/subjective/records/{id}/questions/1/answers?module=speaking` | 200 |
+| 13 | `POST /hsk/subjective/records/{id}/report/retry?module=translation` | 200，失败题重新入队 |
+| 14 | `POST /hsk/subjective/records/{id}/questions/1/answers?module=writing` | 200，落 `answer_text` |
+| 15 | `POST /hsk/subjective/records/{id}/questions/1/answers?module=speaking` | 200，落 `answer` + `duration_ms` |
 | 16 | 同一记录用同一幂等键交卷两次 | 第二次直接返回已有结果，不重复判分 |
 | 17 | `/hsk/objective/records/{id}/answer-card?module=reading` | 200，返回阅读答题卡；`/reading/records/{id}/answer-card` 回 `404` |
+| 18 | 同一试卷同一板块，未提交时再调 `start` | 返回同一条记录，`recordId` 与进度不变 |
+| 19 | 已交卷后调 `start` | 新建一条记录，`recordId` 与上次不同，进度归零 |
 
 ## 9. 上线执行事项【P0阻断项】
 
@@ -953,7 +956,7 @@ Controller（2 族 6 个类）
 | `hsk/answer/service/impl/AnswerCardServiceImpl.java` | 注释订正（`SEC_SPEAKING` 为官方值） |
 | `listening/dto/ListeningRecordResponse.java`、`reading/dto/ReadingRecordResponse.java` | 新增 `version` 字段 |
 | `listening/service/impl/ListeningRecordServiceImpl.java`、`reading/service/impl/ReadingRecordServiceImpl.java` | `toResponse` 回填 `version` |
-| `hsk/support/HskPracticeErrorCode.java` | 新增 `MODULE_ENDPOINT_NOT_SUPPORTED(8120)` |
+| `hsk/support/HskPracticeErrorCode.java` | 删除 `MODULE_ENDPOINT_NOT_SUPPORTED(8120)`，模块级端点限制取消后无引用 |
 | `csca/controller/CscaFavoriteController.java` | 补回缺失的类闭合大括号（原本导致全模块编译失败） |
 
 ### 9.3 环境状态

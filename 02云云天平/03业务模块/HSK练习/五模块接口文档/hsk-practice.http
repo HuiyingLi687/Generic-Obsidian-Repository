@@ -132,8 +132,7 @@ Authorization: Bearer {{token}}
 
 {
   "paperId": {{paperId}},
-  "section": "{{section}}",
-  "restart": false
+  "section": "{{section}}"
 }
 
 > {%
@@ -345,8 +344,7 @@ Authorization: Bearer {{token}}
 
 {
   "paperId": {{paperId}},
-  "section": "{{rdSection}}",
-  "restart": false
+  "section": "{{rdSection}}"
 }
 
 > {%
@@ -751,7 +749,7 @@ Authorization: Bearer {{token}}
 %}
 
 
-### 46 翻译 · 报告（没有 /report/retry 端点）
+### 46 翻译 · 报告
 GET {{practice}}/hsk/subjective/records/{{trRecordId}}/report?module=translation
 X-Client-Type: APP
 Authorization: Bearer {{token}}
