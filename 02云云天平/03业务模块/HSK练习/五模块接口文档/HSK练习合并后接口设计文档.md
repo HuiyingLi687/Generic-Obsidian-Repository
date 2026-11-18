@@ -599,13 +599,14 @@ Content-Type: application/json
 
 **入参说明**
 
-| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
-|---|---|---|---|---|
-| module | query | String | 必传 | 【新增】模块码 |
-| answers | body | Array | 是 | 【修改】元素 `{questionId, answer}`；原听力元素字段名 `selectedOptionId` |
-| baseVersion | body | Integer | 是 | 【新增】听力强校验，不一致回 `8104` |
-| currentQuestionId | body | Long | 否 | 【无变更】顺带更新停留位置 |
-| clientSequence | body | Integer | 否 | 【无变更】 |
+| 参数名               | 位置    | 类型      | 必填  | 约束&说明                           |
+| ----------------- | ----- | ------- | --- | ------------------------------- |
+| module            | query | String  | 必传  | 【新增】模块码                         |
+| answers           | body  | Array   | 是   | 【修改】元素 `{questionId, answer}`；` |
+| baseVersion       | body  | Integer | 是   | 【新增】两个模块都强校验                    |
+| currentQuestionId | body  | Long    | 否   | 【无变更】顺带更新停留位置                   |
+
+
 
 **请求示例**
 
