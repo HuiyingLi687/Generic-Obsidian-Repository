@@ -1507,35 +1507,36 @@ Content-Type: application/json
 
 **返回字段说明**（`SubjectiveReportResponse`）
 
-| 字段                            | 类型         | 改动标记                                  | 说明                     |
-| ----------------------------- | ---------- | ------------------------------------- | ---------------------- |
-| recordId                      | Long       | 【无变更】                                 | 练习记录 ID                |
-| paperId                       | Long       | 【无变更】                                 | 试卷 ID                  |
-| module                        | String     | 【新增】                                  | 模块码                    |
-| sectionMapping                | String     | 【无变更】                                 | 板块域                    |
-| section                       | String     | 【无变更】                                 | 板块号                    |
-| totalQuestions                | Integer    | 【无变更】                                 | 总题数                    |
-| answeredCount                 | Integer    | 【无变更】                                 | 已作答题目数                 |
-| objectiveCount                | Integer    | 【无变更】                                 | 客观题数                   |
-| objectiveCorrectCount         | Integer    | 【无变更】                                 | 客观题答对数                 |
-| aiQuestionCount               | Integer    | 【无变更】                                 | AI 题数                  |
-| aiScoredCount                 | Integer    | 【无变更】                                 | AI 已评出分的题数             |
-| finalScore                    | BigDecimal | 【无变更】                                 | 当前总分                   |
-| totalScore                    | BigDecimal | 【无变更】                                 | 本卷满分                   |
-| durationSeconds               | Integer    | 【无变更】                                 | 累计在场秒数                 |
-| startTime                     | Long       | 【无变更】                                 | 开练时刻（毫秒）               |
-| endTime                       | Long       | 【无变更】                                 | 交卷时刻（毫秒）               |
-| aiUnlocked                    | Boolean    | 【新增】                                  | 解析是否已解锁；内容不因未解锁而清空     |
-| questions                     | Array      | 【无变更】                                 | 逐题摘要，元素见下              |
-| questions[].order             | Integer    | 【无变更】                                 | 题序 = 冻结下标 + 1          |
-| questions[].questionId        | Long       | 【无变更】                                 | 题目 ID                  |
-| questions[].hasStandardAnswer | Integer    | 【无变更】                                 | 1 客观 / 0 主观            |
-| questions[].answered          | Boolean    | 【无变更】                                 | 是否已作答                  |
-| questions[].gradingState      | Integer    | 【无变更】                                 | 0 待评 / 1 已评 / 2 未答或失败  |
-| questions[].points            | BigDecimal | 【无变更】                                 | 得分；待评时为 null           |
-| questions[].maxScore          | BigDecimal | 【无变更】                                 | 单题满分                   |
-| questions[].isFullScore       | Integer    | 【无变更】                                 | 1 满分 / 0 非满分；待评时为 null |
-| questions[].correct           | Boolean    | 【无变更】                                 | 客观题对错；主观题恒 null        |
+| 字段                            | 类型         | 改动标记  | 说明                     |
+| ----------------------------- | ---------- | ----- | ---------------------- |
+| recordId                      | Long       | 【无变更】 | 练习记录 ID                |
+| paperId                       | Long       | 【无变更】 | 试卷 ID                  |
+| module                        | String     | 【新增】  | 模块码                    |
+| sectionMapping                | String     | 【无变更】 | 板块域                    |
+| section                       | String     | 【无变更】 | 板块号                    |
+| status                        | tinyint    | 【新增】  | 0进行中，1已完成，2已废弃         |
+| totalQuestions                | Integer    | 【无变更】 | 总题数                    |
+| answeredCount                 | Integer    | 【无变更】 | 已作答题目数                 |
+| objectiveCount                | Integer    | 【无变更】 | 客观题数                   |
+| objectiveCorrectCount         | Integer    | 【无变更】 | 客观题答对数                 |
+| aiQuestionCount               | Integer    | 【无变更】 | AI 题数                  |
+| aiScoredCount                 | Integer    | 【无变更】 | AI 已评出分的题数             |
+| finalScore                    | BigDecimal | 【无变更】 | 当前总分                   |
+| totalScore                    | BigDecimal | 【无变更】 | 本卷满分                   |
+| durationSeconds               | Integer    | 【无变更】 | 累计在场秒数                 |
+| startTime                     | Long       | 【无变更】 | 开练时刻（毫秒）               |
+| endTime                       | Long       | 【无变更】 | 交卷时刻（毫秒）               |
+| aiUnlocked                    | Boolean    | 【新增】  | 解析是否已解锁；内容不因未解锁而清空     |
+| questions                     | Array      | 【无变更】 | 逐题摘要，元素见下              |
+| questions[].order             | Integer    | 【无变更】 | 题序 = 冻结下标 + 1          |
+| questions[].questionId        | Long       | 【无变更】 | 题目 ID                  |
+| questions[].hasStandardAnswer | Integer    | 【无变更】 | 1 客观 / 0 主观            |
+| questions[].answered          | Boolean    | 【无变更】 | 是否已作答                  |
+| questions[].gradingState      | Integer    | 【无变更】 | 0 待评 / 1 已评 / 2 未答或失败  |
+| questions[].points            | BigDecimal | 【无变更】 | 得分；待评时为 null           |
+| questions[].maxScore          | BigDecimal | 【无变更】 | 单题满分                   |
+| questions[].isFullScore       | Integer    | 【无变更】 | 1 满分 / 0 非满分；待评时为 null |
+| questions[].correct           | Boolean    | 【无变更】 | 客观题对错；主观题恒 null        |
 
 
 **服务端内部执行顺序**
@@ -1569,24 +1570,24 @@ Content-Type: application/json
 
 **返回字段说明**（`SubjectiveQuestionReportResponse`）
 
-| 字段 | 类型 | 改动标记 | 说明 |
-|---|---|---|---|
-| order | Integer | 【无变更】 | 题序 = 冻结下标 + 1 |
-| questionId | Long | 【无变更】 | 题目 ID |
-| layout | String | 【无变更】 | 题面形态 |
-| hasStandardAnswer | Integer | 【无变更】 | 1 客观 / 0 主观 |
-| answered | Boolean | 【无变更】 | 是否已作答 |
-| gradingState | Integer | 【无变更】 | 0 待评 / 1 已评 / 2 未答或失败 |
-| points | BigDecimal | 【无变更】 | 得分；待评时为 null |
-| maxScore | BigDecimal | 【无变更】 | 单题满分 |
-| isFullScore | Integer | 【无变更】 | 1 满分 / 0 非满分 |
-| correct | Boolean | 【无变更】 | 客观题对错；主观题恒 null |
-| analysis | String | 【无变更】 | 主观题是 AI 点评，客观题是题目解析；优先取作答行上冻结的评语 |
-| standardAnswer | String | 【无变更】 | 标准答案；主观题通常为空 |
-| answerText | String | 【无变更】 | 用户文本作答 |
-| answer | String | 【无变更】 | 用户音频 URL |
-| snapshot | Object | 【无变更】 | 交卷时冻结的题目快照（题干 / 题组 / 选项） |
-| aiUnlocked | Boolean | 【新增】 | 解析是否已解锁；内容不因未解锁而清空 |
+| 字段                | 类型         | 改动标记  | 说明                               |
+| ----------------- | ---------- | ----- | -------------------------------- |
+| order             | Integer    | 【无变更】 | 题序 = 冻结下标 + 1                    |
+| questionId        | Long       | 【无变更】 | 题目 ID                            |
+| layout            | String     | 【无变更】 | 题面形态                             |
+| hasStandardAnswer | Integer    | 【无变更】 | 1 客观 / 0 主观                      |
+| answered          | Boolean    | 【无变更】 | 是否已作答                            |
+| gradingState      | Integer    | 【无变更】 | 0 待评 / 1 已评 / 2 未答或失败            |
+| points            | BigDecimal | 【无变更】 | 得分；待评时为 null                     |
+| maxScore          | BigDecimal | 【无变更】 | 单题满分                             |
+| isFullScore       | Integer    | 【无变更】 | 1 满分 / 0 非满分                     |
+| correct           | Boolean    | 【无变更】 | 客观题对错；主观题恒 null                  |
+| analysis          | String     | 【无变更】 | 主观题是 AI 点评，客观题是题目解析；优先取作答行上冻结的评语 |
+| standardAnswer    | String     | 【无变更】 | 标准答案；主观题通常为空                     |
+| answerText        | String     | 【无变更】 | 用户文本作答                           |
+| answer            | String     | 【无变更】 | 用户音频 URL                         |
+| snapshot          | Object     | 【无变更】 | 交卷时冻结的题目快照（题干 / 题组 / 选项）         |
+| aiUnlocked        | Boolean    | 【新增】  | 解析是否已解锁；内容不因未解锁而清空               |
 
 **服务端内部执行顺序**
 
@@ -1596,7 +1597,7 @@ Content-Type: application/json
 4. 组装：`order` 用冻结下标、`analysis` 优先取作答行上冻结的 AI 评语，为空再回退到题目解析
 5. 返回
 
-> 交卷后 AI 还没评完时，`gradingState = 0`、`points` 为 `null`、`analysis` 可能为空，前端应按"评分中"展示而不是"无解析"。
+> 交卷后 AI 还没评完时，`hasStandardAnswer = 0` 、`gradingState = 0`、`points` 为 `null`、`analysis` 可能为空，前端应按"评分中"展示而不是"无解析"。
 
 **本接口抛出错误码**：8102 / 8107 / 8133
 
@@ -1616,30 +1617,29 @@ Content-Type: application/json
 | module | query | String | 是 | `writing` / `translation` / `speaking` |
 | X-Client-Type | header | String | 否 | 客户端类型 |
 
-**返回字段说明**（记录响应，可据 `reportStatus` 判断是否已重新进入 `GRADING`）
+**返回字段说明**（记录响应，可据 `status` 判断是否已重新进入 ）
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| recordId | Long | 练习记录 ID |
-| paperId | Long | 试卷 ID |
-| sectionMapping | String | 板块域 |
-| section | String | 板块号 |
-| levelCode | String | HSK 等级码 |
-| status | String | 记录状态 `IN_PROGRESS` / `COMPLETED` / `DISCARDED` |
-| reportStatus | String | 入选行被重置为待评后通常回到 `GRADING` |
-| totalQuestions | Integer | 本次练习总题数 |
-| answeredCount | Integer | 已作答题目数 |
-| currentQuestionId | Long | 当前停留题目 ID |
-| currentQuestionNumber | Integer | 当前停留题序 |
-| durationSeconds | Integer | 累计在场秒数 |
-| paused | Boolean | 是否处于「已离开」状态 |
-| pausedAt | Long | 上次离开时刻（毫秒）；`paused=false` 时为 null |
-| objectiveCount | Integer | 客观题数 |
-| objectiveCorrectCount | Integer | 客观题答对数 |
-| aiQuestionCount | Integer | 需 AI 评分的题数 |
-| aiScoredCount | Integer | AI 已评出分的题数 |
-| finalScore | BigDecimal | 当前已得总分 |
-| totalScore | BigDecimal | 本卷满分 |
+| 字段                    | 类型         | 说明                                |
+| --------------------- | ---------- | --------------------------------- |
+| recordId              | Long       | 练习记录 ID                           |
+| paperId               | Long       | 试卷 ID                             |
+| sectionMapping        | String     | 板块域                               |
+| section               | String     | 板块号                               |
+| levelCode             | String     | HSK 等级码                           |
+| status                | tinyint    | 0进行中，1已完成，2已废弃                    |
+| totalQuestions        | Integer    | 本次练习总题数                           |
+| answeredCount         | Integer    | 已作答题目数                            |
+| currentQuestionId     | Long       | 当前停留题目 ID                         |
+| currentQuestionNumber | Integer    | 当前停留题序                            |
+| durationSeconds       | Integer    | 累计在场秒数                            |
+| paused                | Boolean    | 是否处于「已离开」状态                       |
+| pausedAt              | Long       | 上次离开时刻（毫秒）；`paused=false` 时为 null |
+| objectiveCount        | Integer    | 客观题数                              |
+| objectiveCorrectCount | Integer    | 客观题答对数                            |
+| aiQuestionCount       | Integer    | 需 AI 评分的题数                        |
+| aiScoredCount         | Integer    | AI 已评出分的题数                        |
+| finalScore            | BigDecimal | 当前已得总分                            |
+| totalScore            | BigDecimal | 本卷满分                              |
 
 **服务端内部执行顺序**
 
