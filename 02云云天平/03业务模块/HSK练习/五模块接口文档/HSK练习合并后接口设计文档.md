@@ -204,7 +204,7 @@ Content-Type: application/json
 | status                | Integer | 【无变更】 | 0 已创建、1 进行中、2 已放弃、3 已提交         |
 | version               | Integer | 【新增】  | 乐观锁版本号，回传给 `baseVersion`        |
 | currentQuestionId     | Long    | 【无变更】 | 当前停留题目 ID；刚开练为 null             |
-| currentQuestionNumber | Integer | 【无变更】 | 当前停留题号；刚开练为 null               |
+| currentQuestionNumber | Integer | 【无变更】 | 当前停留题号；刚开练为 null                |
 | durationSeconds       | Integer | 【无变更】 | 在场累计秒数                          |
 | paused                | Boolean | 【无变更】 | 是否已离开（true 时前端不要自动续走计时器）        |
 | pausedAt              | Long    | 【无变更】 | 上次离开时刻毫秒；`paused=false` 时为 null |
@@ -1023,28 +1023,27 @@ Content-Type: application/json
 
 **返回字段说明**（`SubjectiveRecordResponse`，start / get / pause / resume / retry 共用）
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| recordId | Long | 练习记录 ID（`practice_subjective_record.id`） |
-| paperId | Long | 试卷 ID |
-| sectionMapping | String | 板块域，库里原值 |
-| section | String | 板块号 |
-| levelCode | String | HSK 等级码 |
-| status | String | `IN_PROGRESS` / `COMPLETED` / `DISCARDED`；库列是 tinyint，这里转展示值 |
-| reportStatus | String | `NOT_READY` / `GRADING` / `READY` / `FAILED`，按逐题 `grading_state` 现算 |
-| totalQuestions | Integer | 本次练习总题数（开练时冻结） |
-| answeredCount | Integer | 已作答题目数 |
-| currentQuestionId | Long | 当前停留题目 ID |
-| currentQuestionNumber | Integer | 当前停留题序（`question_ids` 下标 + 1） |
-| durationSeconds | Integer | 累计在场秒数，退出期间不计 |
-| paused | Boolean | 是否处于「已离开」状态；为 true 时前端不要自动续走计时器 |
-| pausedAt | Long | 上次离开时刻（毫秒）；`paused=false` 时为 null |
-| objectiveCount | Integer | 客观题数（`has_standard_answer = 1`） |
-| objectiveCorrectCount | Integer | 客观题答对数 |
-| aiQuestionCount | Integer | 需 AI 评分的题数（已排除满分 0 的流程题） |
-| aiScoredCount | Integer | AI 已评出分的题数 |
-| finalScore | BigDecimal | 当前已得总分；AI 未评完时只有客观分 |
-| totalScore | BigDecimal | 本卷满分 |
+| 字段                    | 类型         | 说明                                       |
+| --------------------- | ---------- | ---------------------------------------- |
+| recordId              | Long       | 练习记录 ID（`practice_subjective_record.id`） |
+| paperId               | Long       | 试卷 ID                                    |
+| sectionMapping        | String     | 板块域，库里原值                                 |
+| section               | String     | 板块号                                      |
+| levelCode             | String     | HSK 等级码                                  |
+| status                | tinyint    | 0创建中，1作答中，2已放弃，3已提交                      |
+| totalQuestions        | Integer    | 本次练习总题数（开练时冻结）                           |
+| answeredCount         | Integer    | 已作答题目数                                   |
+| currentQuestionId     | Long       | 当前停留题目 ID                                |
+| currentQuestionNumber | Integer    | 当前停留题序（`question_ids` 下标 + 1）            |
+| durationSeconds       | Integer    | 累计在场秒数，退出期间不计                            |
+| paused                | Boolean    | 是否处于「已离开」状态；为 true 时前端不要自动续走计时器          |
+| pausedAt              | Long       | 上次离开时刻（毫秒）；`paused=false` 时为 null        |
+| objectiveCount        | Integer    | 客观题数（`has_standard_answer = 1`）          |
+| objectiveCorrectCount | Integer    | 客观题答对数                                   |
+| aiQuestionCount       | Integer    | 需 AI 评分的题数（已排除满分 0 的流程题）                 |
+| aiScoredCount         | Integer    | AI 已评出分的题数                               |
+| finalScore            | BigDecimal | 当前已得总分；AI 未评完时只有客观分                      |
+| totalScore            | BigDecimal | 本卷满分                                     |
 
 **服务端内部执行顺序**
 
