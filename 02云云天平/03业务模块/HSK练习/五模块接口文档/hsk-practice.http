@@ -124,7 +124,7 @@ Authorization: Bearer {{token}}
 ### 一、听力 listening
 ### ============================================================================
 
-### 11 听力 · 开练（幂等：已有进行中记录会直接返回）
+### 11 听力 · 开练（已有未提交记录会直接返回；已提交后再调则新建一次）
 POST {{practice}}/hsk/objective/records/start?module=listening
 Content-Type: application/json
 X-Client-Type: APP
@@ -237,7 +237,7 @@ Authorization: Bearer {{token}}
 %}
 
 
-### 15b 听力 · 恢复（决策 30 新增，幂等）
+### 15b 听力 · 恢复（幂等，只推进计时起点）
 POST {{practice}}/hsk/objective/records/{{lisRecordId}}/resume?module=listening
 X-Client-Type: APP
 Authorization: Bearer {{token}}
@@ -570,6 +570,24 @@ Authorization: Bearer {{token}}
 
 > {%
     client.test("写作答案保存成功", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+    });
+    client.log("已答=" + response.body.data.answeredCount);
+%}
+
+
+### 36b 写作 · 单题作答（三模块通用，写答案文本）
+POST {{practice}}/hsk/subjective/records/{{wrRecordId}}/questions/{{wrQuestionId}}/answers?module=writing
+Content-Type: application/json
+X-Client-Type: APP
+Authorization: Bearer {{token}}
+
+{
+  "answerText": "我上周未去公园，天气很好，我们一家人一起散步，看到了很多花……"
+}
+
+> {%
+    client.test("写作单题作答成功", function () {
         client.assert(response.body.code === 200, "code=" + response.body.code);
     });
     client.log("已答=" + response.body.data.answeredCount);

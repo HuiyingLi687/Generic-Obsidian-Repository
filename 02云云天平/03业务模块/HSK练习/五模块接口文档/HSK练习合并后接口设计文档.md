@@ -855,7 +855,7 @@ POST /practice/hsk/subjective/records/start?module=writing
 
 | 错误码 | 服务 | 场景 |
 |---|---|---|
-| 8133 | practice-service | 【修改】合并路径后承担更多职责：`module` 缺失、取值不在白名单、与路径段冲突 |
+| 8133 | practice-service | 【修改】合并路径后承担更多职责：`module` 缺失、取值不在白名单（客观族只认 listening / reading，主观族只认 writing / translation / speaking） |
 | 8141 / 8142 | practice-service | 【无变更】听力续练时卷内容 / 板块配置已下架 |
 | 8166 / 8167 / 8168 | practice-service | 【无变更】阅读试卷 / 板块不可练习、板块无题 |
 | 8104 | practice-service | 【无变更】`baseVersion` 不一致；本次对阅读也要求传 `baseVersion`（但不校验） |
