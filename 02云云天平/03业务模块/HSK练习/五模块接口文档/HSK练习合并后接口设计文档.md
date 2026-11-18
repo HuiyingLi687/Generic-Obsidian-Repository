@@ -501,7 +501,6 @@ Content-Type: application/json
       "typeIdMapping": "readChoice",
       "content": "作者认为最重要的原因是？",
       "passage": "（文章正文……）",
-      "variant": null,
       "optionContent": { "A": "气候", "B": "地理", "C": "人口" },
       "audioUrl": null,
       "shareAudioUrl": null,
@@ -1108,8 +1107,7 @@ Content-Type: application/json
 
 1. 按 `recordId` 查记录（不加锁）
 2. 校验归属、板块、`deleted`，任一不符回 `8102`
-3. 现算 `reportStatus`（读逐题 `grading_state`）
-4. 返回
+3. 返回
 
 > 只读接口，不加行锁。已交卷的记录也能查，用于报告页回看。
 
