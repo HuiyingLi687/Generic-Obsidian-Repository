@@ -1293,7 +1293,7 @@ Content-Type: application/json
 
 #### 4.3.6 PUT `{主观前缀}/{recordId}/answers`（批量保存）
 
-**用途**：批量保存正式作答。写作与笔译一次提交整段文字，口语与口译提交录音地址
+**用途**：批量保存正式作答，仅保存不评分。写作与笔译一次提交整段文字，口语与口译提交录音地址
 **鉴权**：需要登录
 **前置条件**：记录进行中，已交卷回 `8103`
 
@@ -1348,7 +1348,6 @@ Content-Type: application/json
    - 题目不在题集内 → `8107`（防串记录、防塞脏题）
    - 按模块决定落哪一列：**口语**落 `answer` + `durationMs`，**写作与翻译（除口译外）**落 `answerText` 并清空音频列
    - 重算 `answered`：文本非空白或音频非空即为已作答
-   - 改写答案会把 `points` / `isFullScore` / `analysis` 清空、`grading_state` 重置为待评（主观题）或未答，**旧评分作废**
    - 行版本 `answerVersion + 1`，首次作答时补 `first_answered_time`
 5. `currentQuestionId` 非空时同步更新 `current_question_number`
 6. 重算 `answeredCount`，写回记录
@@ -1362,7 +1361,7 @@ Content-Type: application/json
 
 #### 4.3.7 POST `{主观前缀}/{recordId}/questions/{questionId}/answers`
 
-**用途**：单题作答。题目 ID 走路径，请求体可省略
+**用途**：单题作答，仅保存不评分。题目 ID 走路径，请求体可省略
 **鉴权**：需要登录
 **前置条件**：同 §4.3.6
 
