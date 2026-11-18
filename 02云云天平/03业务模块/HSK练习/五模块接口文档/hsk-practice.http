@@ -112,7 +112,6 @@ Authorization: Bearer {{token}}
     var p = response.body.data.parts[0];
     client.global.set("section", String(p.section));
     client.log("section=" + p.section + " (" + typeof p.section + ")" +
-               " partCode=" + p.partCode +
                " 状态=" + p.status +
                " 已答=" + p.doneCount + "/" + p.questionCount);
     if (p.draft) {
@@ -770,8 +769,7 @@ Authorization: Bearer {{token}}
     var d = response.body.data;
     if (response.body.code === 200 && d.parts && d.parts.length) {
         client.global.set("spSection", String(d.parts[0].section));
-        client.log("口语板块 section=" + d.parts[0].section +
-                   " partCode=" + d.parts[0].partCode);
+        client.log("口语板块 section=" + d.parts[0].section);
     } else {
         client.log("该卷没有口语板块，请换 paperId");
     }

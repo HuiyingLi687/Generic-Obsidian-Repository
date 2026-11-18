@@ -126,7 +126,7 @@ Authorization: Bearer <登录拿到的 token>
 - **`module`**：`listening` / `reading` / `writing` / `speaking` / `translation`，**大小写不敏感**（服务端 `toLowerCase`），建议小写。
 - **`version`**：`HSK2.0` / `HSK3.0`，缺省 `HSK2.0`；白名单外返回 `8131 版本参数不合法，仅支持 HSK2.0 / HSK3.0`。
 - **`level`**：数字字符串 `"1"`–`"7"`，`"7"` 代表 HSK 7-9 整级。
-- **`section`**：板块号，各模块统一为数字 `1`、`2`、`3`…；口语同为数字，但**板块编码叫 `PART_1`**（见 1.6）。
+- **`section`**：板块号，各模块统一为数字 `1`、`2`、`3`…，口语也是数字（旧响应里的 `parts[].partCode` 字段 2026-11-18 起删除，板块定位一律用 `section`，见 1.6）。
 - **`recordId`**：练习记录主键。听力/阅读是 `practice_record.id`，写作/翻译/口语是 `practice_subjective_record.id`。**两个模块体系的 ID 不通用**，把听力的 recordId 传给写作必然 403。
 
 ### 1.6 三个容易搞混的「板块标识」
@@ -136,7 +136,6 @@ Authorization: Bearer <登录拿到的 token>
 | 首页模块卡   | `moduleCode`       | String      | `LISTENING`（**大写**）                              | `GET /hsk/modules`                     |
 | 目录接口入参  | `module`           | String      | `listening`（小写，大小写不敏感）                           | 前端固定传                                  |
 | U3 板块列表 | `parts[].section`  | **Integer** | `1`                                              | `GET /hsk/papers/{id}/parts`           |
-| U3 板块列表 | `parts[].partCode` | String      | `"1"`；口语是 `PART_1`                               | 同上                                     |
 | 主观模块开练  | `sectionMapping`   | String      | `SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAKING` | 前端按模块固定传                               |
 | 主观模块开练  | `section`          | **String**  | `"1"`                                            | 取 U3 的 `parts[].section`，`.toString()` |
 
@@ -349,7 +348,6 @@ GET /hsk/levels/3/intro?module=reading&version=HSK3.0
     "durationMinutes": 35,
     "parts": [
       {
-        "partCode": "1",
         "section": 1,
         "partName": "第一部分",
         "partNameEn": "Part 1",
@@ -369,8 +367,7 @@ GET /hsk/levels/3/intro?module=reading&version=HSK3.0
 
 | 字段 | 说明 |
 |---|---|
-| `parts[].partCode` | 板块编码：口语 `PART_1`，其余模块是数字串 `"1"` |
-| `parts[].section` | **Integer**，板块号 1..N |
+| `parts[].section` | **Integer**，板块号 1..N，五模块统一 |
 | `parts[].typeCode` | 题型编码，只表业务语义。**答题交互不看它，只看 `question.layout`** |
 | `parts[].questionCount` | 实际题量，现算（已排除下架题与示例题） |
 | `parts[].durationMinutes` | 板块级建议时长，**只有口语下发**，其余为 `null` |
@@ -403,7 +400,6 @@ GET /hsk/papers/2095405786495315969/parts?module=reading&version=HSK3.0
     "paperCode": "HSK3.0 三级阅读 模拟卷 A",
     "parts": [
       {
-        "partCode": "1",
         "section": 1,
         "partName": "第一部分",
         "partNameEn": "Part 1",
