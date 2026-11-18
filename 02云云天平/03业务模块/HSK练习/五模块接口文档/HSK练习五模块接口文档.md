@@ -180,7 +180,7 @@ Authorization: Bearer <登录拿到的 token>
 
 前端把这些空值当「没有进度」即可，别当成 0 分或已做过。
 
-🔴 **实现注意（后端）**：`BaseController.getCurrentUserId()` 在 `X-Client-Type != APP` 时会回退到模拟用户 `id=1`。免登录接口**不能直接用它**，必须仅在 `X-Client-Type=APP` 且 token 有效时取 userId，否则显式传 `null` 给 service。service 层已支持 `userId == null` → 空进度，**无需改 service**。
+🔴 **实现注意（后端，2026-11-18 已落地）**：`BaseController.getCurrentUserId()` 在 `X-Client-Type != APP` 时会回退到模拟用户 `id=1`。免登录接口**不能直接用它**——三跳现走新增的 `getCurrentUserIdOrNull()`（非 APP / 未登录 / token 无效一律返回 `null`），service 层 `userId == null` → 空进度（EMPTY 兜底）。网关白名单已放行 `levels`、`levels/*/intro`、`papers/*/parts`（test + prod），改 yml 后需重启 gateway 生效。
 
 其余接口（开练、答题、暂停、交卷、报告等）仍要求 `X-Client-Type: APP` + 有效 token，缺一个返回 `401`。
 

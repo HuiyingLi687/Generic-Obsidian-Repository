@@ -11,8 +11,9 @@
 ### 注意：@practice 用本地直连时，登录那一步的 @auth 也要改成 auth-service 的
 ###       本地端口（默认 8081），且路径去掉 /api：http://127.0.0.1:8081
 ###
-### 每个请求上的 X-Client-Type: APP 不能删 —— 删了服务端会用内置的 userId=1
-### 模拟用户跑，不报错但数据不对。
+### 每个请求上的 X-Client-Type: APP + token：非免登录接口缺一个就 401。
+### 目录三跳（02/03/04）与首页（01）免登录：不带头也能调，但不带就查不到
+### 进度（status=not_started、draft=null）。要看进度必须带头。
 ###
 ### ⚠️ 关于 19 位 ID：脚本用 client.global.set 自动串联 paperId / recordId。
 ###    如果脚本引擎把大整数转成 double，尾数会变成 ...000，接口随即报 403。
