@@ -406,25 +406,25 @@ Content-Type: application/json
 
 **返回字段说明**
 
-| 字段 | 类型 | 改动标记 | 说明 |
-|---|---|---|---|
-| questionId | Long | 【无变更】 | 题目 ID |
-| number | Integer | 【修改】 | 题号；**原听力字段名 `no`** |
-| layout | String | 【无变更】 | 布局编码，唯一真源 `question.layout`；**阅读恒 null**（快照未存 layout） |
-| typeId | String | 【新增】 | 原始题型 ID；听力恒 null |
-| typeIdMapping | String | 【新增】 | 题型映射编码；听力恒 null |
-| content | String | 【新增】 | 题干；听力等于 `passage`（题库把题干放 passage） |
-| passage | String | 【无变更】 | 文章 / 材料正文 |
-| variant | String | 【修改】 | 细节题变体 short/long/interview；**原听力下划线字段不变，位置不变**；阅读恒 null |
-| optionContent | Object | 【修改】 | **扁平** `{"A":"文本"}`；阅读原为 `{"options":{...}}` |
-| audioUrl | String | 【修改】 | 题目音频；**原听力字段名 `audio_url`** |
-| shareAudioUrl | String | 【修改】 | 共享材料音频；**原听力字段名 `share_audio_url`**；阅读恒 null |
-| groupId | Long | 【新增】 | 题组 ID；听力恒 null |
-| group | Object | 【新增】 | 题组共享内容（字段见上例）；听力恒 null |
-| optionPoolCode | String | 【新增】 | 共享选项池编码；听力恒 null |
-| exclusiveSharedOptions | Boolean | 【新增】 | 固定 false；听力恒 null |
-| userAnswer | String | 【无变更】 | 当前答案 |
-| answered | Boolean | 【无变更】 | 是否已作答 |
+| 字段                     | 类型      | 改动标记  | 说明                                                      |
+| ---------------------- | ------- | ----- | ------------------------------------------------------- |
+| questionId             | Long    | 【无变更】 | 题目 ID                                                   |
+| number                 | Integer | 【修改】  | 题号；**原听力字段名 `no`**                                      |
+| layout                 | String  | 【无变更】 | 布局编码，唯一真源 `question.layout`；**阅读恒 null**（快照未存 layout）   |
+| typeId                 | String  | 【新增】  | 原始题型 ID；听力恒 null                                        |
+| typeIdMapping          | String  | 【新增】  | 题型映射编码；听力恒 null                                         |
+| content                | String  | 【新增】  | 题干；听力等于 `passage`（题库把题干放 passage）                       |
+| passage                | String  | 【无变更】 | 文章 / 材料正文                                               |
+| variant                | String  | 【修改】  | 细节题变体 short/long/interview；**原听力下划线字段不变，位置不变**；阅读恒 null |
+| optionContent          | Object  | 【修改】  | **扁平** `{"A":"文本"}`；阅读原为 `{"options":{...}}`            |
+| audioUrl               | String  | 【修改】  | 题目音频；**原听力字段名 `audio_url`**                             |
+| shareAudioUrl          | String  | 【修改】  | 共享材料音频；**原听力字段名 `share_audio_url`**；阅读恒 null            |
+| groupId                | Long    | 【新增】  | 题组 ID；听力恒 null                                          |
+| group                  | Object  | 【新增】  | 题组共享内容（字段见上例）；听力恒 null                                  |
+| optionPoolCode         | String  | 【新增】  | 共享选项池编码；听力恒 null                                        |
+| exclusiveSharedOptions | Boolean | 【新增】  | 固定 false；听力恒 null                                       |
+| userAnswer             | String  | 【无变更】 | 当前答案                                                    |
+| answered               | Boolean | 【无变更】 | 是否已作答                                                   |
 
 **服务端内部执行顺序**
 
