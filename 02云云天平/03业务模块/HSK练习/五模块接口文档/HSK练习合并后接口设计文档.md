@@ -1480,23 +1480,22 @@ Content-Type: application/json
 
 **返回字段说明**（`SubjectiveSubmitResponse`）
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| recordId | Long | 练习记录 ID |
-| paperId | Long | 试卷 ID |
-| module | String | 模块码 |
-| status | String | 交卷后为 `COMPLETED` |
-| reportStatus | String | 交卷后通常是 `GRADING`；无 AI 题时直接 `READY` |
-| totalQuestions | Integer | 总题数 |
-| answeredCount | Integer | 已作答题目数 |
-| objectiveCount | Integer | 客观题数 |
-| objectiveCorrectCount | Integer | 客观题答对数 |
-| aiQuestionCount | Integer | 需 AI 评分的题数 |
-| aiScoredCount | Integer | 已评出分的 AI 题数（交卷瞬间通常为 0） |
-| finalScore | BigDecimal | 当前总分（交卷瞬间只有客观分） |
-| totalScore | BigDecimal | 本卷满分 |
-| idempotencyKey | String | 服务端拼的交卷幂等键，重复交卷返回同一个 |
-| draftNotSubmitted | Array\<Long\> | 只有草稿、没落正式答案的题目 ID 列表 |
+| 字段                    | 类型            | 说明                     |
+| --------------------- | ------------- | ---------------------- |
+| recordId              | Long          | 练习记录 ID                |
+| paperId               | Long          | 试卷 ID                  |
+| module                | String        | 模块码                    |
+| status                | tinyint       | 0进行中，1已完成，2已废弃         |
+| totalQuestions        | Integer       | 总题数                    |
+| answeredCount         | Integer       | 已作答题目数                 |
+| objectiveCount        | Integer       | 客观题数                   |
+| objectiveCorrectCount | Integer       | 客观题答对数                 |
+| aiQuestionCount       | Integer       | 需 AI 评分的题数             |
+| aiScoredCount         | Integer       | 已评出分的 AI 题数（交卷瞬间通常为 0） |
+| finalScore            | BigDecimal    | 当前总分（交卷瞬间只有客观分）        |
+| totalScore            | BigDecimal    | 本卷满分                   |
+| idempotencyKey        | String        | 服务端拼的交卷幂等键，重复交卷返回同一个   |
+| draftNotSubmitted     | Array\<Long\> | 只有草稿、没落正式答案的题目 ID 列表   |
 
 **服务端内部执行顺序**
 
