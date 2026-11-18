@@ -1,7 +1,7 @@
 # HSK 练习 · 五模块接口合并（客观族 / 主观族）接口设计文档
 
-> 版本：v2.2｜更新日期：2026-11-18
-> 本版变更：删除开练请求的 `restart` 字段（不再提供重开机制）；主观族单题作答与判分重试改为三模块通用，`8120` 随之下线
+> 版本：v2.3｜更新日期：2026-11-18
+> 本版变更：删除开练请求的 `restart` 字段（不再提供重开机制）；主观族单题作答与判分重试改为三模块通用，`8120` 随之下线；客观报告结构收敛为「摘要 + 题号矩阵 `rows`」，不再下发 `items` / `reportStatus` / `retryable`；`baseVersion` 听读两模块都强校验；新增 §4.4 目录三跳与最近报告 4 个端点
 > 影响服务：practice-service（改造，无 DDL 变更）
 > 关联文档：《HSK练习五模块接口文档》（v1.x，按模块拆路径的旧版）
 > 配套文件：`hsk-practice.http`（需按本文档同步路径与字段）
@@ -24,9 +24,9 @@
 | 4 | 选项结构 | 客观族统一扁平 `{"A":"文本","B":"文本"}`，不再有外层 `options` 包裹 |
 | 5 | 题号字段 | 客观族统一 `number`（原听力叫 `no`） |
 | 6 | 答案字段 | 客观族统一 `answer`（原听力叫 `selectedOptionId`），值为选项编码 A/B/C/D/E/F |
-| 7 | 乐观锁 | `baseVersion` 统一**必传**，取自记录响应的 `version`；听力强校验，阅读接受但不校验 |
-| 8 | 报告结构 | 交卷与查报告返回**同一结构**（摘要 + 题号矩阵 `rows` + 单题明细 `items`） |
-| 9 | 报告状态 | 收敛为 4 值 `PENDING/GENERATING/READY/FAILED`，可重试性改由布尔 `retryable` 表达 |
+| 7 | 乐观锁 | `baseVersion` 统一**必传**，取自记录响应的 `version`；听读两个模块都强校验，不一致回 `8104` |
+| 8 | 报告结构 | 交卷、查报告、重试返回**同一结构**：顶部摘要 + 题号矩阵 `rows`。`items` 不再下发，逐题明细走逐题回顾端点 |
+| 9 | 报告状态 | 客观族不再返回 `reportStatus` / `retryable`：报告能不能看只取决于 `status = 3` 与 `rows` 是否有值；重试前置条件是 `status = 3` 且 `idempotency_key` 非空，否则 `8106` |
 | 10 | 口语板块域 | `AnswerCardModule.SPEAKING` 的 `sectionMapping` 由拼写错误的历史值 `SEC_SPEAK` 改为 `SEC_SPEAKING`，校验时仍兼容旧值 |
 | 11 | 内部实现 | 客观族保留两套 service（听力回 `question` 表、阅读读 `answer` 快照），门面层只做分派与 DTO 转换 |
 | 12 | 开练语义 | `start` 只负责开新的练习：有未提交记录直接返回该记录，已提交后再调用则新建一次练习。不提供重开接口，未提交的继续练习走 `resume` |
@@ -35,6 +35,8 @@
 | 15 | 报告遮蔽 | 后端**不遮蔽**内容，报告与单题反馈统一返回 `aiUnlocked` 布尔标志，解析是否显示由前端控制 |
 | 16 | 解锁落表 | 仍是 `practice_subjective_record` 单表：`ai_deduct_state`（`0` 未解锁 / `1` 已解锁 / `3` 无需解锁）+ `deduct_type` + `ai_deduct_time` |
 | 17 | 解锁失败 | 扣减失败直接抛 `8118` 并回滚，本地不写解锁状态，用户付费后重试即可 |
+| 18 | 答题卡 | 五模块同一响应：`questions[]` 只给 `order` / `questionId` / `answered` / `current`，不下发对错，也不做标记 / 收藏 / 错题筛选 |
+| 19 | 目录与最近报告 | 三跳（`levels` / `intro` / `parts`）免登录、五模块同构；最近报告需登录，`data` 按模块分形状，无报告回 `null` 不报 404 |
 
 ## 1. 现状问题列表（本次要修复的 bug）
 
@@ -79,7 +81,7 @@
 
 ## 3. 接口总览清单
 
-> 目录三跳（`/hsk/modules`、`/hsk/levels`、`/hsk/levels/{level}/intro`、`/hsk/papers/{paperId}/parts`）本次**不动**，不在下表展开。
+> 目录三跳（`/hsk/levels`、`/hsk/levels/{level}/intro`、`/hsk/papers/{paperId}/parts`）与首页模块卡 `/hsk/modules` 不属于两族作答链路，见 §3.3 与 §4.4。
 
 ### 3.1 客观族（听 / 读）
 
@@ -89,15 +91,15 @@
 |---|---|---|---|---|---|
 | 1 | POST | `{客观前缀}/start` | 开练 | 改造 | 请求体统一、删除 `restart`；`module` 必传 → §4.2.1 |
 | 2 | GET | `{客观前缀}/{recordId}` | 记录详情 | 改造 | 响应加 `module` / `version`；`answers[]` 并集化 → §4.2.2 |
-| 3 | POST | `{客观前缀}/{recordId}/pause` | 暂停 | 改造 | 请求体并集化；阅读必须带 `currentQuestionId` → §4.2.3 |
+| 3 | POST | `{客观前缀}/{recordId}/pause` | 暂停 | 改造 | 请求体只留 `currentQuestionId`，两个模块都必传 → §4.2.3 |
 | 4 | POST | `{客观前缀}/{recordId}/resume` | 恢复 | 改造 | 响应同记录详情 → §4.2.4 |
 | 5 | GET | `{客观前缀}/{recordId}/questions` | 拉题 | 改造 | 题目响应统一字段名与选项结构 → §4.2.5 |
-| 6 | PUT | `{客观前缀}/{recordId}/answers/{questionId}` | 单题保存 | 改造 | 答案字段 `selectedOptionId` → `answer` → §4.2.6 |
+| 6 | PUT | `{客观前缀}/{recordId}/answers/{questionId}` | 单题保存 | 改造 | 答案字段 `selectedOptionId` → `answer`；`baseVersion` 必传并强校验 → §4.2.6 |
 | 7 | PUT | `{客观前缀}/{recordId}/answers` | 批量保存 | 改造 | 同上；返回整条记录 → §4.2.7 |
-| 8 | POST | `{客观前缀}/{recordId}/submit` | 交卷 | 改造 | 返回完整报告结构（原听力只回摘要）→ §4.2.8 |
-| 9 | GET | `{客观前缀}/{recordId}/report` | 报告详情 | 改造 | 统一结构，状态值域收敛 → §4.2.9 |
+| 8 | POST | `{客观前缀}/{recordId}/submit` | 交卷 | 改造 | 返回摘要 + 题号矩阵 `rows`，`items` 不再下发 → §4.2.8 |
+| 9 | GET | `{客观前缀}/{recordId}/report` | 报告详情 | 改造 | 与交卷同一结构：摘要 + `rows` → §4.2.9 |
 | 10 | GET | `{客观前缀}/{recordId}/report/questions/{questionId}` | 逐题回顾 | 改造 | 统一为「题目结构 + 判分字段」→ §4.2.10 |
-| 11 | POST | `{客观前缀}/{recordId}/report/retry` | 报告重试 | 改造 | 返回完整报告 → §4.2.11 |
+| 11 | POST | `{客观前缀}/{recordId}/report/retry` | 报告重试 | 改造 | 前置 `status=3` 且幂等键非空（否则 `8106`）；返回摘要 + `rows` → §4.2.11 |
 | 12 | GET | `{客观前缀}/{recordId}/answer-card` | 答题卡 | 改造 | 五模块同一响应，模块由 `module` 必传指定 → §4.2.12 |
 
 > 答题卡的旧路径（`/listening/records/{id}/answer-card` 等五条）与其余旧路径一并下线。
@@ -126,6 +128,20 @@
 
 > 主观族响应体只有一处字段变更：`SubjectiveReportResponse` 与 `SubjectiveQuestionReportResponse` 新增布尔字段 `aiUnlocked`，其余结构不变。报告内容不因未解锁而清空。
 
+### 3.3 目录三跳与最近报告（五模块共用）
+
+这一组接口不区分客观族 / 主观族，靠 `module` 参数区分模块，只读、不写库。三跳免登录，最近报告需要登录；三跳的响应结构五模块同构，最近报告的 `data` 按模块分形状。
+
+| # | Method | Path | 用途 | 接口类型 | 改动简述 |
+|---|---|---|---|---|---|
+| 1 | GET | `/hsk/levels` | 目录第一跳：等级概览 + 卷列表 + 进度 | 【无变更】 | `module` / `version` / `level` 全走 query，免登录 → §4.4.1 |
+| 2 | GET | `/hsk/levels/{level}/intro` | 目录第二跳：等级备考说明 | 【无变更】 | 能力描述三语 + 板块结构，无进度字段 → §4.4.2 |
+| 3 | GET | `/hsk/papers/{paperId}/parts` | 目录第三跳：卷内板块 + 每块进度 | 【无变更】 | 板块统一 `parts[]`，进度含 `draft` / `report` / 口语 `stats` → §4.4.3 |
+| 4 | GET | `/papers/{paperId}/reports/latest` | 板块最近一次已出报告 | 【新增】 | 替代原四条 `/{{mod}}/parts/{{structureId}}/reports/latest`，模块与板块号走 query → §4.4.4 |
+
+> 三跳的旧模块内路径（`/listening/levels`、`/reading/levels` 等 15 条）已整块下线，返回 `404`。
+> 首页模块卡 `GET /hsk/modules` 属于首页展示，不在本文档范围。
+
 ## 4. 改动接口详情
 
 ### 4.1 模块参数规则（两族通用）
@@ -134,6 +150,8 @@
 |---|---|---|
 | `/hsk/objective/records/**` | **必传** | `listening` / `reading` |
 | `/hsk/subjective/records/**` | **必传** | `writing` / `translation` / `speaking` |
+| `/hsk/levels`、`/hsk/levels/{level}/intro`、`/hsk/papers/{paperId}/parts` | **必传** | 五个模块码全收（`listening` / `reading` / `writing` / `speaking` / `translation`），免登录 |
+| `/papers/{paperId}/reports/latest` | **必传** | 五个模块码全收，另需 `section` |
 
 `module` 大小写与首尾空格不敏感。缺失、取值不在白名单 → `8133`。
 
@@ -1787,15 +1805,427 @@ Content-Type: application/json
 
 **本族抛出错误码**：8101–8119（通用）、8201+（写作）、8251+（翻译）、8281+（口语）
 
+### 4.4 目录三跳与最近报告
+
+本节 4 个端点服务「等级概览 → 备考说明 → 卷内板块」这条只读链路，以及板块卡片上的「上次成绩」入口。它们与作答链路解耦：只读、不写库、不参与任何扣费与判分。
+
+**通用规则**
+
+- `module` 一律走 query，取值 `listening` / `reading` / `writing` / `speaking` / `translation`，大小写不敏感；缺失或不在白名单 → `8133`
+- `version` 缺省 `HSK2.0`，只认 `HSK2.0` / `HSK3.0`，其余 → `8131`
+- 三跳（§4.4.1–§4.4.3）**免登录**：不带 token 时进度一律为未开始、`draft` 与 `report` 为 `null`；带有效 token 才回真实进度
+- §4.4.4 需要登录，只查本人报告
+- 对外路径与作答端点不同：三跳是 `/hsk/...`，最近报告是 `/papers/...`（`/api/practice` 前缀由网关提供）
+
+---
+
+#### 4.4.1 GET `/hsk/levels`
+
+**用途**：等级概览 + 该等级全部卷及作答进度（目录第一跳）
+**鉴权**：免登录
+
+**入参说明**
+
+| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
+|---|---|---|---|---|
+| module | query | String | 必传 | `listening` / `reading` / `writing` / `speaking` / `translation` |
+| version | query | String | 否 | `HSK2.0` / `HSK3.0`，缺省 `HSK2.0` |
+| level | query | String | 否 | 等级数字串 `1`–`7`（`7` = HSK7-9 整级），缺省 `1` |
+| Accept-Language | header | String | 否 | `zh` / `en` / `vi`，决定 `levelName` 取哪一列 |
+
+**返回完整示例**
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "module": "listening",
+    "level": "3",
+    "levelName": "HSK 三级",
+    "paperCount": 2,
+    "papers": [
+      {
+        "paperId": 100231,
+        "paperCode": "HSK3.0 模拟卷一",
+        "status": "in_progress",
+        "completedCount": 6,
+        "totalCount": 40
+      }
+    ]
+  }
+}
+```
+
+**返回字段说明**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| module | String | 模块编码，回显入参 |
+| level | String | 等级数字串，回显解析后的值 |
+| levelName | String | 等级显示名，取 `practice_module_level_config` 三列并按语言选一，不拼接、不换算 |
+| paperCount | Integer | 该等级卷数 = `papers` 长度；模块无内容时为 0 |
+| papers | Array | 该等级全部卷，元素见下 |
+| papers[].paperId | Long | 试卷 ID（口语为 `speaking_exam_paper.id`，其余为 `exam_paper.id`） |
+| papers[].paperCode | String | 试卷名称 |
+| papers[].status | String | `not_started` / `in_progress` / `completed`，未登录恒 `not_started` |
+| papers[].completedCount | Integer | 已作答题数（口语 = 已提交录音题数）；未登录恒 0 |
+| papers[].totalCount | Integer | 该模块在该卷下的总题数（已排除 `enabled_prac=0` 与示例题） |
+
+**服务端内部执行顺序**
+
+1. 解析 `module` / `version` / `level`，缺失或非法分别回 `8133` / `8131` / `8132`
+2. 读 `practice_module_level_config`：等级未配置，或模块在该等级 `enabled=0` → 返回空目录（`paperCount=0`、`papers=[]`），不报错
+3. 按版本 + 等级候选集取启用卷（`enabled_prac=1`、`exam_type=1`、`deleted=0`；口语走口语卷表），`7` 展开成 `('7','7-9')`
+4. 逐卷现算该模块题量，题量为 0 的卷不进目录
+5. 登录态下逐卷算进度；`userId == null` 时进度走 EMPTY 兜底，不查作答表
+6. 组装并返回
+
+**本接口抛出错误码**：8131 / 8132 / 8133
+
+---
+
+#### 4.4.2 GET `/hsk/levels/{level}/intro`
+
+**用途**：等级备考说明（能力描述 + 板块结构），纯内容，无进度字段（目录第二跳）
+**鉴权**：免登录
+
+**入参说明**
+
+| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
+|---|---|---|---|---|
+| level | path | String | 是 | 等级数字串 `1`–`7` |
+| module | query | String | 必传 | 五个模块码之一 |
+| version | query | String | 否 | 缺省 `HSK2.0` |
+| Accept-Language | header | String | 否 | `zh` / `en` / `vi` |
+
+**返回完整示例**
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "module": "reading",
+    "level": "3",
+    "levelName": "HSK 三级",
+    "abilityDescription": "能读懂日常生活中的简短材料……",
+    "abilityDescriptionEn": "Can read short texts from daily life...",
+    "abilityDescriptionVi": "Có thể đọc các văn bản ngắn...",
+    "totalQuestionCount": 40,
+    "durationMinutes": 30,
+    "parts": [
+      {
+        "section": 1,
+        "partName": "第一部分",
+        "partNameEn": "Part 1",
+        "partNameVi": "Phần 1",
+        "typeCode": "read_choice",
+        "typeName": "单项选择",
+        "typeNameEn": "Multiple choice",
+        "typeNameVi": "Chọn một đáp án",
+        "questionCount": 10,
+        "sortOrder": 1
+      }
+    ]
+  }
+}
+```
+
+**返回字段说明**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| module | String | 模块编码，回显入参 |
+| level | String | 等级数字串 |
+| levelName | String | 等级显示名，按语言从配置表三列取一 |
+| abilityDescription | String | 能力描述（中文） |
+| abilityDescriptionEn | String | 能力描述（英文） |
+| abilityDescriptionVi | String | 能力描述（越南语） |
+| totalQuestionCount | Integer | 模块标准总题量 |
+| durationMinutes | Integer | 建议总时长（分钟） |
+| parts | Array | 板块列表，无进度；等级未配置或模块关闭时为空数组 |
+| parts[].section | Integer | 板块号 1..N，后续作答与报告用它定位板块 |
+| parts[].partName | String | 部分名（中文） |
+| parts[].partNameEn | String | 部分名（英文） |
+| parts[].partNameVi | String | 部分名（越南语） |
+| parts[].typeCode | String | 题型编码（业务语义，不决定答题交互） |
+| parts[].typeName | String | 题型名（中文） |
+| parts[].typeNameEn | String | 题型名（英文） |
+| parts[].typeNameVi | String | 题型名（越南语） |
+| parts[].questionCount | Integer | 该板块实际题量（现算，已排除 `enabled_prac=0` 与示例题） |
+| parts[].sortOrder | Integer | 排序号 |
+| parts[].durationMinutes | Integer | 板块级建议时长（分钟）；只有口语下发，其余模块该键不出现 |
+
+**服务端内部执行顺序**
+
+1. 解析 `module` / `version` / `level`，非法分别回 `8133` / `8131` / `8132`
+2. 读等级配置：未配置 → 只回 `module` / `level` / `parts=[]`；模块关闭 → 再补 `levelName`，`parts` 仍为空
+3. 取该等级全部卷，按板块现算题量，同板块取各卷最大值；全空时回退 `standard_question_count`
+4. 组装 `parts` 与三语文本后返回
+
+**本接口抛出错误码**：8131 / 8132 / 8133
+
+---
+
+#### 4.4.3 GET `/hsk/papers/{paperId}/parts`
+
+**用途**：卷内该模块的板块列表 + 每块进度（目录第三跳，点板块即开练）
+**鉴权**：免登录
+
+**入参说明**
+
+| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
+|---|---|---|---|---|
+| paperId | path | Long | 是 | 试卷 ID（口语为口语卷 ID，其余为 `exam_paper.id`） |
+| module | query | String | 必传 | 五个模块码之一 |
+| version | query | String | 否 | 传了就必须与该卷版本一致，否则 `8135` |
+
+**返回完整示例**
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "module": "speaking",
+    "paperId": 200077,
+    "paperCode": "HSK3.0 口语卷",
+    "parts": [
+      {
+        "section": 1,
+        "partName": "第一部分",
+        "partNameEn": "Part 1",
+        "partNameVi": "Phần 1",
+        "typeCode": "speak_repeat",
+        "typeName": "听后重复",
+        "typeNameEn": "Repeat after listening",
+        "typeNameVi": "Nhắc lại sau khi nghe",
+        "questionCount": 10,
+        "sortOrder": 1,
+        "durationMinutes": 5,
+        "status": "in_progress",
+        "doneCount": 4,
+        "correctCount": null,
+        "wrongCount": null,
+        "draft": { "id": 900812, "answeredCount": 4, "currentQuestionId": 55120331 },
+        "report": { "id": 771201, "hasReport": false, "status": "GRADING" },
+        "stats": { "recordedCount": 4, "scoredCount": 2, "unansweredCount": 6, "failedCount": 0 }
+      }
+    ]
+  }
+}
+```
+
+**返回字段说明**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| module | String | 模块编码，回显入参 |
+| paperId | Long | 试卷 ID |
+| paperCode | String | 试卷名称 |
+| parts | Array | 板块列表，元素见下 |
+| parts[].section | Integer | 板块号 1..N |
+| parts[].partName | String | 部分名（中文） |
+| parts[].partNameEn | String | 部分名（英文） |
+| parts[].partNameVi | String | 部分名（越南语） |
+| parts[].typeCode | String | 题型编码 |
+| parts[].typeName | String | 题型名（中文） |
+| parts[].typeNameEn | String | 题型名（英文） |
+| parts[].typeNameVi | String | 题型名（越南语） |
+| parts[].questionCount | Integer | 板块实际题量（现算） |
+| parts[].sortOrder | Integer | 排序号 |
+| parts[].durationMinutes | Integer | 板块级建议时长（分钟），仅口语有值 |
+| parts[].status | String | `not_started` / `in_progress` / `completed`，未登录恒 `not_started` |
+| parts[].doneCount | Integer | 已作答题数（口语 = 已录音题数），未登录为 0 |
+| parts[].correctCount | Integer | 正确数；只在听力 / 阅读的已提交板块有值，写 / 译 / 说恒 `null` |
+| parts[].wrongCount | Integer | 错误数，规则同上 |
+| parts[].draft | Object | 进行中草稿块，无则 `null`；子字段见下 |
+| parts[].draft.id | Long | 草稿主键（听 / 读 = `practice_record.id`，写 / 译 / 说 = 主观记录 ID），即 `recordId`，直接拿去 `resume` |
+| parts[].draft.answeredCount | Integer | 草稿已答题数 |
+| parts[].draft.currentQuestionId | Long | 停在哪道题；无则 `null` |
+| parts[].report | Object | 最近一次已出报告块，无则 `null`；子字段见下 |
+| parts[].report.id | Long | 报告主键（听 / 读恒等于记录 ID） |
+| parts[].report.hasReport | Boolean | 是否已有可看报告 |
+| parts[].report.status | String | `READY` / `GRADING` / `FAILED` / `UNAVAILABLE`；听 / 读恒 `READY` |
+| parts[].stats | Object | 口语专属计数块，其余模块恒 `null`；子字段见下 |
+| parts[].stats.recordedCount | Integer | 已录音题数 |
+| parts[].stats.scoredCount | Integer | 已评分题数 |
+| parts[].stats.unansweredCount | Integer | 未录音题数 |
+| parts[].stats.failedCount | Integer | 录音或评分失败题数 |
+
+**服务端内部执行顺序**
+
+1. 解析 `module` / `version`（`8133` / `8131`）
+2. 定位卷：口语先查口语卷表，查不到回落 `exam_paper`（HSK7-9 口语走公共卷）；不存在、未启用、版本不符 → `8135`
+3. 读该卷该模块的等级配置与板块行；等级配置缺失、模块关闭或板块为空 → `8138`
+4. 逐板块现算题量
+5. 登录态下逐板块算进度、草稿、最近报告；口语额外算 `stats`
+6. 组装返回；`draft` / `report` / `stats` 无值时输出 `null`，不省略键
+
+**本接口抛出错误码**：8131 / 8133 / 8135 / 8138
+
+---
+
+#### 4.4.4 GET `/papers/{paperId}/reports/latest`
+
+**用途**：查某卷某板块最近一次已出报告，供板块卡片的「上次成绩」入口
+**鉴权**：需要登录
+**前置条件**：`module` 与 `section` 都必传，缺 `section` 回 `8137`；卷不存在回 `8140`；`version` 与卷不符回 `8136`
+
+**入参说明**
+
+| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
+|---|---|---|---|---|
+| paperId | path | Long | 是 | 试卷 ID |
+| module | query | String | 必传 | `listening` / `reading` / `writing` / `speaking` / `translation` |
+| section | query | String | 必传 | 板块号，五个模块统一为数字：`1` / `2` / `3`… |
+| version | query | String | 否 | 传了就校验卷归属，不符回 `8136` |
+
+**返回完整示例（听力）**
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "module": "listening",
+    "data": {
+      "recordId": 900812,
+      "reportId": 900812,
+      "reportStatus": "READY",
+      "totalQuestions": 20,
+      "answeredCount": 20,
+      "correctCount": 17,
+      "wrongCount": 3,
+      "accuracyRate": 85,
+      "durationSeconds": 1265
+    }
+  }
+}
+```
+
+**返回字段说明（外层）**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| module | String | 模块编码，回显入参，前端据此决定 `data` 用哪套字段 |
+| data | Object | 该板块最近一份报告；该板块尚无报告时为 `null`，不报 404 |
+
+`data` 的形状按 `module` 分四种，字段各自列全：
+
+**`data`（listening：报告摘要）**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| recordId | Long | 练习记录 ID |
+| reportId | Long | 报告 ID，与 `recordId` 同值 |
+| reportStatus | String | `PENDING` / `GENERATING` / `READY` / `FAILED` |
+| totalQuestions | Integer | 总题数 |
+| answeredCount | Integer | 已答题数 |
+| correctCount | Integer | 答对数 |
+| wrongCount | Integer | 答错数（未作答计入错误） |
+| accuracyRate | Integer | 正确率百分比，听力此字段为整数 |
+| durationSeconds | Integer | 用时秒数 |
+
+**`data`（reading：报告 + 单题明细）**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| reportId | Long | 报告 ID，与 `recordId` 同值 |
+| recordId | Long | 练习记录 ID |
+| paperId | Long | 试卷 ID |
+| sectionMapping | String | 恒 `SEC_READ` |
+| section | String | 板块号 |
+| status | Integer | 记录状态，正常为 3 已提交 |
+| reportStatus | String | `PENDING` / `GENERATING` / `READY` / `FAILED` |
+| totalQuestionCount | Integer | 总题数 |
+| answeredCount | Integer | 已答题数 |
+| correctCount | Integer | 答对数 |
+| wrongCount | Integer | 答错数（未作答计入错误） |
+| accuracyRate | BigDecimal | 正确率百分比，保留 2 位小数 |
+| durationSeconds | Integer | 用时秒数 |
+| submittedTime | Long | 提交时间戳（毫秒） |
+| items | Array | 单题明细，元素见下 |
+| items[].answerId | Long | 答案行 ID |
+| items[].questionId | Long | 题目 ID |
+| items[].questionNumber | Integer | 题号 |
+| items[].typeId | String | 原始题型 ID |
+| items[].typeIdMapping | String | 题型映射编码 |
+| items[].userAnswer | String | 用户答案 |
+| items[].standardAnswer | String | 标准答案 |
+| items[].answered | Boolean | 是否已作答 |
+| items[].correct | Boolean | 是否答对 |
+| items[].points | BigDecimal | 本题得分 |
+| items[].analysis | String | 交卷时冻结的解析 |
+| items[].questionSnapshot | Object | 题目冻结快照 |
+| items[].groupSnapshot | Object | 题组冻结快照 |
+| items[].optionSnapshot | Array | 选项冻结快照 |
+
+> 阅读的最近报告仍按阅读原有模型带 `items`，与 §4.2.9 收敛后的「摘要 + `rows`」不同；两处口径是否统一见 §10 第 8 条。前端取阅读的最近报告时只读摘要字段即可，`items` 不要当作跨模块通用字段。
+
+**`data`（writing / translation / speaking：与 §4.3.10 报告同结构）**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| recordId | Long | 练习记录 ID |
+| paperId | Long | 试卷 ID |
+| module | String | `writing` / `translation` / `speaking` |
+| sectionMapping | String | `SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAKING` |
+| section | String | 板块号 |
+| status | tinyint | 0 进行中、1 已完成、2 已废弃 |
+| totalQuestions | Integer | 总题数 |
+| answeredCount | Integer | 已作答题目数 |
+| objectiveCount | Integer | 客观题数 |
+| objectiveCorrectCount | Integer | 客观题答对数 |
+| aiQuestionCount | Integer | 需 AI 评分的题数 |
+| aiScoredCount | Integer | AI 已评出分的题数 |
+| finalScore | BigDecimal | 当前总分 |
+| totalScore | BigDecimal | 本卷满分 |
+| durationSeconds | Integer | 累计在场秒数 |
+| startTime | Long | 开练时刻（毫秒） |
+| endTime | Long | 交卷时刻（毫秒）；未交卷为 `null` |
+| aiUnlocked | Boolean | 解析是否已解锁 |
+| questions | Array | 逐题摘要，元素见下 |
+| questions[].order | Integer | 题序 = 冻结下标 + 1 |
+| questions[].questionId | Long | 题目 ID |
+| questions[].hasStandardAnswer | Integer | 1 客观 / 0 主观 |
+| questions[].answered | Boolean | 是否已作答 |
+| questions[].gradingState | Integer | 0 待评 / 1 已评 / 2 未答或失败 |
+| questions[].points | BigDecimal | 得分；待评时为 `null` |
+| questions[].maxScore | BigDecimal | 单题满分 |
+| questions[].isFullScore | Integer | 1 满分 / 0 非满分 |
+| questions[].correct | Boolean | 客观题对错；主观题恒 `null` |
+
+**服务端内部执行顺序**
+
+1. 解析 `module`（`8133`）与 `section`（`8137`）
+2. 卷归属校验：`module = speaking` 先查口语卷表，查不到回落 `exam_paper`；两表都查不到 → `8140`；`version` 不符 → `8136`
+3. **不校验 `enabled_prac`**：卷下架后历史报告仍要能看
+4. 按三元组 `(paperId, section_mapping, section)` 直查该模块最近一条已提交记录／报告
+5. 无报告时把各模块原有的「报告不存在」异常统一降级为 `data = null`，不报错
+6. 返回 `{module, data}`
+
+> `section` 必须和 `module` 一起传：HSK2.0 是综合卷，听力第 1 部分与阅读第 1 部分共用同一个 `paperId` 和 `section`，只用后两者无法定位唯一板块。
+
+**本接口抛出错误码**：8133 / 8136 / 8137 / 8140
+
 ## 5. 错误码更新
 
 | 错误码                | 服务               | 场景                                                                                                    |
 | ------------------ | ---------------- | ----------------------------------------------------------------------------------------------------- |
-| 8133               | practice-service | 【修改】合并路径后承担更多职责：`module` 缺失、取值不在白名单（客观族只认 listening / reading，主观族只认 writing / translation / speaking） |
+| 8104               | practice-service | 【修改】`baseVersion` 与库里 `version` 不一致；本次对听读两个模块都强校验（原阅读只要求传、不校验）                                        |
+| 8105               | practice-service | 【修改】客观报告未交卷、主观解锁预检与执行解锁要求记录已交卷，都回该码                                                                   |
+| 8106               | practice-service | 【新增到本文档】客观报告重试前置不满足：`status ≠ 3` 或 `idempotency_key` 为空                                                        |
+| 8131               | practice-service | 【新增到本文档】目录三跳与最近报告的 `version` 不在 `HSK2.0` / `HSK3.0` 之内                                              |
+| 8132               | practice-service | 【新增到本文档】目录 `level` 不在 `1`–`7` 之内                                                                   |
+| 8133               | practice-service | 【修改】合并路径后承担更多职责：`module` 缺失、取值不在白名单（作答端点按族区分白名单，目录与最近报告五个模块码全收）                                       |
+| 8134 / 8137        | practice-service | 【新增到本文档】`paperId` 为空（服务层兜底，路径参数场景不会触发）/ 最近报告缺 `section`                                            |
+| 8135 / 8138        | practice-service | 【新增到本文档】目录第三跳：卷不存在或未启用（8135）、该模块在该卷下没有板块（8138）                                                    |
+| 8136               | practice-service | 【新增到本文档】最近报告的 `version` 与卷实际版本不符                                                                    |
+| 8140               | practice-service | 【新增到本文档】最近报告查不到卷（`exam_paper` 与口语卷表都没有）                                                            |
 | 8141 / 8142        | practice-service | 【无变更】听力续练时卷内容 / 板块配置已下架                                                                               |
 | 8166 / 8167 / 8168 | practice-service | 【无变更】阅读试卷 / 板块不可练习、板块无题                                                                               |
-| 8104               | practice-service | 【无变更】`baseVersion` 不一致；本次对阅读也要求传 `baseVersion`（但不校验）                                                  |
-| 8105               | practice-service | 【修改】解锁预检与执行解锁要求记录已交卷，未交卷同样回该码                                                                         |
 | 8118               | practice-service | 【新增】解锁时免费次数、AI 解析次数、考试点数三级都不足                                                                         |
 | 8119               | practice-service | 【新增】解锁状态写回冲突：扣减已完成但状态位被行锁之外的写操作改过                                                                     |
 
@@ -1804,23 +2234,27 @@ Content-Type: application/json
 1. **路径一次性切换，没有过渡期**：旧路径（`/listening/records/**`、`/reading/records/**`、`/writing/records/**`、`/translation/records/**`、`/speaking/records/**`，含五条答题卡）已全部下线，请求会返回 `404`。前端必须在同一版本内改完所有调用点，并给每个请求补 `module`。
 2. **听力字段名有 4 处改动**，是本次唯一的破坏性变更：`no` → `number`、`audio_url` → `audioUrl`、`option_content` → `optionContent`、`share_audio_url` → `shareAudioUrl`；答案请求字段 `selectedOptionId` → `answer`。
 3. **阅读选项结构简化**：`optionContent` 从 `{"options":{"A":"…"}}` 变成 `{"A":"…"}`，取选项少拆一层。
-4. **`baseVersion` 改为必传**：从记录响应新增的 `version` 字段取值。阅读侧服务端不校验，但必须带（否则 `400`）。
-5. **报告页可以只写一套**：交卷与查报告返回同一结构，`rows` 画题号格子、`items` 画明细。听力 `items` 的 `analysis` / `points` / 快照字段为 null，解析要点进逐题回顾端点取。
-6. **报告状态判断收敛**：不再有 `PROCESSING` / `FAILED_RETRYABLE` / `FAILED_FINAL`。用 `reportStatus == FAILED && retryable` 判断是否显示重试按钮。
-7. **`currentPassageItemIndex` 阅读恒 null**：阅读侧不要再读这个字段判断翻页。
+4. **`baseVersion` 必传且两个模块都校验**：取自记录响应的 `version`。听读任一模块传旧版本都回 `8104`，前端应就地刷新记录后重发，不要静默吞掉。
+5. **报告页只写一套**：交卷、查报告、报告重试返回同一结构 = 顶部摘要 + 题号矩阵 `rows`。`items` 已不再下发，单题明细与解析走逐题回顾端点，不要按旧字段取值。
+6. **客观报告不再有 `reportStatus` / `retryable`**：报告能不能看只取决于 `status = 3` 与 `rows` 是否有值；重试按钮的前置条件与后端一致（未交卷不给重试），重试后重新拉一次报告即可。
+7. **答题卡只表态不判对错**：`questions[]` 只有 `order` / `questionId` / `answered` / `current`，当前题用响应里的 `currentQuestionNumber`，也可用 query 传入覆盖。
 8. **口语板块域**：新数据用 `SEC_SPEAKING`；若前端有硬编码 `SEC_SPEAK` 的分支，本次要一并改（服务端两种都接受）。
 9. **主观题报告多了一个解锁步骤**：报告与单题反馈新增 `aiUnlocked`，为 `false` 时解析需要用户主动解锁。后端不再替你遮挡内容，`analysis` 字段有值但**不应直接渲染**，必须先判 `aiUnlocked`，否则付费墙形同虚设。
 10. **解锁弹窗文案由后端下发**：`content` / `buttonLabel` / `bottomLabel` / `bottomValue` 直接渲染即可，不要在客户端拼「将消耗 N 次」这类句子，服务端已按 `language` 头和实际余额填好。`recommendedMethod = none` 时按钮应跳权益中心而不是调 unlock。
 11. **交卷不再因余额不足被拦**：旧版交卷前会校验权益，现在交卷只看作答与判分，未解锁只影响报告页的解析展示。
+12. **三跳免登录，别用 401 拦自己**：不带 token 也能拉 `levels` / `intro` / `parts`，此时进度字段为未开始、`draft` 与 `report` 为 `null`；带有效 token 自动带进度。`parts[].draft.id` 就是 `recordId`，直接拿去调 `resume` 继续练习。
+13. **最近报告的 `data` 按模块分形状**：先看 `module` 再取值，并且必须判 `data == null`（该板块还没报告，服务端不报 404）。
 
 ## 7. 关键业务流程&事务边界
 
 ### 7.1 合并后的分层
 
 ```
-Controller（2 族 6 个类）
+Controller（2 族 6 个类 + 4 个跨族只读类）
   ├─ 客观族：ObjectiveRecordController / ObjectiveAnswerController / ObjectiveReportController
-  └─ 主观族：SubjectivePracticeController
+  ├─ 主观族：SubjectivePracticeController
+  └─ 跨族只读：PracticeCatalogController（目录三跳）/ PracticeHomeController（首页模块卡）
+               PracticeReportController（最近报告）/ AnswerCardController（五模块答题卡）
       ↓ 模块解析（ObjectiveModuleResolver / SubjectiveModuleResolver）
 门面层（ObjectivePracticeService；主观族直接复用 SubjectivePracticeService）
       ↓ 分派 + DTO 转换
@@ -1839,12 +2273,13 @@ Controller（2 族 6 个类）
 | 单题 / 批量保存（客观） | `@Transactional` | 锁记录 → 锁答案行 → 写答案 → 重算 `answeredCount`，同一事务 |
 | 单题 / 批量保存（主观） | `@Transactional` | 行锁记录 → 逐条 upsert 作答 → 按模块落列（口语 `answer`，写作与翻译 `answerText`）→ 重算 `answeredCount` 与进度 |
 | 暂停 / 恢复（两族） | `@Transactional` | 时长结算与位置更新同事务；`resume` 清 `paused_time` 必须走显式 UPDATE 并同时写 `resumed_time` |
-| 交卷（客观） | `@Transactional` | 判分 → 汇总 → 置 `reportStatus = PENDING`，同一事务；幂等命中直接返回 |
-| 交卷（主观） | `@Transactional` | 落 finalAnswers → 冻结快照 → 客观题即判、主观题置待评 → 写统计与 `idempotency_key` → `afterCommit` 投递 AI。**`reportStatus` 不落库**（表里没有该列），读时按 `grading_state` 现算 |
-| 报告重试（客观） | `@Transactional` | 置 `GENERATING` → 重算 → 置 `READY` |
+| 交卷（客观） | `@Transactional` | 落 `finalAnswers` → 比对标准答案判分 → 写对错与 `points` → 汇总统计 → 置 `status = 3`、`end_time`、结算在场时长，同一事务；幂等命中直接返回 |
+| 交卷（主观） | `@Transactional` | 落 finalAnswers → 冻结快照 → 客观题即判、主观题置待评 → 写统计与 `idempotency_key` → `afterCommit` 投递 AI。**报告状态不落库**（表里没有该列），读时按逐题 `grading_state` 现算 |
+| 报告重试（客观） | `@Transactional` | 前置 `status = 3` 且 `idempotency_key` 非空（否则 `8106`）→ 按冻结快照重算统计与矩阵；不改记录状态 |
 | 判分重试（主观） | `@Transactional` | 一条 SQL 重置入选行的 `grading_state` 与退避字段 → `grading_attempts + 1` → `afterCommit` 重新投递；不改报告状态（现算） |
 | 解锁（主观） | `@Transactional` | 行锁查记录 → 校验已交卷与归属 → 三级扣减（远程，不参与本地事务）→ 写 `ai_deduct_state=1` + `deduct_type` + `ai_deduct_time`。先扣后写，扣失败抛 8118 回滚，行锁串行化并发请求 |
-| 详情 / 拉题 / 报告读取（两族） | 无事务 | 只读、不加锁；`reportStatus` 与 `aiUnlocked` 均在读时计算 |
+| 详情 / 拉题 / 报告读取（两族） | 无事务 | 只读、不加锁；`aiUnlocked` 在读时按 `ai_deduct_state` 现算 |
+| 目录三跳 / 最近报告（§4.4） | 无事务 | 只读、不加锁、不写库；未登录走 EMPTY 进度兜底；最近报告把各模块「无报告」异常统一降级为 `data = null` |
 
 ### 7.3 时长口径（未变，重申）
 
@@ -1864,10 +2299,10 @@ Controller（2 族 6 个类）
 | 5 | 听力拉题 | `number` / `optionContent` 扁平 / `audioUrl` 驼峰；`group` 为 null |
 | 6 | 阅读拉题 | `group` 与 `optionContent`（扁平）都有；`layout` 为 null |
 | 7 | 听力批量保存传错 `baseVersion` | `8104` |
-| 8 | 阅读批量保存传任意 `baseVersion` | 200（服务端不校验） |
-| 9 | 听力交卷 | 返回完整报告，`rows` 与 `items` 均有数据 |
-| 10 | 阅读交卷 | 返回完整报告，`items` 带快照，`rows` 由明细投影、题号一致 |
-| 11 | 报告状态为 `FAILED` | `retryable=true`，重试后回到 `READY` |
+| 8 | 阅读批量保存传旧 `baseVersion` | `8104`（两个模块都强校验） |
+| 9 | 听力交卷 | 返回摘要 + `rows`，逐题带 `answered` / `isCorrect`，响应里没有 `items` |
+| 10 | 阅读交卷 | 同上：摘要 + `rows`，题号为 `question_ids` 下标 + 1 |
+| 11 | 未交卷时调客观报告重试 | `8106`；已交卷且幂等键非空 → 200，重算后 `rows` 完整 |
 | 12 | `POST /hsk/subjective/records/start?module=translation` | 正常开练 |
 | 13 | `POST /hsk/subjective/records/{id}/report/retry?module=translation` | 200，失败题重新入队 |
 | 14 | `POST /hsk/subjective/records/{id}/questions/1/answers?module=writing` | 200，落 `answer_text` |
@@ -1882,6 +2317,13 @@ Controller（2 族 6 个类）
 | 23 | 三级权益都为 0 时调 `POST /{recordId}/unlock` | `8118`，`ai_deduct_state` 仍为 `0`，报告 `aiUnlocked` 仍为 `false` |
 | 24 | 已解锁后再调一次 `POST /{recordId}/unlock` | 200，`deductType` 与首次一致，余额不再减少 |
 | 25 | 卷内全客观题交卷后查报告 | `aiUnlocked=true`（`ai_deduct_state=3`），不需要解锁 |
+| 26 | `GET /hsk/levels?module=listening&level=3`（不带 token） | 200，`papers[].status` 全为 `not_started`、`completedCount` 全 0 |
+| 27 | `GET /hsk/levels?module=writing&version=HSK4.0` | `8131` |
+| 28 | `GET /hsk/papers/{paperId}/parts?module=speaking`（不带 token） | 200，`parts[].draft` 与 `report` 为 `null`，`stats` 按口语口径有值 |
+| 29 | `GET /hsk/papers/{paperId}/parts?module=reading`，该卷无阅读板块 | `8138` |
+| 30 | `GET /papers/{paperId}/reports/latest?module=listening&section=1`，该板块从未练过 | 200，`module=listening`、`data=null` |
+| 31 | 同一端点缺 `section` | `8137` |
+| 32 | 最近报告：`module=writing` 且有已交卷记录 | 200，`data` 按主观报告形状返回，含 `aiUnlocked` |
 
 ## 9. 上线执行事项【P0阻断项】
 
@@ -1922,11 +2364,15 @@ Controller（2 族 6 个类）
 | `hsk/subjective/grading/SubjectiveGradingService.java` | 评分完成后不再触发扣费，只重算统计 |
 | `hsk/subjective/grading/SubjectiveAiDeductService.java` | 【删除】由 `SubjectiveUnlockService` 接管 |
 | `common/mapper/PracticeSubjectiveRecordMapper.java` + XML | `casAiDeductState` / `markAiDeductType` 合并为 `markAiUnlocked` |
+| `hsk/report/controller/PracticeReportController.java` | 【新增】板块最近报告统一端点 `GET /papers/{paperId}/reports/latest`，替代原四条按模块的 `/{{mod}}/parts/{structureId}/reports/latest` |
+| `hsk/report/service/PracticeReportQueryService.java` + `impl` | 【新增】`module` + `section` 必传，按三元组直查各模块报告；「无报告」统一降级为 `data = null` |
+| `hsk/report/dto/LatestReportResponse.java` | 【新增】外层 `{module, data}`，`data` 按模块分形状 |
+| `hsk/catalog/**`（三跳控制器 / 服务 / DTO） | 【无变更】路径与响应结构不动，本次只在文档里补全字段与错误码 |
 | `csca/controller/CscaFavoriteController.java` | 补回缺失的类闭合大括号（原本导致全模块编译失败） |
 
 ### 9.3 环境状态
 
-- 编译：主源 321 文件 + 测试源 46 文件，**0 错误**
+- 编译：主源 349 文件 + 测试源 46 文件，**0 错误**
 - 单测：`374 tests / 374 passed / 0 failed`
 - TEST / PROD：未部署（本次仅代码与文档）
 
@@ -1935,7 +2381,10 @@ Controller（2 族 6 个类）
 | # | 待确认点 | 暂定方案 | 确认人 |
 |---|---|---|---|
 | 1 | 前端切换窗口 | 旧路径已下线，需与后端同版本上线 | 前端 |
-| 2 | 阅读是否要真正启用 `baseVersion` 乐观锁 | 暂只要求传、不校验（避免引入新的失败路径） | 后端 |
+| 2 | 阅读 `baseVersion` | 已拍定：两个模块都强校验，不一致回 `8104` | 后端 |
 | 3 | 是否订正 `SEC_SPEAK` 存量配置（24 + 8 行） | 暂不订正，服务端双值兼容 | DBA / 后端 |
-| 4 | 听力 `items[].analysis` 是否也要填（当前恒 null） | 暂不填，解析走逐题回顾端点，避免报告响应体过大 | 产品 |
-| 5 | 网关白名单登记 | 必须登记 `/hsk/objective/**`、`/hsk/subjective/**`，并确认旧前缀已从白名单移除 | 运维 |
+| 4 | 客观报告是否还需要 `items` | 已拍定：不再下发，单题明细走逐题回顾端点 | 产品 |
+| 5 | 网关白名单登记 | 必须登记 `/hsk/objective/**`、`/hsk/subjective/**`、`/hsk/levels`、`/hsk/papers/**`、`/papers/**`，并确认旧前缀已从白名单移除；三跳与首页模块卡免登录放行 | 运维 |
+| 6 | 最近报告路径缺 `/hsk` 段 | 现为 `/papers/{paperId}/reports/latest`（对外 `/api/practice/papers/...`），与三跳的 `/hsk/...` 不齐；是否统一成 `/hsk/papers/{paperId}/reports/latest` 待定 | 前后端 |
+| 7 | 最近报告的板块域取值 | 口语报告按 `SEC_SPEAK` 直查；若新记录按决策 10 写 `SEC_SPEAKING`，会出现查不到，候选集是否改为 `IN ('SEC_SPEAK','SEC_SPEAKING')` 待定 | 后端 / DBA |
+| 8 | 阅读最近报告是否也砍掉 `items` | 最近报告复用阅读原有模型（带 `items`），与 §4.2.9 收敛后的结构不一致；暂按现状双口径，是否统一待定 | 产品 / 前端 |
