@@ -704,7 +704,7 @@ Content-Type: application/json
         "number": 1,
         "questionId": 55120,
         "questionType": "细节选择",
-        "layout": "textChoice_shareAudio",
+        "layout": "choice",
         "answered": true,
         "isCorrect": true,
         "userAnswer": "C",
