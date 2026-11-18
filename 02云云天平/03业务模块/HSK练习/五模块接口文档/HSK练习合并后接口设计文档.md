@@ -1079,28 +1079,27 @@ Content-Type: application/json
 
 **返回字段说明**（记录响应，与 start 同一结构）
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| recordId | Long | 练习记录 ID（`practice_subjective_record.id`） |
-| paperId | Long | 试卷 ID |
-| sectionMapping | String | 板块域，库里原值 |
-| section | String | 板块号 |
-| levelCode | String | HSK 等级码 |
-| status | String | `IN_PROGRESS` / `COMPLETED` / `DISCARDED` |
-| reportStatus | String | `NOT_READY` / `GRADING` / `READY` / `FAILED`，按逐题 `grading_state` 现算 |
-| totalQuestions | Integer | 本次练习总题数（开练时冻结） |
-| answeredCount | Integer | 已作答题目数 |
-| currentQuestionId | Long | 当前停留题目 ID；未开始为 null |
-| currentQuestionNumber | Integer | 当前停留题序（`question_ids` 下标 + 1） |
-| durationSeconds | Integer | 累计在场秒数，退出期间不计 |
-| paused | Boolean | 是否处于「已离开」状态 |
-| pausedAt | Long | 上次离开时刻（毫秒）；`paused=false` 时为 null |
-| objectiveCount | Integer | 客观题数（`has_standard_answer = 1`） |
-| objectiveCorrectCount | Integer | 客观题答对数 |
-| aiQuestionCount | Integer | 需 AI 评分的题数（已排除满分 0 的流程题） |
-| aiScoredCount | Integer | AI 已评出分的题数 |
-| finalScore | BigDecimal | 当前已得总分；AI 未评完时只有客观分 |
-| totalScore | BigDecimal | 本卷满分 |
+| 字段                    | 类型         | 说明                                       |
+| --------------------- | ---------- | ---------------------------------------- |
+| recordId              | Long       | 练习记录 ID（`practice_subjective_record.id`） |
+| paperId               | Long       | 试卷 ID                                    |
+| sectionMapping        | String     | 板块域，库里原值                                 |
+| section               | String     | 板块号                                      |
+| levelCode             | String     | HSK 等级码                                  |
+| status                | String     | 0进行中，1已完成，2已废弃                           |
+| totalQuestions        | Integer    | 本次练习总题数（开练时冻结）                           |
+| answeredCount         | Integer    | 已作答题目数                                   |
+| currentQuestionId     | Long       | 当前停留题目 ID；未开始为 null                      |
+| currentQuestionNumber | Integer    | 当前停留题序（`question_ids` 下标 + 1）            |
+| durationSeconds       | Integer    | 累计在场秒数，退出期间不计                            |
+| paused                | Boolean    | 是否处于「已离开」状态                              |
+| pausedAt              | Long       | 上次离开时刻（毫秒）；`paused=false` 时为 null        |
+| objectiveCount        | Integer    | 客观题数（`has_standard_answer = 1`）          |
+| objectiveCorrectCount | Integer    | 客观题答对数                                   |
+| aiQuestionCount       | Integer    | 需 AI 评分的题数（已排除满分 0 的流程题）                 |
+| aiScoredCount         | Integer    | AI 已评出分的题数                               |
+| finalScore            | BigDecimal | 当前已得总分；AI 未评完时只有客观分                      |
+| totalScore            | BigDecimal | 本卷满分                                     |
 
 **服务端内部执行顺序**
 
