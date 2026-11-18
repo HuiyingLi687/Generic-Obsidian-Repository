@@ -215,7 +215,7 @@ Authorization: Bearer <登录拿到的 token>
 | 交卷后能否改         | 否                                    | 否                                  | 否                              |
 | 答案形态           | `selectedOptionId`（A/B/C…）/ `answer` | `answerText` 文本                    | `answer` 音频 URL + `durationMs` |
 | 进度定位           | `currentQuestionId` + 题号             | 同                                  | 同                              |
-| 计时             | 服务端结算（在场累计，见 4.7）            | 同                                  | 同                              |
+| 计时             | 服务端结算（在场累计，见 4.7）                    | 同                                  | 同                              |
 | 答题卡 `answered` | 该题选过                                 | 该题存过答案                             | 录音已上传完成                        |
 
 ### 2.3 内部接口（前端不要用）
