@@ -2145,7 +2145,7 @@ Content-Type: application/json
 | paperId | Long | 试卷 ID |
 | sectionMapping | String | 恒 `SEC_READ` |
 | section | String | 板块号 |
-| status | Integer | 记录状态，正常为 3 已提交 |
+| status | String | 状态枚举，报告场景恒 `COMPLETED` |
 | reportStatus | String | `PENDING` / `GENERATING` / `READY` / `FAILED` |
 | totalQuestionCount | Integer | 总题数 |
 | answeredCount | Integer | 已答题数 |
@@ -2181,7 +2181,7 @@ Content-Type: application/json
 | module | String | `writing` / `translation` / `speaking` |
 | sectionMapping | String | `SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAKING` |
 | section | String | 板块号 |
-| status | tinyint | 0 进行中、1 已完成、2 已废弃 |
+| status | String | 枚举 `IN_PROGRESS` / `COMPLETED` / `ABANDONED`；库中存 0/1/2 |
 | totalQuestions | Integer | 总题数 |
 | answeredCount | Integer | 已作答题目数 |
 | objectiveCount | Integer | 客观题数 |
