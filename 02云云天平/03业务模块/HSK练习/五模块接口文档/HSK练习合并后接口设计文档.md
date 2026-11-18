@@ -1535,36 +1535,56 @@ Content-Type: application/json
 
 **返回字段说明**（`SubjectiveReportResponse`）
 
-| 字段                            | 类型         | 改动标记  | 说明                     |
-| ----------------------------- | ---------- | ----- | ---------------------- |
-| recordId                      | Long       | 【无变更】 | 练习记录 ID                |
-| paperId                       | Long       | 【无变更】 | 试卷 ID                  |
-| module                        | String     | 【新增】  | 模块码                    |
-| sectionMapping                | String     | 【无变更】 | 板块域                    |
-| section                       | String     | 【无变更】 | 板块号                    |
-| totalQuestions                | Integer    | 【无变更】 | 总题数                    |
-| answeredCount                 | Integer    | 【无变更】 | 已作答题目数                 |
-| objectiveCount                | Integer    | 【无变更】 | 客观题数                   |
-| objectiveCorrectCount         | Integer    | 【无变更】 | 客观题答对数                 |
-| aiQuestionCount               | Integer    | 【无变更】 | AI 题数                  |
-| aiScoredCount                 | Integer    | 【无变更】 | AI 已评出分的题数             |
-| finalScore                    | BigDecimal | 【无变更】 | 当前总分                   |
-| totalScore                    | BigDecimal | 【无变更】 | 本卷满分                   |
-| durationSeconds               | Integer    | 【无变更】 | 累计在场秒数                 |
-| startTime                     | Long       | 【无变更】 | 开练时刻（毫秒）               |
-| endTime                       | Long       | 【无变更】 | 交卷时刻（毫秒）               |
-| aiUnlocked                    | Boolean    | 【新增】  | 解析是否已解锁；内容不因未解锁而清空     |
-| questions                     | Array      | 【无变更】 | 逐题摘要，元素见下              |
-| questions[].order             | Integer    | 【无变更】 | 题序 = 冻结下标 + 1          |
-| questions[].questionId        | Long       | 【无变更】 | 题目 ID                  |
-| questions[].layout            | String     | 【无变更】 | 题面形态                   |
-| questions[].hasStandardAnswer | Integer    | 【无变更】 | 1 客观 / 0 主观            |
-| questions[].answered          | Boolean    | 【无变更】 | 是否已作答                  |
-| questions[].gradingState      | Integer    | 【无变更】 | 0 待评 / 1 已评 / 2 未答或失败  |
-| questions[].points            | BigDecimal | 【无变更】 | 得分；待评时为 null           |
-| questions[].maxScore          | BigDecimal | 【无变更】 | 单题满分                   |
-| questions[].isFullScore       | Integer    | 【无变更】 | 1 满分 / 0 非满分；待评时为 null |
-| questions[].correct           | Boolean    | 【无变更】 | 客观题对错；主观题恒 null        |
+| 字段                            | 类型         | 改动标记                                  | 说明                     |
+| ----------------------------- | ---------- | ------------------------------------- | ---------------------- |
+| recordId                      | Long       | 【无变更】                                 | 练习记录 ID                |
+| paperId                       | Long       | 【无变更】                                 | 试卷 ID                  |
+| module                        | String     | 【新增】                                  | 模块码                    |
+| sectionMapping                | String     | 【无变更】                                 | 板块域                    |
+| section                       | String     | 【无变更】                                 | 板块号                    |
+| totalQuestions                | Integer    | 【无变更】                                 | 总题数                    |
+| answeredCount                 | Integer    | 【无变更】                                 | 已作答题目数                 |
+| objectiveCount                | Integer    | 【无变更】                                 | 客观题数                   |
+| objectiveCorrectCount         | Integer    | 【无变更】                                 | 客观题答对数                 |
+| aiQuestionCount               | Integer    | 【无变更】                                 | AI 题数                  |
+| aiScoredCount                 | Integer    | 【无变更】                                 | AI 已评出分的题数             |
+| finalScore                    | BigDecimal | 【无变更】                                 | 当前总分                   |
+| totalScore                    | BigDecimal | 【无变更】                                 | 本卷满分                   |
+| durationSeconds               | Integer    | 【无变更】                                 | 累计在场秒数                 |
+| startTime                     | Long       | 【无变更】                                 | 开练时刻（毫秒）               |
+| endTime                       | Long       | 【无变更】                                 | 交卷时刻（毫秒）               |
+| aiUnlocked                    | Boolean    | 【新增】                                  | 解析是否已解锁；内容不因未解锁而清空     |
+| questions                     | Array      | 【无变更】                                 | 逐题摘要，元素见下              |
+| questions[].order             | Integer    | 【无变更】                                 | 题序 = 冻结下标 + 1          |
+| questions[].questionId        | Long       | 【无变更】                                 | 题目 ID                  |
+| questions[].layout            | String     | 【无变更】                                 | 题面形态                   |
+| questions[].hasStandardAnswer | Integer    | 【无变更】                                 | 1 客观 / 0 主观            |
+| questions[].answered          | Boolean    | 【无变更】                                 | 是否已作答                  |
+| questions[].gradingState      | Integer    | 【无变更】                                 | 0 待评 / 1 已评 / 2 未答或失败  |
+| questions[].points            | BigDecimal | 【无变更】                                 | 得分；待评时为 null           |
+| questions[].maxScore          | BigDecimal | 【无变更】                                 | 单题满分                   |
+| questions[].isFullScore       | Integer    | 【无变更】                                 | 1 满分 / 0 非满分；待评时为 null |
+| questions[].correct           | Boolean    | 【无变更】                                 | 客观题对错；主观题恒 null        |
+| rows                          | Array      | 题号矩阵，元素见下                             |                        |
+| rows[].number                 | Integer    | 题号，practice_record.question_ids数组下标+1 |                        |
+| rows[].questionId             | Long       | 题目 ID                                 |                        |
+| rows[].answered               | Boolean    | 是否作答                                  |                        |
+| rows[].isCorrect              | Boolean    | 是否正确                                  |                        |
+| items                         | Array      | 单题明细，元素见下                             |                        |
+| items[].questionId            | Long       | 题目 ID                                 |                        |
+| items[].number                | Integer    | 题号                                    |                        |
+| items[].typeId                | String     | 原始题型 ID；                              |                        |
+| items[].typeIdMapping         | String     | 题型映射编码；                               |                        |
+| items[].layout                | String     | 布局；                                   |                        |
+| items[].userAnswer            | String     | 用户答案                                  |                        |
+| items[].standardAnswer        | String     | 标准答案                                  |                        |
+| items[].answered              | Boolean    | 是否作答                                  |                        |
+| items[].correct               | Boolean    | 是否答对                                  |                        |
+| items[].points                | BigDecimal | 得分；                                   |                        |
+| items[].analysis              | String     | 解析；                                   |                        |
+| items[].questionSnapshot      | Object     | 题目冻结快照；                               |                        |
+| items[].groupSnapshot         | Object     | 题组冻结快照；                               |                        |
+| items[].optionSnapshot        | Array      | 选项冻结快照；                               |                        |
 
 **服务端内部执行顺序**
 
