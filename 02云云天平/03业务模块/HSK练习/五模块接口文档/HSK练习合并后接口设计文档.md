@@ -1266,7 +1266,7 @@ Content-Type: application/json
 | groupOptionContent        | Object  | 题组共用选项，结构同上                                                   |
 | hasStandardAnswer         | Integer | `1` 客观题（交卷即判）、`0` 主观题（交 AI）                                   |
 | answered                  | Boolean | 是否已保存正式作答（草稿不算）                                               |
-| answerText                | String  | 已保存的文本作答：写作正文 / 笔译译文 / 口语转写                                   |
+| answerText                | String  | 已保存的文本作答：写作正文 / 笔译译文 (无需将用户录音转为文字，口语为NULL)                    |
 | answer                    | String  | 已保存的音频 URL：口语 / 口译                                            |
 | durationMs                | Long    | 录音时长（毫秒）                                                      |
 | answerDraft               | Object  | 草稿块；从未存过为 `null`，子字段见下                                        |
@@ -1299,18 +1299,18 @@ Content-Type: application/json
 
 **入参说明**
 
-| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
-|---|---|---|---|---|
-| recordId | path | Long | 是 | 练习记录 ID |
-| module | query | String | 是 | `writing` / `translation` / `speaking` |
-| answers | body | Array | 是 | 作答列表，元素见下 |
-| answers[].questionId | body | Long | 是 | 题目 ID，必须在冻结题集内，否则 `8107` |
-| answers[].answerText | body | String | 否 | 文本作答：写作正文 / 笔译译文 / 口语转写 |
-| answers[].answer | body | String | 否 | 音频 URL：口语 / 口译 |
-| answers[].durationMs | body | Long | 否 | 录音时长（毫秒） |
-| answers[].answerVersion | body | Long | 否 | 客户端持有的版本，**当前不参与校验**（见下） |
-| currentQuestionId | body | Long | 否 | 当前题，用于更新进度位置；不传则不改进度 |
-| X-Client-Type | header | String | 否 | 客户端类型 |
+| 参数名                     | 位置     | 类型     | 必填  | 约束&说明                                  |
+| ----------------------- | ------ | ------ | --- | -------------------------------------- |
+| recordId                | path   | Long   | 是   | 练习记录 ID                                |
+| module                  | query  | String | 是   | `writing` / `translation` / `speaking` |
+| answers                 | body   | Array  | 是   | 作答列表，元素见下                              |
+| answers[].questionId    | body   | Long   | 是   | 题目 ID，必须在冻结题集内，否则 `8107`               |
+| answers[].answerText    | body   | String | 否   | 文本作答：写作正文 / 笔译译文 (无需将用户录音转为文字，口语为NULL) |
+| answers[].answer        | body   | String | 否   | 音频 URL：口语 / 口译                         |
+| answers[].durationMs    | body   | Long   | 否   | 录音时长（毫秒）                               |
+| answers[].answerVersion | body   | Long   | 否   | 客户端持有的版本，**当前不参与校验**（见下）               |
+| currentQuestionId       | body   | Long   | 否   | 当前题，用于更新进度位置；不传则不改进度                   |
+| X-Client-Type           | header | String | 否   | 客户端类型                                  |
 
 **请求示例**
 
@@ -1346,7 +1346,7 @@ Content-Type: application/json
 3. 一次加载冻结题集，建 `questionId → 题目行` 索引
 4. 逐条处理作答项：
    - 题目不在题集内 → `8107`（防串记录、防塞脏题）
-   - 按模块决定落哪一列：**口语**落 `answer` + `durationMs`，**写作与翻译**落 `answerText` 并清空音频列
+   - 按模块决定落哪一列：**口语**落 `answer` + `durationMs`，**写作与翻译（除口译外）**落 `answerText` 并清空音频列
    - 重算 `answered`：文本非空白或音频非空即为已作答
    - 改写答案会把 `points` / `isFullScore` / `analysis` 清空、`grading_state` 重置为待评（主观题）或未答，**旧评分作废**
    - 行版本 `answerVersion + 1`，首次作答时补 `first_answered_time`
