@@ -150,12 +150,13 @@
 
 **入参说明**
 
-| 参数名           | 位置     | 类型     | 必填  | 约束&说明                       |
-| ------------- | ------ | ------ | --- | --------------------------- |
-| module        | query  | String | 必传  | 【新增】`listening` / `reading` |
-| paperId       | body   | Long   | 是   | 【无变更】练习试卷 ID                |
-| section       | body   | String | 是   | 【无变更】板块号 1..N               |
-| X-Client-Type | header | String | 否   | 【无变更】                       |
+| 参数名            | 位置     | 类型     | 必填  | 约束&说明                                       |
+| -------------- | ------ | ------ | --- | ------------------------------------------- |
+| module         | query  | String | 必传  | 【新增】`listening` / `reading`                 |
+| paperId        | body   | Long   | 是   | 【无变更】练习试卷 ID                                |
+| sectionMapping | body   | String | 是   | `SEC_LISTEN` / `SEC_READ` ，必须与 `module` 一致； |
+| section        | body   | String | 是   | 【无变更】板块号 1..N                               |
+| X-Client-Type  | header | String | 否   | 【无变更】                                       |
 
 **请求示例**
 
@@ -203,15 +204,16 @@ Content-Type: application/json
 | module                | String  | 【新增】  | `listening` / `reading`         |
 | status                | Integer | 【无变更】 | 0 已创建、1 进行中、2 已放弃、3 已提交         |
 | version               | Integer | 【新增】  | 乐观锁版本号，回传给 `baseVersion`        |
-| currentQuestionId     | Long    | 【无变更】 | 当前停留题目 ID                       |
-| currentQuestionNumber | Integer | 【无变更】 | 当前停留题号                          |
+| currentQuestionId     | Long    | 【无变更】 | 当前停留题目 ID；刚开练为 null             |
+| currentQuestionNumber | Integer | 【无变更】 | 当前停留题号；刚开练为 null               |
 | durationSeconds       | Integer | 【无变更】 | 在场累计秒数                          |
 | paused                | Boolean | 【无变更】 | 是否已离开（true 时前端不要自动续走计时器）        |
 | pausedAt              | Long    | 【无变更】 | 上次离开时刻毫秒；`paused=false` 时为 null |
 | answeredCount         | Integer | 【无变更】 | 已答题数                            |
 | totalQuestions        | Integer | 【无变更】 | 本次练习总题数                         |
 | answers               | Array   | 【修改】  | 元素结构见下                          |
-| answers[].answer      | String  | 【无变更】 | 用户答案（选项编码）                      |
+| answers[].questionId  | Long    | 【无变更】 | 题目 ID                           |
+| answers[].answer      | String  | 【无变更】 | 用户答案（选项编码）；未作答为 null            |
 | answers[].answered    | Boolean | 【无变更】 | 是否已作答                           |
 
 
@@ -245,7 +247,58 @@ Content-Type: application/json
 | recordId | path | Long | 是 | 练习记录 ID |
 | module | query | String | 必传 | 模块码 |
 
-**返回**：记录响应（字段定义见 §4.2.1 返回字段说明）。
+**返回完整示例**
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "recordId": 900812,
+    "paperId": 100231,
+    "section": "1",
+    "module": "listening",
+    "status": 1,
+    "version": 7,
+    "currentQuestionId": 55121,
+    "currentQuestionNumber": 2,
+    "durationSeconds": 186,
+    "paused": false,
+    "pausedAt": null,
+    "answeredCount": 2,
+    "totalQuestions": 20,
+    "answers": [
+      {
+        "questionId": 55120,
+        "answer": "C",
+        "answered": true
+      }
+    ]
+  }
+}
+```
+
+**返回字段说明**
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| recordId | Long | 练习记录 ID（`practice_record.id`） |
+| paperId | Long | 试卷 ID |
+| section | String | 板块号 |
+| module | String | `listening` / `reading` |
+| status | Integer | 0 已创建、1 进行中、2 已放弃、3 已提交 |
+| version | Integer | 乐观锁版本号，回传给 `baseVersion` |
+| currentQuestionId | Long | 当前停留题目 ID；未开始为 null |
+| currentQuestionNumber | Integer | 当前停留题号；未开始为 null |
+| durationSeconds | Integer | 在场累计秒数 |
+| paused | Boolean | 是否已离开 |
+| pausedAt | Long | 上次离开时刻毫秒；`paused=false` 时为 null |
+| answeredCount | Integer | 已答题数 |
+| totalQuestions | Integer | 本次练习总题数 |
+| answers | Array | 已保存答案项，元素见下 |
+| answers[].questionId | Long | 题目 ID |
+| answers[].answer | String | 用户答案（选项编码）；未作答为 null |
+| answers[].answered | Boolean | 是否已作答 |
 
 **服务端内部执行顺序**
 
@@ -282,7 +335,27 @@ Content-Type: application/json
 }
 ```
 
-**返回**：记录响应，含结算后的 `durationSeconds`、`paused=true`、`pausedAt`。
+**返回字段说明**（记录响应，暂停后 `paused=true`、`pausedAt` 有值、`durationSeconds` 已结算）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| recordId | Long | 练习记录 ID |
+| paperId | Long | 试卷 ID |
+| section | String | 板块号 |
+| module | String | `listening` / `reading` |
+| status | Integer | 0 已创建、1 进行中、2 已放弃、3 已提交 |
+| version | Integer | 乐观锁版本号，回传给 `baseVersion` |
+| currentQuestionId | Long | 当前停留题目 ID；请求体未带则保持原值 |
+| currentQuestionNumber | Integer | 当前停留题号 |
+| durationSeconds | Integer | 本次结算后的累计在场秒数 |
+| paused | Boolean | 本次调用后为 `true` |
+| pausedAt | Long | 本次离开时刻毫秒 |
+| answeredCount | Integer | 已答题数（听力带 `draftAnswers` 时会重算） |
+| totalQuestions | Integer | 本次练习总题数 |
+| answers | Array | 已保存答案项 |
+| answers[].questionId | Long | 题目 ID |
+| answers[].answer | String | 用户答案（选项编码）；未作答为 null |
+| answers[].answered | Boolean | 是否已作答 |
 
 **服务端内部执行顺序**
 
@@ -313,7 +386,27 @@ Content-Type: application/json
 
 无请求体。
 
-**返回**：记录响应，`paused=false`、`pausedAt=null`，`durationSeconds` 不增加。
+**返回字段说明**（记录响应，恢复后 `paused=false`、`pausedAt=null`，`durationSeconds` 不增加）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| recordId | Long | 练习记录 ID |
+| paperId | Long | 试卷 ID |
+| section | String | 板块号 |
+| module | String | `listening` / `reading` |
+| status | Integer | 0 已创建、1 进行中、2 已放弃、3 已提交 |
+| version | Integer | 乐观锁版本号，回传给 `baseVersion` |
+| currentQuestionId | Long | 当前停留题目 ID |
+| currentQuestionNumber | Integer | 当前停留题号 |
+| durationSeconds | Integer | 累计在场秒数，本次调用不增加 |
+| paused | Boolean | 本次调用后为 `false` |
+| pausedAt | Long | 恒 null |
+| answeredCount | Integer | 已答题数 |
+| totalQuestions | Integer | 本次练习总题数 |
+| answers | Array | 已保存答案项 |
+| answers[].questionId | Long | 题目 ID |
+| answers[].answer | String | 用户答案（选项编码）；未作答为 null |
+| answers[].answered | Boolean | 是否已作答 |
 
 **服务端内部执行顺序**
 
@@ -425,7 +518,16 @@ Content-Type: application/json
 | audioUrl               | String  | 【修改】  | 题目音频；**原听力字段名 `audio_url`**                             |
 | shareAudioUrl          | String  | 【修改】  | 共享材料音频；**原听力字段名 `share_audio_url`**；阅读恒 null            |
 | groupId                | Long    | 【新增】  | 题组 ID；听力恒 null                                          |
-| group                  | Object  | 【新增】  | 题组共享内容（字段见上例）；听力恒 null                                  |
+| group                  | Object  | 【新增】  | 题组共享内容；听力恒 null；子字段见下              |
+| group.groupId          | Long    | 【新增】  | 题组 ID                                       |
+| group.title1Number     | Integer | 【新增】  | 一级标题序号                                    |
+| group.title1Text       | String  | 【新增】  | 一级标题文本                                    |
+| group.section          | String  | 【新增】  | 题组所属板块号                                   |
+| group.startNumber      | Integer | 【新增】  | 题组起始题号                                    |
+| group.endNumber        | Integer | 【新增】  | 题组结束题号                                    |
+| group.passage          | String  | 【新增】  | 题组共用文章 / 材料                              |
+| group.audioUrl         | String  | 【新增】  | 题组音频地址                                    |
+| group.optionContent    | Object  | 【新增】  | 题组共用选项，扁平 `{"A":"文本"}`                    |
 | optionPoolCode         | String  | 【新增】  | 共享选项池编码；听力恒 null                                        |
 | exclusiveSharedOptions | Boolean | 【新增】  | 固定 false；听力恒 null                                       |
 | userAnswer             | String  | 【无变更】 | 当前答案                                                    |
@@ -532,7 +634,27 @@ Content-Type: application/json
 }
 ```
 
-**返回**：记录响应（字段定义见 §4.2.1），含最新 `version` 与 `answers[]`。
+**返回字段说明**（保存后的整条记录，`version` 与 `answers[]` 均为最新值）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| recordId | Long | 练习记录 ID |
+| paperId | Long | 试卷 ID |
+| section | String | 板块号 |
+| module | String | `listening` / `reading` |
+| status | Integer | 0 已创建、1 进行中、2 已放弃、3 已提交 |
+| version | Integer | 本次写入后的记录版本号，回传给 `baseVersion` |
+| currentQuestionId | Long | 当前停留题目 ID；请求体未带则保持原值 |
+| currentQuestionNumber | Integer | 当前停留题号 |
+| durationSeconds | Integer | 累计在场秒数 |
+| paused | Boolean | 是否已离开 |
+| pausedAt | Long | 上次离开时刻毫秒；`paused=false` 时为 null |
+| answeredCount | Integer | 重算后的已答题数 |
+| totalQuestions | Integer | 本次练习总题数 |
+| answers | Array | 全卷答案项（不只本次提交的题） |
+| answers[].questionId | Long | 题目 ID |
+| answers[].answer | String | 用户答案（选项编码）；未作答为 null |
+| answers[].answered | Boolean | 是否已作答 |
 
 **服务端内部执行顺序**
 
@@ -660,12 +782,17 @@ Content-Type: application/json
 | items[].answerId                                          | Long         | 【无变更】 | 答案行 ID；**听力恒 null**                                       |
 | items[].questionId                                        | Long         | 【无变更】 | 题目 ID                                                     |
 | items[].number                                            | Integer      | 【修改】  | 题号；**原阅读字段名 `questionNumber`**                            |
-| items[].typeId / typeIdMapping                            | String       | 【无变更】 | 题型；听力 `typeId` 恒 null、`typeIdMapping` 复用 `questionType`   |
-| items[].userAnswer / standardAnswer                       | String       | 【无变更】 | 用户答案 / 标准答案                                               |
-| items[].answered / correct                                | Boolean      | 【无变更】 | 是否作答 / 是否答对                                               |
+| items[].typeId                                            | String       | 【无变更】 | 原始题型 ID；**听力恒 null**                                       |
+| items[].typeIdMapping                                     | String       | 【无变更】 | 题型映射编码；听力的该字段复用 `questionType`                             |
+| items[].userAnswer                                        | String       | 【无变更】 | 用户答案                                                      |
+| items[].standardAnswer                                    | String       | 【无变更】 | 标准答案                                                      |
+| items[].answered                                          | Boolean      | 【无变更】 | 是否作答                                                      |
+| items[].correct                                           | Boolean      | 【无变更】 | 是否答对                                                      |
 | items[].points                                            | BigDecimal   | 【无变更】 | 得分；**听力恒 null**                                           |
 | items[].analysis                                          | String       | 【无变更】 | 解析；**听力恒 null**（走逐题回顾端点）                                  |
-| items[].questionSnapshot / groupSnapshot / optionSnapshot | Object/Array | 【无变更】 | 冻结快照；**听力恒 null**                                         |
+| items[].questionSnapshot                                  | Object       | 【无变更】 | 题目冻结快照；**听力恒 null**                                        |
+| items[].groupSnapshot                                     | Object       | 【无变更】 | 题组冻结快照；**听力恒 null**                                        |
+| items[].optionSnapshot                                    | Array        | 【无变更】 | 选项冻结快照；**听力恒 null**                                        |
 
 **服务端内部执行顺序**
 
@@ -691,7 +818,50 @@ Content-Type: application/json
 | recordId | path | Long | 是 | 练习记录 ID |
 | module | query | String | 必传 | 【新增】模块码 |
 
-**返回**：与 §4.2.8 交卷响应结构完全一致。
+**返回字段说明**（与交卷响应同一结构，统计取自 `practice_record`，`rows` / `items` 由快照组装）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| reportId | Long | 与 `recordId` 同值（`practice_report` 表已删） |
+| recordId | Long | 练习记录 ID |
+| paperId | Long | 试卷 ID |
+| module | String | `listening` / `reading` |
+| sectionMapping | String | `SEC_LISTEN` / `SEC_READ` |
+| section | String | 板块号 |
+| status | Integer | 记录状态；正常为 3 已提交 |
+| reportStatus | String | `PENDING` / `GENERATING` / `READY` / `FAILED` |
+| retryable | Boolean | 失败是否可重试；`reportStatus=FAILED` 时为 `true` |
+| totalQuestions | Integer | 题目总数 |
+| answeredCount | Integer | 已答题数 |
+| correctCount | Integer | 答对数 |
+| wrongCount | Integer | 答错数（未作答计入错误） |
+| accuracyRate | BigDecimal | 正确率百分比，保留 2 位小数 |
+| durationSeconds | Integer | 用时秒数 |
+| submittedTime | Long | 提交时间戳毫秒 |
+| rows | Array | 题号矩阵，元素见下 |
+| rows[].number | Integer | 题号 |
+| rows[].questionId | Long | 题目 ID |
+| rows[].questionType | String | 题型名；阅读由 `typeIdMapping` 填充 |
+| rows[].layout | String | 布局；**阅读恒 null** |
+| rows[].answered | Boolean | 是否作答 |
+| rows[].isCorrect | Boolean | 是否正确 |
+| rows[].userAnswer | String | 用户答案 |
+| rows[].correctAnswer | String | 正确答案 |
+| items | Array | 单题明细，元素见下 |
+| items[].answerId | Long | 答案行 ID；**听力恒 null** |
+| items[].questionId | Long | 题目 ID |
+| items[].number | Integer | 题号 |
+| items[].typeId | String | 原始题型 ID；**听力恒 null** |
+| items[].typeIdMapping | String | 题型映射编码；听力复用 `questionType` |
+| items[].userAnswer | String | 用户答案 |
+| items[].standardAnswer | String | 标准答案 |
+| items[].answered | Boolean | 是否作答 |
+| items[].correct | Boolean | 是否答对 |
+| items[].points | BigDecimal | 得分；**听力恒 null** |
+| items[].analysis | String | 解析；**听力恒 null**（走逐题回顾端点） |
+| items[].questionSnapshot | Object | 题目冻结快照；**听力恒 null** |
+| items[].groupSnapshot | Object | 题组冻结快照；**听力恒 null** |
+| items[].optionSnapshot | Array | 选项冻结快照；**听力恒 null** |
 
 **服务端内部执行顺序**
 
@@ -748,7 +918,32 @@ Content-Type: application/json
 | 字段 | 类型 | 改动标记 | 说明 |
 |---|---|---|---|
 | answerId | Long | 【新增】 | 答案行 ID；听力恒 null |
-| questionId ~ exclusiveSharedOptions | — | 【修改】 | 与拉题响应同名字段完全一致（题号 `number`、选项扁平、`audioUrl` 驼峰） |
+| questionId | Long | 【修改】 | 题目 ID |
+| number | Integer | 【修改】 | 题号；**原听力字段名 `no`** |
+| layout | String | 【无变更】 | 布局编码；**阅读恒 null** |
+| typeId | String | 【新增】 | 原始题型 ID；听力恒 null |
+| typeIdMapping | String | 【新增】 | 题型映射编码；听力恒 null |
+| content | String | 【新增】 | 题干；听力等于 `passage` |
+| passage | String | 【无变更】 | 文章 / 材料正文 |
+| variant | String | 【修改】 | 细节题变体 short/long/interview；阅读恒 null |
+| optionContent | Object | 【修改】 | 扁平 `{"A":"文本"}` |
+| audioUrl | String | 【修改】 | 题目音频地址；**原听力字段名 `audio_url`** |
+| shareAudioUrl | String | 【修改】 | 共享材料音频地址；阅读恒 null |
+| groupId | Long | 【新增】 | 题组 ID；听力恒 null |
+| group | Object | 【新增】 | 题组共享内容；听力恒 null |
+| group.groupId | Long | 【新增】 | 题组 ID |
+| group.title1Number | Integer | 【新增】 | 一级标题序号 |
+| group.title1Text | String | 【新增】 | 一级标题文本 |
+| group.section | String | 【新增】 | 题组所属板块号 |
+| group.startNumber | Integer | 【新增】 | 题组起始题号 |
+| group.endNumber | Integer | 【新增】 | 题组结束题号 |
+| group.passage | String | 【新增】 | 题组共用文章 / 材料 |
+| group.audioUrl | String | 【新增】 | 题组音频地址 |
+| group.optionContent | Object | 【新增】 | 题组共用选项，扁平结构 |
+| optionPoolCode | String | 【新增】 | 共享选项池编码；听力恒 null |
+| exclusiveSharedOptions | Boolean | 【新增】 | 固定 false；听力恒 null |
+| answered | Boolean | 【无变更】 | 是否已作答 |
+| userAnswer | String | 【无变更】 | 用户答案；未作答为 null |
 | isCorrect | Boolean | 【无变更】 | 是否正确（未作答 false） |
 | standardAnswer | String | 【无变更】 | 正确答案；**原阅读同名字段不变** |
 | points | BigDecimal | 【新增】 | 本题得分；听力恒 null |
@@ -764,7 +959,50 @@ Content-Type: application/json
 **鉴权**：需要登录
 **前置条件**：`reportStatus = FAILED` 且 `retryable = true`，否则 `8106`
 
-**返回**：与 §4.2.8 交卷响应结构完全一致（重试后重新读一次报告视图）。
+**返回字段说明**（重试后重新读一次报告视图，结构与交卷响应一致）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| reportId | Long | 与 `recordId` 同值 |
+| recordId | Long | 练习记录 ID |
+| paperId | Long | 试卷 ID |
+| module | String | `listening` / `reading` |
+| sectionMapping | String | `SEC_LISTEN` / `SEC_READ` |
+| section | String | 板块号 |
+| status | Integer | 记录状态 |
+| reportStatus | String | 重试成功后回到 `GENERATING` 或 `READY` |
+| retryable | Boolean | 失败是否可重试 |
+| totalQuestions | Integer | 题目总数 |
+| answeredCount | Integer | 已答题数 |
+| correctCount | Integer | 答对数 |
+| wrongCount | Integer | 答错数（未作答计入错误） |
+| accuracyRate | BigDecimal | 正确率百分比，保留 2 位小数 |
+| durationSeconds | Integer | 用时秒数 |
+| submittedTime | Long | 提交时间戳毫秒 |
+| rows | Array | 题号矩阵，元素见下 |
+| rows[].number | Integer | 题号 |
+| rows[].questionId | Long | 题目 ID |
+| rows[].questionType | String | 题型名 |
+| rows[].layout | String | 布局；**阅读恒 null** |
+| rows[].answered | Boolean | 是否作答 |
+| rows[].isCorrect | Boolean | 是否正确 |
+| rows[].userAnswer | String | 用户答案 |
+| rows[].correctAnswer | String | 正确答案 |
+| items | Array | 单题明细，元素见下 |
+| items[].answerId | Long | 答案行 ID；**听力恒 null** |
+| items[].questionId | Long | 题目 ID |
+| items[].number | Integer | 题号 |
+| items[].typeId | String | 原始题型 ID；**听力恒 null** |
+| items[].typeIdMapping | String | 题型映射编码；听力复用 `questionType` |
+| items[].userAnswer | String | 用户答案 |
+| items[].standardAnswer | String | 标准答案 |
+| items[].answered | Boolean | 是否作答 |
+| items[].correct | Boolean | 是否答对 |
+| items[].points | BigDecimal | 得分；**听力恒 null** |
+| items[].analysis | String | 解析；**听力恒 null** |
+| items[].questionSnapshot | Object | 题目冻结快照；**听力恒 null** |
+| items[].groupSnapshot | Object | 题组冻结快照；**听力恒 null** |
+| items[].optionSnapshot | Array | 选项冻结快照；**听力恒 null** |
 
 **本接口抛出错误码**：8102 / 8105 / 8106 / 8133
 
@@ -840,9 +1078,11 @@ Content-Type: application/json
 
 **响应体复用**
 
-| 响应体 | 使用端点 | 字段表 |
+下表的「共用」只表示这几个端点返回同一套字段，具体字段在每个端点小节内都已完整列出，不需要跳读。
+
+| 响应体 | 使用端点 | 完整字段所在小节 |
 |---|---|---|
-| `SubjectiveRecordResponse` | start / get / pause / resume / retry | §4.3.1 |
+| `SubjectiveRecordResponse` | start / get / pause / resume / retry | §4.3.1、§4.3.2、§4.3.3、§4.3.4、§4.3.12 各自列全 |
 | `SubjectiveQuestionResponse` | questions | §4.3.5 |
 | `SubjectiveReportResponse` | report | §4.3.10 |
 | `SubjectiveQuestionReportResponse` | report/questions/{questionId} | §4.3.11 |
@@ -937,9 +1177,30 @@ Content-Type: application/json
 | module | query | String | 是 | `writing` / `translation` / `speaking` |
 | X-Client-Type | header | String | 否 | 客户端类型 |
 
-**返回字段说明**
+**返回字段说明**（记录响应，与 start 同一结构）
 
-同 §4.3.1 的 `SubjectiveRecordResponse`。
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| recordId | Long | 练习记录 ID（`practice_subjective_record.id`） |
+| paperId | Long | 试卷 ID |
+| sectionMapping | String | 板块域，库里原值 |
+| section | String | 板块号 |
+| levelCode | String | HSK 等级码 |
+| status | String | `IN_PROGRESS` / `COMPLETED` / `DISCARDED` |
+| reportStatus | String | `NOT_READY` / `GRADING` / `READY` / `FAILED`，按逐题 `grading_state` 现算 |
+| totalQuestions | Integer | 本次练习总题数（开练时冻结） |
+| answeredCount | Integer | 已作答题目数 |
+| currentQuestionId | Long | 当前停留题目 ID；未开始为 null |
+| currentQuestionNumber | Integer | 当前停留题序（`question_ids` 下标 + 1） |
+| durationSeconds | Integer | 累计在场秒数，退出期间不计 |
+| paused | Boolean | 是否处于「已离开」状态 |
+| pausedAt | Long | 上次离开时刻（毫秒）；`paused=false` 时为 null |
+| objectiveCount | Integer | 客观题数（`has_standard_answer = 1`） |
+| objectiveCorrectCount | Integer | 客观题答对数 |
+| aiQuestionCount | Integer | 需 AI 评分的题数（已排除满分 0 的流程题） |
+| aiScoredCount | Integer | AI 已评出分的题数 |
+| finalScore | BigDecimal | 当前已得总分；AI 未评完时只有客观分 |
+| totalScore | BigDecimal | 本卷满分 |
 
 **服务端内部执行顺序**
 
@@ -981,9 +1242,30 @@ Content-Type: application/json
 { "currentQuestionId": 55120331 }
 ```
 
-**返回字段说明**
+**返回字段说明**（记录响应，暂停后 `paused = true`、`pausedAt` 有值、`durationSeconds` 已结算）
 
-同 §4.3.1 的 `SubjectiveRecordResponse`，此时 `paused = true`、`pausedAt` 有值。
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| recordId | Long | 练习记录 ID |
+| paperId | Long | 试卷 ID |
+| sectionMapping | String | 板块域 |
+| section | String | 板块号 |
+| levelCode | String | HSK 等级码 |
+| status | String | 本次调用后仍为 `IN_PROGRESS` |
+| reportStatus | String | `NOT_READY` / `GRADING` / `READY` / `FAILED`，按逐题 `grading_state` 现算 |
+| totalQuestions | Integer | 本次练习总题数 |
+| answeredCount | Integer | 已作答题目数 |
+| currentQuestionId | Long | 当前停留题目 ID；请求体未带则保持原值 |
+| currentQuestionNumber | Integer | 当前停留题序；题目不在冻结题集内时保持原值 |
+| durationSeconds | Integer | 本次结算后的累计在场秒数 |
+| paused | Boolean | 本次调用后为 `true` |
+| pausedAt | Long | 本次离开时刻（毫秒） |
+| objectiveCount | Integer | 客观题数 |
+| objectiveCorrectCount | Integer | 客观题答对数 |
+| aiQuestionCount | Integer | 需 AI 评分的题数 |
+| aiScoredCount | Integer | AI 已评出分的题数 |
+| finalScore | BigDecimal | 当前已得总分 |
+| totalScore | BigDecimal | 本卷满分 |
 
 **服务端内部执行顺序**
 
@@ -1014,9 +1296,30 @@ Content-Type: application/json
 | module | query | String | 是 | `writing` / `translation` / `speaking` |
 | X-Client-Type | header | String | 否 | 客户端类型 |
 
-**返回字段说明**
+**返回字段说明**（记录响应，恢复后 `paused = false`、`pausedAt = null`、`durationSeconds` 不变）
 
-同 §4.3.1 的 `SubjectiveRecordResponse`，此时 `paused = false`、`pausedAt = null`。
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| recordId | Long | 练习记录 ID |
+| paperId | Long | 试卷 ID |
+| sectionMapping | String | 板块域 |
+| section | String | 板块号 |
+| levelCode | String | HSK 等级码 |
+| status | String | 仍为 `IN_PROGRESS` |
+| reportStatus | String | `NOT_READY` / `GRADING` / `READY` / `FAILED` |
+| totalQuestions | Integer | 本次练习总题数 |
+| answeredCount | Integer | 已作答题目数 |
+| currentQuestionId | Long | 当前停留题目 ID |
+| currentQuestionNumber | Integer | 当前停留题序 |
+| durationSeconds | Integer | 累计在场秒数，本次调用不增加 |
+| paused | Boolean | 本次调用后为 `false` |
+| pausedAt | Long | 恒 null |
+| objectiveCount | Integer | 客观题数 |
+| objectiveCorrectCount | Integer | 客观题答对数 |
+| aiQuestionCount | Integer | 需 AI 评分的题数 |
+| aiScoredCount | Integer | AI 已评出分的题数 |
+| finalScore | BigDecimal | 当前已得总分 |
+| totalScore | BigDecimal | 本卷满分 |
 
 **服务端内部执行顺序**
 
@@ -1069,7 +1372,11 @@ Content-Type: application/json
 | answerText | String | 已保存的文本作答：写作正文 / 笔译译文 / 口语转写 |
 | answer | String | 已保存的音频 URL：口语 / 口译 |
 | durationMs | Long | 录音时长（毫秒） |
-| answerDraft | Object | 草稿块，结构 `{text, graphemeCount, version, savedTime}`；从未存过为 `null` |
+| answerDraft | Object | 草稿块；从未存过为 `null`，子字段见下 |
+| answerDraft.text | String | 草稿正文；空串表示用户清空后存过 |
+| answerDraft.graphemeCount | Integer | 不含空白字符的字素数 |
+| answerDraft.version | Long | 草稿版本，保存时回传做乐观锁 |
+| answerDraft.savedTime | Long | 最后保存时刻（毫秒） |
 
 **服务端内部执行顺序**
 
@@ -1174,9 +1481,17 @@ Content-Type: application/json
 | durationMs | body | Long | 否 | 录音时长（毫秒） |
 | X-Client-Type | header | String | 否 | 客户端类型 |
 
-**返回字段说明**
+**返回字段说明**（与批量保存同一结构，`answers` 只含本题一项）
 
-同 §4.3.6 的 `SubjectiveAnswerSaveResponse`。
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| recordId | Long | 练习记录 ID |
+| answeredCount | Integer | 保存后全卷已作答题目数 |
+| currentQuestionId | Long | 当前停留题目 ID，本端点恒等于路径里的 `questionId` |
+| currentQuestionNumber | Integer | 当前停留题序 |
+| answers | Array | 本次保存涉及的题目，本端点固定 1 个元素 |
+| answers[].questionId | Long | 题目 ID |
+| answers[].answerVersion | Long | 保存后的行版本号，供下次带回 |
 
 **服务端内部执行顺序**
 
@@ -1437,9 +1752,30 @@ Content-Type: application/json
 | module | query | String | 是 | `writing` / `translation` / `speaking` |
 | X-Client-Type | header | String | 否 | 客户端类型 |
 
-**返回字段说明**
+**返回字段说明**（记录响应，可据 `reportStatus` 判断是否已重新进入 `GRADING`）
 
-同 §4.3.1 的 `SubjectiveRecordResponse`，可据 `reportStatus` 判断是否已重新进入 `GRADING`。
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| recordId | Long | 练习记录 ID |
+| paperId | Long | 试卷 ID |
+| sectionMapping | String | 板块域 |
+| section | String | 板块号 |
+| levelCode | String | HSK 等级码 |
+| status | String | 记录状态 `IN_PROGRESS` / `COMPLETED` / `DISCARDED` |
+| reportStatus | String | 入选行被重置为待评后通常回到 `GRADING` |
+| totalQuestions | Integer | 本次练习总题数 |
+| answeredCount | Integer | 已作答题目数 |
+| currentQuestionId | Long | 当前停留题目 ID |
+| currentQuestionNumber | Integer | 当前停留题序 |
+| durationSeconds | Integer | 累计在场秒数 |
+| paused | Boolean | 是否处于「已离开」状态 |
+| pausedAt | Long | 上次离开时刻（毫秒）；`paused=false` 时为 null |
+| objectiveCount | Integer | 客观题数 |
+| objectiveCorrectCount | Integer | 客观题答对数 |
+| aiQuestionCount | Integer | 需 AI 评分的题数 |
+| aiScoredCount | Integer | AI 已评出分的题数 |
+| finalScore | BigDecimal | 当前已得总分 |
+| totalScore | BigDecimal | 本卷满分 |
 
 **服务端内部执行顺序**
 
@@ -1487,7 +1823,7 @@ Content-Type: application/json
 | module | query | String | 是 | `writing` / `translation` / `speaking` |
 | language | header | String | 否 | 弹窗文案语言，`zh` / `en` / `vi`，缺省中文；不识别时回退中文 |
 
-**返回字段**
+**返回字段说明**
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -1549,7 +1885,7 @@ Content-Type: application/json
 
 无请求体。
 
-**返回字段**
+**返回字段说明**
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
