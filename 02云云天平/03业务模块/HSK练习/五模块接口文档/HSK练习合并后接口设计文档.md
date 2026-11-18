@@ -684,96 +684,41 @@ Content-Type: application/json
   "code": 200,
   "message": "操作成功",
   "data": {
-    "reportId": 900812,
     "recordId": 900812,
     "paperId": 100231,
     "module": "listening",
     "sectionMapping": "SEC_LISTEN",
     "section": "1",
     "status": 3,
-    "retryable": false,
     "totalQuestions": 20,
     "answeredCount": 20,
     "correctCount": 17,
     "wrongCount": 3,
     "accuracyRate": 85.00,
     "durationSeconds": 1265,
-    "submittedTime": 1763452800000,
-    "rows": [
-      {
-        "number": 1,
-        "questionId": 55120,
-        "questionType": "细节选择",
-        "layout": "choice",
-        "answered": true,
-        "isCorrect": true,
-        "userAnswer": "C",
-        "correctAnswer": "C"
-      }
-    ],
-    "items": [
-      {
-        "questionId": 55120,
-        "number": 1,
-        "typeId": null,
-        "typeIdMapping": "细节选择",
-        "userAnswer": "C",
-        "standardAnswer": "C",
-        "answered": true,
-        "correct": true,
-        "points": null,
-        "analysis": null,
-        "questionSnapshot": null,
-        "groupSnapshot": null,
-        "optionSnapshot": null
-      }
-    ]
+    "submittedTime": 1763452800000
   }
 }
 ```
 
 **返回字段说明**
 
-| 字段                       | 类型         | 改动标记  | 说明                                                |
-| ------------------------ | ---------- | ----- | ------------------------------------------------- |
-| reportId                 | Long       | 【无变更】 | 与 `recordId` 同值（`practice_report` 表已删）            |
-| recordId                 | Long       | 【无变更】 | 练习记录 ID                                           |
-| paperId                  | Long       | 【新增】  | 试卷 ID                                             |
-| module                   | String     | 【新增】  | `listening` / `reading`                           |
-| sectionMapping           | String     | 【新增】  | `SEC_LISTEN` / `SEC_READ`                         |
-| section                  | String     | 【新增】  | 板块号                                               |
-| status                   | Integer    | 【新增】  | 记录状态                                              |
-| retryable                | Boolean    | 【新增】  | 失败是否可重试；原听力用 `FAILED_RETRYABLE`/`FAILED_FINAL` 表达 |
-| totalQuestions           | Integer    | 【修改】  | 题目总数；**原阅读字段名 `totalQuestionCount`**              |
-| answeredCount            | Integer    | 【无变更】 | 已答题数                                              |
-| correctCount             | Integer    | 【无变更】 | 答对数                                               |
-| wrongCount               | Integer    | 【无变更】 | 答错数（未作答计入错误）                                      |
-| accuracyRate             | BigDecimal | 【无变更】 | 正确率百分比，保留 2 位小数；原听力为 Integer                      |
-| durationSeconds          | Integer    | 【无变更】 | 用时秒数                                              |
-| submittedTime            | Long       | 【无变更】 | 提交时间戳毫秒                                           |
-| rows                     | Array      | 【修改】  | 题号矩阵通用化（原听力 `rows` 字段名不变，`number` 取代 `no`）        |
-| rows[].number            | Integer    | 【无变更】 | 题号                                                |
-| rows[].questionId        | Long       | 【无变更】 | 题目 ID                                             |
-| rows[].questionType      | String     | 【无变更】 | 题型名；阅读由 `typeIdMapping` 填充                        |
-| rows[].layout            | String     | 【无变更】 | question.layout的布局；                               |
-| rows[].answered          | Boolean    | 【无变更】 | 是否作答                                              |
-| rows[].isCorrect         | Boolean    | 【无变更】 | 是否正确                                              |
-| rows[].userAnswer        | String     | 【无变更】 | 用户答案                                              |
-| rows[].correctAnswer     | String     | 【无变更】 | 正确答案                                              |
-| items                    | Array      | 【修改】  | 单题明细通用化                                           |
-| items[].questionId       | Long       | 【无变更】 | 题目 ID                                             |
-| items[].number           | Integer    | 【修改】  | 题号；                                               |
-| items[].typeId           | String     | 【无变更】 | 原始题型 ID；                                          |
-| items[].typeIdMapping    | String     | 【无变更】 | question.type_id_mapping题型映射编码；                   |
-| items[].userAnswer       | String     | 【无变更】 | 用户答案                                              |
-| items[].standardAnswer   | String     | 【无变更】 | 标准答案                                              |
-| items[].answered         | Boolean    | 【无变更】 | 是否作答                                              |
-| items[].correct          | Boolean    | 【无变更】 | 是否答对                                              |
-| items[].points           | BigDecimal | 【无变更】 | 得分                                                |
-| items[].analysis         | String     | 【无变更】 | 解析；                                               |
-| items[].questionSnapshot | Object     | 【无变更】 | 题目冻结快照；                                           |
-| items[].groupSnapshot    | Object     | 【无变更】 | 题组冻结快照；                                           |
-| items[].optionSnapshot   | Array      | 【无变更】 | 选项冻结快照；                                           |
+| 字段              | 类型         | 改动标记  | 说明                           |
+| --------------- | ---------- | ----- | ---------------------------- |
+| recordId        | Long       | 【无变更】 | 练习记录 ID                      |
+| paperId         | Long       | 【新增】  | 试卷 ID                        |
+| module          | String     | 【新增】  | `listening` / `reading`      |
+| sectionMapping  | String     | 【新增】  | `SEC_LISTEN` / `SEC_READ`    |
+| section         | String     | 【新增】  | 板块号                          |
+| status          | Integer    | 【新增】  | 记录状态                         |
+| totalQuestions  | Integer    | 【修改】  | 题目总数；                        |
+| answeredCount   | Integer    | 【无变更】 | 已答题数                         |
+| correctCount    | Integer    | 【无变更】 | 答对数                          |
+| wrongCount      | Integer    | 【无变更】 | 答错数（未作答计入错误）                 |
+| accuracyRate    | BigDecimal | 【无变更】 | 正确率百分比，保留 2 位小数；原听力为 Integer |
+| durationSeconds | Integer    | 【无变更】 | 用时秒数                         |
+| submittedTime   | Long       | 【无变更】 | 提交时间戳毫秒                      |
+
 
 **服务端内部执行顺序**
 
