@@ -154,7 +154,6 @@
 | -------------- | ------ | ------ | --- | ------------------------------------------- |
 | module         | query  | String | 必传  | 【新增】`listening` / `reading`                 |
 | paperId        | body   | Long   | 是   | 【无变更】练习试卷 ID                                |
-| sectionMapping | body   | String | 是   | `SEC_LISTEN` / `SEC_READ` ，必须与 `module` 一致； |
 | section        | body   | String | 是   | 【无变更】板块号 1..N                               |
 | X-Client-Type  | header | String | 否   | 【无变更】                                       |
 
@@ -317,53 +316,50 @@ Content-Type: application/json
 
 **入参说明**
 
-| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
-|---|---|---|---|---|
-| recordId | path | Long | 是 | 练习记录 ID |
-| module | query | String | 必传 | 模块码 |
-| currentQuestionId | body | Long | 条件必填 | 【修改】停留题目 ID；**阅读必传**（要校验该题属于本次记录，缺省回 `8101`），听力可空 |
-| draftAnswers | body | Array | 否 | 【新增】元素 `{questionId, answer}`；仅听力生效，阅读传了也不处理、不报错 |
-| clientSequence | body | Integer | 否 | 【新增】乱序检测用，仅听力生效 |
+| 参数名               | 位置    | 类型     | 必填   | 约束&说明                                            |
+| ----------------- | ----- | ------ | ---- | ------------------------------------------------ |
+| recordId          | path  | Long   | 是    | 练习记录 ID                                          |
+| module            | query | String | 必传   | 模块码                                              |
+| currentQuestionId | body  | Long   | 条件必填 | 【修改】停留题目 ID；**必传**（要校验该题属于本次记录，缺省回 `8101`）       |
+
+
 
 **请求示例**
 
 ```json
 {
-  "currentQuestionId": 55121,
-  "draftAnswers": [{ "questionId": 55120, "answer": "C" }],
-  "clientSequence": 129
+  "currentQuestionId": 55121
 }
 ```
 
 **返回字段说明**（记录响应，暂停后 `paused=true`、`pausedAt` 有值、`durationSeconds` 已结算）
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| recordId | Long | 练习记录 ID |
-| paperId | Long | 试卷 ID |
-| section | String | 板块号 |
-| module | String | `listening` / `reading` |
-| status | Integer | 0 已创建、1 进行中、2 已放弃、3 已提交 |
-| version | Integer | 乐观锁版本号，回传给 `baseVersion` |
-| currentQuestionId | Long | 当前停留题目 ID；请求体未带则保持原值 |
-| currentQuestionNumber | Integer | 当前停留题号 |
-| durationSeconds | Integer | 本次结算后的累计在场秒数 |
-| paused | Boolean | 本次调用后为 `true` |
-| pausedAt | Long | 本次离开时刻毫秒 |
-| answeredCount | Integer | 已答题数（听力带 `draftAnswers` 时会重算） |
-| totalQuestions | Integer | 本次练习总题数 |
-| answers | Array | 已保存答案项 |
-| answers[].questionId | Long | 题目 ID |
-| answers[].answer | String | 用户答案（选项编码）；未作答为 null |
-| answers[].answered | Boolean | 是否已作答 |
+| 字段                    | 类型      | 说明                       |
+| --------------------- | ------- | ------------------------ |
+| recordId              | Long    | 练习记录 ID                  |
+| paperId               | Long    | 试卷 ID                    |
+| section               | String  | 板块号                      |
+| module                | String  | `listening` / `reading`  |
+| status                | Integer | 0 已创建、1 进行中、2 已放弃、3 已提交  |
+| version               | Integer | 乐观锁版本号，回传给 `baseVersion` |
+| currentQuestionId     | Long    | 当前停留题目 ID；请求体未带则保持原值     |
+| currentQuestionNumber | Integer | 当前停留题号                   |
+| durationSeconds       | Integer | 本次结算后的累计在场秒数             |
+| paused                | Boolean | 本次调用后为 `true`            |
+| pausedAt              | Long    | 本次离开时刻毫秒                 |
+| answeredCount         | Integer | 已答题数                     |
+| totalQuestions        | Integer | 本次练习总题数                  |
+| answers               | Array   | 已保存答案项                   |
+| answers[].questionId  | Long    | 题目 ID                    |
+| answers[].answer      | String  | 用户答案（选项编码）；未作答为 null     |
+| answers[].answered    | Boolean | 是否已作答                    |
 
 **服务端内部执行顺序**
 
 1. 解析模块，`SELECT ... FOR UPDATE` 锁记录并校验归属与进行中状态（`8102` / `8103`；阅读为 `8112` / `8162`）
 2. 结算本段时长：段起点取 `max(start_time, paused_time, resumed_time)`，单段上界 1800s
 3. 写 `durationSeconds`、`paused_time = now`、停留位置
-4. 听力：草稿答案落库（不判分、不固化快照）
-5. 返回记录
+4. 返回记录
 
 > 请求体没有 `durationSeconds`：时长一律服务端自算，客户端上报值忽略。
 > 前端建议每 5–10 分钟与页面隐藏时各调一次，回来调 `resume`。
