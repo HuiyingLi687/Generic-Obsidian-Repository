@@ -963,7 +963,6 @@ Content-Type: application/json
 | questions[].answered | Boolean | 是否已作答（只表态不判对错） |
 | questions[].current | Boolean | 是否当前停留题 |
 
-> 对错、标记、收藏一律不在此接口 —— 对错只在报告接口。
 
 **本接口抛出错误码**：8102 / 8112 / 8133 / 8161
 
