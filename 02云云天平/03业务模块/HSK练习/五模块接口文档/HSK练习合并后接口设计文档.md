@@ -134,13 +134,13 @@
 
 **入参说明**
 
-| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
-|---|---|---|---|---|
-| module | query | String | 条件必填 | 【新增】新路径必传；`listening` / `reading` |
-| paperId | body | Long | 是 | 【无变更】练习试卷 ID |
-| section | body | String | 是 | 【无变更】板块号 1..N |
-| restart | body | Boolean | 否 | 【无变更】true 放弃旧草稿重开；缺省续练 |
-| X-Client-Type | header | String | 否 | 【无变更】 |
+| 参数名           | 位置     | 类型      | 必填   | 约束&说明                             |
+| ------------- | ------ | ------- | ---- | --------------------------------- |
+| module        | query  | String  | 条件必填 | 【新增】新路径必传；`listening` / `reading` |
+| paperId       | body   | Long    | 是    | 【无变更】练习试卷 ID                      |
+| section       | body   | String  | 是    | 【无变更】板块号 1..N                     |
+| restart       | body   | Boolean | 否    | 【无变更】true 放弃旧草稿重开；缺省续练            |
+| X-Client-Type | header | String  | 否    | 【无变更】                             |
 
 **请求示例**
 
