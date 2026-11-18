@@ -131,14 +131,14 @@ Authorization: Bearer <登录拿到的 token>
 
 ### 1.6 三个容易搞混的「板块标识」
 
-| 场景 | 字段名 | 类型 | 示例 | 来源 |
-|---|---|---|---|---|
-| 首页模块卡 | `moduleCode` | String | `LISTENING`（**大写**） | `GET /hsk/modules` |
-| 目录接口入参 | `module` | String | `listening`（小写，大小写不敏感） | 前端固定传 |
-| U3 板块列表 | `parts[].section` | **Integer** | `1` | `GET /hsk/papers/{id}/parts` |
-| U3 板块列表 | `parts[].partCode` | String | `"1"`；口语是 `PART_1` | 同上 |
-| 主观模块开练 | `sectionMapping` | String | `SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAKING` | 前端按模块固定传 |
-| 主观模块开练 | `section` | **String** | `"1"` | 取 U3 的 `parts[].section`，`.toString()` |
+| 场景      | 字段名                | 类型          | 示例                                               | 来源                                     |
+| ------- | ------------------ | ----------- | ------------------------------------------------ | -------------------------------------- |
+| 首页模块卡   | `moduleCode`       | String      | `LISTENING`（**大写**）                              | `GET /hsk/modules`                     |
+| 目录接口入参  | `module`           | String      | `listening`（小写，大小写不敏感）                           | 前端固定传                                  |
+| U3 板块列表 | `parts[].section`  | **Integer** | `1`                                              | `GET /hsk/papers/{id}/parts`           |
+| U3 板块列表 | `parts[].partCode` | String      | `"1"`；口语是 `PART_1`                               | 同上                                     |
+| 主观模块开练  | `sectionMapping`   | String      | `SEC_WRITE` / `SEC_TRANSLATION` / `SEC_SPEAKING` | 前端按模块固定传                               |
+| 主观模块开练  | `section`          | **String**  | `"1"`                                            | 取 U3 的 `parts[].section`，`.toString()` |
 
 🔴 **两个类型差异**：U3 的 `section` 是数字，开练接口的 `section` 是字符串，中间要转一次。
 
