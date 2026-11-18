@@ -80,8 +80,9 @@
 | `AiUnlockState`【新增】 | `LOCKED(0)` / `UNLOCKED(1)` / `OWED(2)` / `NOT_REQUIRED(3)` | 主观题 AI 解析的解锁状态，对应 `ai_deduct_state` |
 | `PracticeRecordStatus`【修改】 | `CREATED(0)` / `IN_PROGRESS(1)` / `ABANDONED(2)` / `SUBMITTED(3)` | 客观练习记录状态，落 `practice_record.status`。**库里仍存数字，响应改为返回枚举名** |
 | `SubjectiveRecordStatus`【修改】 | `IN_PROGRESS(0)` / `COMPLETED(1)` / `DISCARDED(2)` | 主观练习记录状态，落 `practice_subjective_record.status`。**库里仍存数字，响应改为返回枚举名** |
+| `PracticeCatalogStatus`【修改】 | `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED` | 目录与板块进度状态，`papers[].status` / `parts[].status` 取值。库里没有对应列，按草稿与报告现算 |
 
-> 两个记录状态枚举只影响出参：`status` 在响应里是字符串枚举名，库内列类型与取值不变（客观 `tinyint` 0–3，主观 `tinyint` 0–2），服务端内部判库仍按数字比较。
+> 三组状态统一用大写枚举名出参：`PracticeRecordStatus`、`SubjectiveRecordStatus` 落库存数字，只在响应里换成枚举名；`PracticeCatalogStatus` 库里没有列，按草稿与报告现算。服务端内部判库仍按数字比较。
 
 ## 3. 接口总览清单
 
@@ -1852,7 +1853,7 @@ Content-Type: application/json
       {
         "paperId": 100231,
         "paperCode": "HSK3.0 模拟卷一",
-        "status": "in_progress",
+        "status": "IN_PROGRESS",
         "completedCount": 6,
         "totalCount": 40
       }
@@ -1872,7 +1873,7 @@ Content-Type: application/json
 | papers                  | Array   | 该等级全部卷，元素见下                                                    |
 | papers[].paperId        | Long    | 试卷 ID（口语为 `speaking_exam_paper.id`，其余为 `exam_paper.id`）        |
 | papers[].paperCode      | String  | 试卷名称                                                           |
-| papers[].status         | String  | `not_started` / `in_progress` / `completed`，未登录恒 `not_started` |
+| papers[].status         | String  | `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED`，未登录恒 `NOT_STARTED` |
 | papers[].completedCount | Integer | 已作答题数（口语 = 已提交录音题数）；未登录恒 0                                     |
 | papers[].totalCount     | Integer | 该模块在该卷下的总题数（已排除 `enabled_prac=0` 与示例题）                         |
 
@@ -2040,7 +2041,7 @@ Content-Type: application/json
 | parts[].questionCount         | Integer | 板块实际题量（现算）                                                     |
 | parts[].sortOrder             | Integer | 排序号                                                            |
 | parts[].durationMinutes       | Integer | 板块级建议时长（分钟），仅口语有值                                              |
-| parts[].status                | String  | `not_started` / `in_progress` / `completed`，未登录恒 `not_started` |
+| parts[].status                | String  | `NOT_STARTED` / `IN_PROGRESS` / `COMPLETED`，未登录恒 `NOT_STARTED` |
 | parts[].doneCount             | Integer | 已作答题数（口语 = 已录音题数），未登录为 0                                       |
 | parts[].correctCount          | Integer | 正确数；只在听力 / 阅读的已提交板块有值，写 / 译 / 说恒 `null`                        |
 | parts[].wrongCount            | Integer | 错误数，规则同上                                                       |
@@ -2317,7 +2318,7 @@ Controller（2 族 6 个类 + 4 个跨族只读类）
 | 23 | 三级权益都为 0 时调 `POST /{recordId}/unlock` | `8118`，`ai_deduct_state` 仍为 `0`，报告 `aiUnlocked` 仍为 `false` |
 | 24 | 已解锁后再调一次 `POST /{recordId}/unlock` | 200，`deductType` 与首次一致，余额不再减少 |
 | 25 | 卷内全客观题交卷后查报告 | `aiUnlocked=true`（`ai_deduct_state=3`），不需要解锁 |
-| 26 | `GET /hsk/levels?module=listening&level=3`（不带 token） | 200，`papers[].status` 全为 `not_started`、`completedCount` 全 0 |
+| 26 | `GET /hsk/levels?module=listening&level=3`（不带 token） | 200，`papers[].status` 全为 `NOT_STARTED`、`completedCount` 全 0 |
 | 27 | `GET /hsk/levels?module=writing&version=HSK4.0` | `8131` |
 | 28 | `GET /hsk/papers/{paperId}/parts?module=speaking`（不带 token） | 200，`parts[].draft` 与 `report` 为 `null`，`stats` 按口语口径有值 |
 | 29 | `GET /hsk/papers/{paperId}/parts?module=reading`，该卷无阅读板块 | `8138` |
