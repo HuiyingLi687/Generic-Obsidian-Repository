@@ -1934,28 +1934,29 @@ Content-Type: application/json
 
 **返回字段说明**
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| module | String | 模块编码，回显入参 |
-| level | String | 等级数字串 |
-| levelName | String | 等级显示名，按语言从配置表三列取一 |
-| abilityDescription | String | 能力描述（中文） |
-| abilityDescriptionEn | String | 能力描述（英文） |
-| abilityDescriptionVi | String | 能力描述（越南语） |
-| totalQuestionCount | Integer | 模块标准总题量 |
-| durationMinutes | Integer | 建议总时长（分钟） |
-| parts | Array | 板块列表，无进度；等级未配置或模块关闭时为空数组 |
-| parts[].section | Integer | 板块号 1..N，后续作答与报告用它定位板块 |
-| parts[].partName | String | 部分名（中文） |
-| parts[].partNameEn | String | 部分名（英文） |
-| parts[].partNameVi | String | 部分名（越南语） |
-| parts[].typeCode | String | 题型编码（业务语义，不决定答题交互） |
-| parts[].typeName | String | 题型名（中文） |
-| parts[].typeNameEn | String | 题型名（英文） |
-| parts[].typeNameVi | String | 题型名（越南语） |
-| parts[].questionCount | Integer | 该板块实际题量（现算，已排除 `enabled_prac=0` 与示例题） |
-| parts[].sortOrder | Integer | 排序号 |
-| parts[].durationMinutes | Integer | 板块级建议时长（分钟）；只有口语下发，其余模块该键不出现 |
+| 字段                      | 类型      | 说明                                    |
+| ----------------------- | ------- | ------------------------------------- |
+| module                  | String  | 模块编码，回显入参                             |
+| level                   | String  | 等级数字串                                 |
+| levelName               | String  | 等级显示名，按语言从配置表三列取一                     |
+| abilityDescription      | String  | 能力描述（中文）                              |
+| abilityDescriptionEn    | String  | 能力描述（英文）                              |
+| abilityDescriptionVi    | String  | 能力描述（越南语）                             |
+| totalQuestionCount      | Integer | 模块标准总题量                               |
+| durationMinutes         | Integer | 建议总时长（分钟）                             |
+| parts                   | Array   | 板块列表，无进度；等级未配置或模块关闭时为空数组              |
+| parts[].section         | Integer | 板块号 1..N，后续作答与报告用它定位板块                |
+| parts[].partName        | String  | 部分名（中文）                               |
+| parts[].partNameEn      | String  | 部分名（英文）                               |
+| parts[].partNameVi      | String  | 部分名（越南语）                              |
+| parts[].typeCode        | String  | 题型编码（业务语义，不决定答题交互）                    |
+| parts[].typeName        | String  | 题型名（中文）                               |
+| parts[].typeNameEn      | String  | 题型名（英文）                               |
+| parts[].typeNameVi      | String  | 题型名（越南语）                              |
+| parts[].questionCount   | Integer | 该板块实际题量（现算，已排除 `enabled_prac=0` 与示例题） |
+| parts[].sortOrder       | Integer | 排序号                                   |
+| parts[].durationMinutes | Integer | 板块级建议时长（分钟）；只有口语下发，其余模块该键不出现          |
+| parts[].                |         |                                       |
 
 **服务端内部执行顺序**
 
