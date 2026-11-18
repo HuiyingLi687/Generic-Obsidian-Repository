@@ -1,6 +1,7 @@
 # HSK 练习 · 五模块接口合并（客观族 / 主观族）接口设计文档
 
-> 版本：v2.0｜更新日期：2026-11-18
+> 版本：v2.1｜更新日期：2026-11-18
+> 本版变更：旧路径（五条模块前缀 + 五条答题卡）全部下线，模块只能由 `?module=` 指定
 > 影响服务：practice-service（改造，无 DDL 变更）
 > 关联文档：《HSK练习五模块接口文档》（v1.x，按模块拆路径的旧版）
 > 配套文件：`hsk-practice.http`（需按本文档同步路径与字段）
@@ -18,8 +19,8 @@
 | # | 决策项 | 取值规则 |
 |---|---|---|
 | 1 | 合并粒度 | 按**响应契约**分组，不按模块：听 + 读合成「客观族」，写 + 译 + 说合成「主观族」 |
-| 2 | 路径形态 | 新路径 `/hsk/objective/records/**`、`/hsk/subjective/records/**`，模块用 `?module=` 指定 |
-| 3 | 旧路径 | **全部保留为别名**，模块从路径段推断，前端可分批迁移，不存在必须同日切换的窗口 |
+| 2 | 路径形态 | 只保留两条前缀 `/hsk/objective/records/**`、`/hsk/subjective/records/**`，模块一律用 `?module=` 指定 |
+| 3 | 旧路径 | **不再保留**：`/listening/records/**`、`/reading/records/**`、`/writing/records/**`、`/translation/records/**`、`/speaking/records/**` 全部下线，模块只能由 `?module=` 指定 |
 | 4 | 选项结构 | 客观族统一扁平 `{"A":"文本","B":"文本"}`，不再有外层 `options` 包裹 |
 | 5 | 题号字段 | 客观族统一 `number`（原听力叫 `no`） |
 | 6 | 答案字段 | 客观族统一 `answer`（原听力叫 `selectedOptionId`），值为选项编码 A/B/C/D/E/F |
@@ -64,11 +65,11 @@
 
 ### 3.1 客观族（听 / 读）
 
-前缀：`/hsk/objective/records`（新）、`/listening/records`（旧）、`/reading/records`（旧）
+前缀：`/hsk/objective/records`（唯一前缀，旧路径已下线）
 
 | # | Method | Path | 用途 | 接口类型 | 改动简述 |
 |---|---|---|---|---|---|
-| 1 | POST | `{客观前缀}/start` | 开练 | 改造 | 请求体统一；`module` 由参数或路径决定 → §4.2.1 |
+| 1 | POST | `{客观前缀}/start` | 开练 | 改造 | 请求体统一；`module` 必传 → §4.2.1 |
 | 2 | GET | `{客观前缀}/{recordId}` | 记录详情 | 改造 | 响应加 `module` / `version`；`answers[]` 并集化 → §4.2.2 |
 | 3 | POST | `{客观前缀}/{recordId}/pause` | 暂停 | 改造 | 请求体并集化；阅读必须带 `currentQuestionId` → §4.2.3 |
 | 4 | POST | `{客观前缀}/{recordId}/resume` | 恢复 | 改造 | 响应同记录详情 → §4.2.4 |
@@ -79,29 +80,29 @@
 | 9 | GET | `{客观前缀}/{recordId}/report` | 报告详情 | 改造 | 统一结构，状态值域收敛 → §4.2.9 |
 | 10 | GET | `{客观前缀}/{recordId}/report/questions/{questionId}` | 逐题回顾 | 改造 | 统一为「题目结构 + 判分字段」→ §4.2.10 |
 | 11 | POST | `{客观前缀}/{recordId}/report/retry` | 报告重试 | 改造 | 返回完整报告 → §4.2.11 |
-| 12 | GET | `{客观前缀}/{recordId}/answer-card` | 答题卡 | 新增 | 五模块同一响应，模块由 `module` 指定 → §4.2.12 |
+| 12 | GET | `{客观前缀}/{recordId}/answer-card` | 答题卡 | 改造 | 五模块同一响应，模块由 `module` 必传指定 → §4.2.12 |
 
-> 答题卡的旧路径（`/listening/records/{id}/answer-card` 等五条）**保留不改**。
-> 新路径两条并入同一个方法：`/hsk/objective/records/{id}/answer-card` 与 `/hsk/subjective/records/{id}/answer-card`，靠 `module` 分派，因此主观族不再单列答题卡端点。
+> 答题卡的旧路径（`/listening/records/{id}/answer-card` 等五条）与其余旧路径一并下线。
+> 现存两条路径并入同一个方法：`/hsk/objective/records/{id}/answer-card` 与 `/hsk/subjective/records/{id}/answer-card`，靠 `module` 分派，因此主观族不再单列答题卡端点。
 
 ### 3.2 主观族（写 / 译 / 说）
 
-前缀：`/hsk/subjective/records`（新）、`/writing/records`、`/translation/records`、`/speaking/records`（旧）
+前缀：`/hsk/subjective/records`（唯一前缀，旧路径已下线）
 
-| # | Method | Path | 用途 | 接口类型 | 改动简述 |
-|---|---|---|---|---|---|
-| 1 | POST | `{主观前缀}/start` | 开练 | 改造 | 三个控制器合一，`module` 决定模块 |
-| 2 | GET | `{主观前缀}/{recordId}` | 记录详情 | 改造 | 响应体不变 |
-| 3 | POST | `{主观前缀}/{recordId}/pause` | 暂停 | 改造 | 响应体不变 |
-| 4 | POST | `{主观前缀}/{recordId}/resume` | 恢复 | 改造 | 响应体不变 |
-| 5 | GET | `{主观前缀}/{recordId}/questions` | 拉题 | 改造 | 响应体不变 |
-| 6 | PUT | `{主观前缀}/{recordId}/answers` | 批量保存答案 | 改造 | 响应体不变 |
-| 7 | POST | `{主观前缀}/{recordId}/questions/{questionId}/answers` | 单题作答 | 改造 | **仅口语**；写 / 译调用回 `8120` |
-| 8 | PUT | `{主观前缀}/{recordId}/questions/{questionId}/draft` | 保存草稿 | 改造 | 响应体不变 |
-| 9 | POST | `{主观前缀}/{recordId}/submit` | 交卷 | 改造 | 幂等键改为服务端按模块拼 |
-| 10 | GET | `{主观前缀}/{recordId}/report` | 报告详情 | 改造 | 响应体不变 |
-| 11 | GET | `{主观前缀}/{recordId}/report/questions/{questionId}` | 逐题反馈 | 改造 | 响应体不变 |
-| 12 | POST | `{主观前缀}/{recordId}/report/retry` | 判分重试 | 改造 | **翻译无此端点**，调用回 `8120` |
+| #   | Method | Path                                               | 用途     | 接口类型 | 改动简述                    |
+| --- | ------ | -------------------------------------------------- | ------ | ---- | ----------------------- |
+| 1   | POST   | `{主观前缀}/start`                                     | 开练     | 改造   | 三个控制器合一，`module` 决定模块   |
+| 2   | GET    | `{主观前缀}/{recordId}`                                | 记录详情   | 改造   | 响应体不变                   |
+| 3   | POST   | `{主观前缀}/{recordId}/pause`                          | 暂停     | 改造   | 响应体不变                   |
+| 4   | POST   | `{主观前缀}/{recordId}/resume`                         | 恢复     | 改造   | 响应体不变                   |
+| 5   | GET    | `{主观前缀}/{recordId}/questions`                      | 拉题     | 改造   | 响应体不变                   |
+| 6   | PUT    | `{主观前缀}/{recordId}/answers`                        | 批量保存答案 | 改造   | 响应体不变                   |
+| 7   | POST   | `{主观前缀}/{recordId}/questions/{questionId}/answers` | 单题作答   | 改造   | **仅口语**；写 / 译调用回 `8120` |
+| 8   | PUT    | `{主观前缀}/{recordId}/questions/{questionId}/draft`   | 保存草稿   | 改造   | 响应体不变                   |
+| 9   | POST   | `{主观前缀}/{recordId}/submit`                         | 交卷     | 改造   | 幂等键改为服务端按模块拼            |
+| 10  | GET    | `{主观前缀}/{recordId}/report`                         | 报告详情   | 改造   | 响应体不变                   |
+| 11  | GET    | `{主观前缀}/{recordId}/report/questions/{questionId}`  | 逐题反馈   | 改造   | 响应体不变                   |
+| 12  | POST   | `{主观前缀}/{recordId}/report/retry`                   | 判分重试   | 改造   | **翻译无此端点**，调用回 `8120`   |
 
 > 主观族响应体（`SubjectiveRecordResponse` / `SubjectiveQuestionResponse` / `SubjectiveReportResponse` 等）本次**不做字段改动** —— 三模块本来就共用一套 DTO，合并只是去掉两份重复的控制器。
 
@@ -109,14 +110,14 @@
 
 ### 4.1 模块参数规则（两族通用）
 
-| 写法                                            | `module` 是否必传 | 取值                                     |
-| --------------------------------------------- | ------------- | -------------------------------------- |
-| `/hsk/objective/records/**`                   | **必传**        | `listening` / `reading`                |
-| `/listening/records/**`、`/reading/records/**` | 不需要（从路径推断）    | —                                      |
-| `/hsk/subjective/records/**`                  | **必传**        | `writing` / `translation` / `speaking` |
-| `/writing/records/**` 等三条旧路径                  | 不需要（从路径推断）    | —                                      |
+| 路径 | `module` 是否必传 | 取值 |
+|---|---|---|
+| `/hsk/objective/records/**` | **必传** | `listening` / `reading` |
+| `/hsk/subjective/records/**` | **必传** | `writing` / `translation` / `speaking` |
 
-`module` 大小写与首尾空格不敏感。取值不在白名单 → `8133`。新路径缺 `module` → `8133`。
+`module` 大小写与首尾空格不敏感。缺失、取值不在白名单 → `8133`。
+
+旧路径（`/listening/records/**`、`/reading/records/**`、`/writing/records/**`、`/translation/records/**`、`/speaking/records/**`）**已不再注册**，访问返回 `404`。
 
 ---
 
@@ -136,7 +137,7 @@
 
 | 参数名           | 位置     | 类型      | 必填   | 约束&说明                             |
 | ------------- | ------ | ------- | ---- | --------------------------------- |
-| module        | query  | String  | 条件必填 | 【新增】新路径必传；`listening` / `reading` |
+| module        | query  | String  | 必传 | 【新增】`listening` / `reading` |
 | paperId       | body   | Long    | 是    | 【无变更】练习试卷 ID                      |
 | section       | body   | String  | 是    | 【无变更】板块号 1..N                     |
 | restart       | body   | Boolean | 否    | 【无变更】true 放弃旧草稿重开；缺省续练            |
@@ -237,7 +238,7 @@ Content-Type: application/json
 | 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
 |---|---|---|---|---|
 | recordId | path | Long | 是 | 练习记录 ID |
-| module | query | String | 条件必填 | 新路径必传 |
+| module | query | String | 必传 | 模块码 |
 
 **返回**：记录响应（字段定义见 §4.2.1 返回字段说明）。
 
@@ -261,7 +262,7 @@ Content-Type: application/json
 | 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
 |---|---|---|---|---|
 | recordId | path | Long | 是 | 练习记录 ID |
-| module | query | String | 条件必填 | 新路径必传 |
+| module | query | String | 必传 | 模块码 |
 | currentQuestionId | body | Long | 条件必填 | 【修改】停留题目 ID；**阅读必传**（要校验该题属于本次记录，缺省回 `8101`），听力可空 |
 | draftAnswers | body | Array | 否 | 【新增】元素 `{questionId, answer}`；仅听力生效，阅读传了也不处理、不报错 |
 | clientSequence | body | Integer | 否 | 【新增】乱序检测用，仅听力生效 |
@@ -303,7 +304,7 @@ Content-Type: application/json
 | 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
 |---|---|---|---|---|
 | recordId | path | Long | 是 | 练习记录 ID |
-| module | query | String | 条件必填 | 新路径必传 |
+| module | query | String | 必传 | 模块码 |
 
 无请求体。
 
@@ -331,7 +332,7 @@ Content-Type: application/json
 | 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
 |---|---|---|---|---|
 | recordId | path | Long | 是 | 练习记录 ID |
-| module | query | String | 条件必填 | 【新增】 |
+| module | query | String | 必传 | 【新增】模块码 |
 
 **返回完整示例（听力）**
 
@@ -450,7 +451,7 @@ Content-Type: application/json
 |---|---|---|---|---|
 | recordId | path | Long | 是 | 练习记录 ID |
 | questionId | path | Long | 是 | 题目 ID |
-| module | query | String | 条件必填 | 【新增】新路径必传 |
+| module | query | String | 必传 | 【新增】模块码 |
 | answer | body | String | 是 | 【修改】选项编码 A/B/C/D/E/F（判断题用 A/B）；原听力字段名 `selectedOptionId` |
 | baseVersion | body | Integer | 是 | 【新增】记录 `version`；不一致回 `8104`（听力强校验，阅读不校验） |
 | clientSequence | body | Integer | 否 | 【无变更】乱序检测用 |
@@ -507,7 +508,7 @@ Content-Type: application/json
 
 | 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
 |---|---|---|---|---|
-| module | query | String | 条件必填 | 【新增】 |
+| module | query | String | 必传 | 【新增】模块码 |
 | answers | body | Array | 是 | 【修改】元素 `{questionId, answer}`；原听力元素字段名 `selectedOptionId` |
 | baseVersion | body | Integer | 是 | 【新增】听力强校验，不一致回 `8104` |
 | currentQuestionId | body | Long | 否 | 【无变更】顺带更新停留位置 |
@@ -547,7 +548,7 @@ Content-Type: application/json
 
 | 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
 |---|---|---|---|---|
-| module | query | String | 条件必填 | 【新增】 |
+| module | query | String | 必传 | 【新增】模块码 |
 | baseVersion | body | Integer | 是 | 【新增】不一致回 `8104` |
 | finalAnswers | body | Array | 否 | 【修改】元素 `{questionId, answer}` |
 | idempotencyKey | body | String | 否 | 【无变更】不传由服务端拼 `{module}-{recordId}-submit` |
@@ -683,7 +684,7 @@ Content-Type: application/json
 | 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
 |---|---|---|---|---|
 | recordId | path | Long | 是 | 练习记录 ID |
-| module | query | String | 条件必填 | 【新增】 |
+| module | query | String | 必传 | 【新增】模块码 |
 
 **返回**：与 §4.2.8 交卷响应结构完全一致。
 
@@ -764,7 +765,7 @@ Content-Type: application/json
 
 ---
 
-#### 4.2.12 GET `{客观前缀}/{recordId}/answer-card`【新增】
+#### 4.2.12 GET `{客观前缀}/{recordId}/answer-card`
 
 **用途**：答题卡（五模块共用同一响应结构）
 **鉴权**：需要登录
@@ -777,15 +778,45 @@ Content-Type: application/json
 | module | query | String | 是 | 【新增】`listening`/`reading`/`writing`/`translation`/`speaking` |
 | currentQuestionNumber | query | Integer | 否 | 当前题号，缺省取记录进度 |
 
+**返回完整示例**
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "recordId": 900812,
+    "paperId": 100231,
+    "section": 1,
+    "totalQuestions": 20,
+    "answeredCount": 3,
+    "unansweredCount": 17,
+    "currentQuestionNumber": 4,
+    "questions": [
+      { "order": 1, "questionId": 55120, "answered": true, "current": false },
+      { "order": 2, "questionId": 55121, "answered": true, "current": false },
+      { "order": 3, "questionId": 55122, "answered": true, "current": false },
+      { "order": 4, "questionId": 55123, "answered": false, "current": true }
+    ]
+  }
+}
+```
+
 **返回字段说明**
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| items[].number | Integer | 题号 |
-| items[].questionId | Long | 题目 ID |
-| items[].answered | Boolean | 是否已作答（只表态不判对错） |
-| currentQuestionNumber | Integer | 当前题号 |
-| totalQuestions / answeredCount | Integer | 总题数 / 已答数 |
+| recordId | Long | 练习记录 ID |
+| paperId | Long | 试卷 ID |
+| section | Integer | 板块号 |
+| totalQuestions | Integer | 总题数 |
+| answeredCount | Integer | 已答题数 |
+| unansweredCount | Integer | 未答题数 |
+| currentQuestionNumber | Integer | 当前题号；入参传了就用传入值，否则取记录进度 |
+| questions[].order | Integer | 题号（作答顺序） |
+| questions[].questionId | Long | 题目 ID |
+| questions[].answered | Boolean | 是否已作答（只表态不判对错） |
+| questions[].current | Boolean | 是否当前停留题 |
 
 > 对错、标记、收藏一律不在此接口 —— 对错只在报告接口。
 
@@ -803,7 +834,7 @@ Content-Type: application/json
 POST /practice/hsk/subjective/records/start?module=writing
 ```
 
-等价于旧的 `POST /practice/writing/records/start`。旧路径继续可用。
+旧的 `POST /practice/writing/records/start` 已下线，新路径必须带 `module`。
 
 **两个按模块拦截的端点**
 
@@ -830,7 +861,7 @@ POST /practice/hsk/subjective/records/start?module=writing
 
 ## 6. 前端对接注意事项
 
-1. **可以分批迁移**：旧路径（`/listening/records/**` 等 8 条）全部保留，新路径与旧路径并存。建议按模块逐个切，一个模块切完验证再切下一个。
+1. **路径一次性切换，没有过渡期**：旧路径（`/listening/records/**`、`/reading/records/**`、`/writing/records/**`、`/translation/records/**`、`/speaking/records/**`，含五条答题卡）已全部下线，请求会返回 `404`。前端必须在同一版本内改完所有调用点，并给每个请求补 `module`。
 2. **听力字段名有 4 处改动**，是本次唯一的破坏性变更：`no` → `number`、`audio_url` → `audioUrl`、`option_content` → `optionContent`、`share_audio_url` → `shareAudioUrl`；答案请求字段 `selectedOptionId` → `answer`。
 3. **阅读选项结构简化**：`optionContent` 从 `{"options":{"A":"…"}}` 变成 `{"A":"…"}`，取选项少拆一层。
 4. **`baseVersion` 改为必传**：从记录响应新增的 `version` 字段取值。阅读侧服务端不校验，但必须带（否则 `400`）。
@@ -877,7 +908,7 @@ Controller（2 族 6 个类）
 | # | 场景 | 预期结果 |
 |---|---|---|
 | 1 | `POST /hsk/objective/records/start?module=listening` | 返回 `module=listening`、`version=1` |
-| 2 | `POST /listening/records/start`（旧路径，不带 module） | 同上，模块从路径推断成功 |
+| 2 | `POST /listening/records/start`（旧路径） | `404`，路径已下线 |
 | 3 | `POST /hsk/objective/records/start`（不带 module） | `8133` |
 | 4 | `POST /hsk/objective/records/start?module=writing` | `8133`（不在客观族白名单） |
 | 5 | 听力拉题 | `number` / `optionContent` 扁平 / `audioUrl` 驼峰；`group` 为 null |
@@ -892,7 +923,7 @@ Controller（2 族 6 个类）
 | 14 | `POST /hsk/subjective/records/{id}/questions/1/answers?module=writing` | `8120` |
 | 15 | `POST /hsk/subjective/records/{id}/questions/1/answers?module=speaking` | 200 |
 | 16 | 同一记录用同一幂等键交卷两次 | 第二次直接返回已有结果，不重复判分 |
-| 17 | `/hsk/objective/records/{id}/answer-card?module=reading` | 与 `/reading/records/{id}/answer-card` 响应完全一致 |
+| 17 | `/hsk/objective/records/{id}/answer-card?module=reading` | 200，返回阅读答题卡；`/reading/records/{id}/answer-card` 回 `404` |
 
 ## 9. 上线执行事项【P0阻断项】
 
@@ -908,17 +939,17 @@ Controller（2 族 6 个类）
 |---|---|
 | `hsk/objective/enums/ObjectiveModule.java` | 【新增】客观族模块枚举 |
 | `hsk/objective/dto/*.java`（14 个） | 【新增】客观族统一 DTO |
-| `hsk/objective/support/ObjectiveModuleResolver.java` | 【新增】模块解析（参数优先、路径兜底） |
+| `hsk/objective/support/ObjectiveModuleResolver.java` | 【新增】模块解析，只认 `module` 参数，缺失 / 非法回 8133 |
 | `hsk/objective/support/ObjectiveDtoMapper.java` | 【新增】两套内部 DTO → 统一契约转换 |
 | `hsk/objective/service/ObjectivePracticeService.java` + `impl` | 【新增】门面分派 |
 | `hsk/objective/controller/*.java`（3 个） | 【新增】客观族 11 个端点（答题卡端点另计，见下方 `AnswerCardController` 行） |
 | `hsk/subjective/controller/SubjectivePracticeController.java` | 【新增】写 / 译 / 说 12 个端点合一 |
-| `hsk/subjective/support/SubjectiveModuleResolver.java` | 【新增】模块解析 |
+| `hsk/subjective/support/SubjectiveModuleResolver.java` | 【新增】模块解析，只认 `module` 参数，缺失 / 非法回 8133 |
 | `listening/controller/*.java`（3 个） | 【删除】由客观族控制器接管 |
 | `reading/controller/*.java`（3 个） | 【删除】同上 |
 | `subjective/controller/{Writing,Translation,Speaking}PracticeController.java` | 【删除】由主观族控制器接管 |
 | `hsk/answer/enums/AnswerCardModule.java` | `SPEAKING` 板块域改 `SEC_SPEAKING`，新增 `fromCodeOrNull` |
-| `hsk/answer/controller/AnswerCardController.java` | 新增两段合并路径端点 |
+| `hsk/answer/controller/AnswerCardController.java` | 【修改】删除五条按模块的旧路径，只保留两条合并路径 |
 | `hsk/answer/service/impl/AnswerCardServiceImpl.java` | 注释订正（`SEC_SPEAKING` 为官方值） |
 | `listening/dto/ListeningRecordResponse.java`、`reading/dto/ReadingRecordResponse.java` | 新增 `version` 字段 |
 | `listening/service/impl/ListeningRecordServiceImpl.java`、`reading/service/impl/ReadingRecordServiceImpl.java` | `toResponse` 回填 `version` |
@@ -935,8 +966,8 @@ Controller（2 族 6 个类）
 
 | # | 待确认点 | 暂定方案 | 确认人 |
 |---|---|---|---|
-| 1 | 前端是分批迁到新路径，还是保持旧路径不动 | 建议按模块分批，旧路径保留至少一个版本周期 | 前端 |
+| 1 | 前端切换窗口 | 旧路径已下线，需与后端同版本上线 | 前端 |
 | 2 | 阅读是否要真正启用 `baseVersion` 乐观锁 | 暂只要求传、不校验（避免引入新的失败路径） | 后端 |
 | 3 | 是否订正 `SEC_SPEAK` 存量配置（24 + 8 行） | 暂不订正，服务端双值兼容 | DBA / 后端 |
 | 4 | 听力 `items[].analysis` 是否也要填（当前恒 null） | 暂不填，解析走逐题回顾端点，避免报告响应体过大 | 产品 |
-| 5 | 网关白名单是否需要登记新路径 | 需把 `/hsk/objective/**`、`/hsk/subjective/**` 加入免登录/白名单配置 | 运维 |
+| 5 | 网关白名单登记 | 必须登记 `/hsk/objective/**`、`/hsk/subjective/**`，并确认旧前缀已从白名单移除 | 运维 |

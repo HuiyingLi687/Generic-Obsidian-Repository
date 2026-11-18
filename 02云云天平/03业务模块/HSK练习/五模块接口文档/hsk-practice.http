@@ -125,7 +125,7 @@ Authorization: Bearer {{token}}
 ### ============================================================================
 
 ### 11 听力 · 开练（幂等：已有进行中记录会直接返回）
-POST {{practice}}/listening/records/start
+POST {{practice}}/hsk/objective/records/start?module=listening
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
@@ -143,13 +143,14 @@ Authorization: Bearer {{token}}
     });
     var d = response.body.data;
     client.global.set("lisRecordId", String(d.recordId));
+    client.global.set("lisVersion", String(d.version));
     client.log("recordId=" + d.recordId + " status=" + d.status +
                " 进度=" + d.answeredCount + "/" + d.totalQuestions);
 %}
 
 
 ### 12 听力 · 拉题 → 取第一题
-GET {{practice}}/listening/records/{{lisRecordId}}/questions
+GET {{practice}}/hsk/objective/records/{{lisRecordId}}/questions?module=listening
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
@@ -160,22 +161,23 @@ Authorization: Bearer {{token}}
     });
     var q = response.body.data[0];
     client.global.set("lisQuestionId", String(q.questionId));
-    var opts = q.option_content ? Object.keys(q.option_content) : [];
+    var opts = q.optionContent ? Object.keys(q.optionContent) : [];
     client.global.set("lisOption", opts.length ? opts[0] : "A");
     client.log("qid=" + q.questionId + " layout=" + q.layout +
                " 选项键=" + JSON.stringify(opts) +
-               " audio_url=" + q.audio_url);
+               " audioUrl=" + q.audioUrl);
 %}
 
 
 ### 13 听力 · 单题保存（防抖，选完就存）
-PUT {{practice}}/listening/records/{{lisRecordId}}/answers/{{lisQuestionId}}
+PUT {{practice}}/hsk/objective/records/{{lisRecordId}}/answers/{{lisQuestionId}}?module=listening
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
 {
-  "selectedOptionId": "{{lisOption}}",
+  "answer": "{{lisOption}}",
+  "baseVersion": {{lisVersion}},
   "clientSequence": 1
 }
 
@@ -183,6 +185,7 @@ Authorization: Bearer {{token}}
     client.test("单题保存成功", function () {
         client.assert(response.body.code === 200, "code=" + response.body.code);
     });
+    client.global.set("lisVersion", String(response.body.data.currentVersion));
     client.log("answer=" + response.body.data.answer +
                " conflict=" + response.body.data.conflict +
                " currentVersion=" + response.body.data.currentVersion);
@@ -190,29 +193,31 @@ Authorization: Bearer {{token}}
 
 
 ### 14 听力 · 批量保存（切题/退出时）
-PUT {{practice}}/listening/records/{{lisRecordId}}/answers
+PUT {{practice}}/hsk/objective/records/{{lisRecordId}}/answers?module=listening
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
 {
   "answers": [
-    { "questionId": {{lisQuestionId}}, "selectedOptionId": "{{lisOption}}" }
+    { "questionId": {{lisQuestionId}}, "answer": "{{lisOption}}" }
   ],
-  "currentQuestionId": {{lisQuestionId}}
+  "currentQuestionId": {{lisQuestionId}},
+  "baseVersion": {{lisVersion}}
 }
 
 > {%
     client.test("批量保存成功", function () {
         client.assert(response.body.code === 200, "code=" + response.body.code);
     });
+    client.global.set("lisVersion", String(response.body.data.version));
     client.log("已答=" + response.body.data.answeredCount +
                "/" + response.body.data.totalQuestions);
 %}
 
 
-### 15 听力 · 暂停（服务端结算在场时长 + 草稿答案，决策 30：请求体没有 durationSeconds）
-POST {{practice}}/listening/records/{{lisRecordId}}/pause
+### 15 听力 · 暂停（服务端结算本段在场时长 + 落草稿答案，请求体不带时长）
+POST {{practice}}/hsk/objective/records/{{lisRecordId}}/pause?module=listening
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
@@ -234,7 +239,7 @@ Authorization: Bearer {{token}}
 
 
 ### 15b 听力 · 恢复（决策 30 新增，幂等）
-POST {{practice}}/listening/records/{{lisRecordId}}/resume
+POST {{practice}}/hsk/objective/records/{{lisRecordId}}/resume?module=listening
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
@@ -247,7 +252,7 @@ Authorization: Bearer {{token}}
 
 
 ### 16 听力 · 答题卡
-GET {{practice}}/listening/records/{{lisRecordId}}/answer-card
+GET {{practice}}/hsk/objective/records/{{lisRecordId}}/answer-card?module=listening
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
@@ -262,15 +267,15 @@ Authorization: Bearer {{token}}
 
 
 ### 17 听力 · 交卷（客观题，立刻出报告）
-POST {{practice}}/listening/records/{{lisRecordId}}/submit
+POST {{practice}}/hsk/objective/records/{{lisRecordId}}/submit?module=listening
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
 {
-  "durationSeconds": 120,
+  "baseVersion": {{lisVersion}},
   "finalAnswers": [
-    { "questionId": {{lisQuestionId}}, "selectedOptionId": "{{lisOption}}" }
+    { "questionId": {{lisQuestionId}}, "answer": "{{lisOption}}" }
   ]
 }
 
@@ -285,7 +290,7 @@ Authorization: Bearer {{token}}
 
 
 ### 18 听力 · 报告详情
-GET {{practice}}/listening/records/{{lisRecordId}}/report
+GET {{practice}}/hsk/objective/records/{{lisRecordId}}/report?module=listening
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
@@ -299,7 +304,7 @@ Authorization: Bearer {{token}}
 
 
 ### 19 听力 · 单题回顾
-GET {{practice}}/listening/records/{{lisRecordId}}/report/questions/{{lisQuestionId}}
+GET {{practice}}/hsk/objective/records/{{lisRecordId}}/report/questions/{{lisQuestionId}}?module=listening
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
@@ -333,7 +338,7 @@ Authorization: Bearer {{token}}
 
 
 ### 22 阅读 · 开练
-POST {{practice}}/reading/records/start
+POST {{practice}}/hsk/objective/records/start?module=reading
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
@@ -349,13 +354,14 @@ Authorization: Bearer {{token}}
         client.assert(response.body.code === 200, "code=" + response.body.code);
     });
     client.global.set("rdRecordId", String(response.body.data.recordId));
+    client.global.set("rdVersion", String(response.body.data.version));
     client.log("recordId=" + response.body.data.recordId +
                " 进度=" + response.body.data.answeredCount + "/" + response.body.data.totalQuestions);
 %}
 
 
 ### 23 阅读 · 拉题（注意 optionContent.options 多一层）
-GET {{practice}}/reading/records/{{rdRecordId}}/questions
+GET {{practice}}/hsk/objective/records/{{rdRecordId}}/questions?module=reading
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
@@ -373,14 +379,15 @@ Authorization: Bearer {{token}}
 
 
 ### 24 阅读 · 单题保存
-PUT {{practice}}/reading/records/{{rdRecordId}}/answers/{{rdQuestionId}}
+PUT {{practice}}/hsk/objective/records/{{rdRecordId}}/answers/{{rdQuestionId}}?module=reading
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
 {
   "questionId": {{rdQuestionId}},
-  "answer": "{{rdOption}}"
+  "answer": "{{rdOption}}",
+  "baseVersion": {{rdVersion}}
 }
 
 > {%
@@ -390,8 +397,8 @@ Authorization: Bearer {{token}}
 %}
 
 
-### 25 阅读 · 批量保存（响应是数组，不是整条记录）
-PUT {{practice}}/reading/records/{{rdRecordId}}/answers
+### 25 阅读 · 批量保存
+PUT {{practice}}/hsk/objective/records/{{rdRecordId}}/answers?module=reading
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
@@ -399,25 +406,27 @@ Authorization: Bearer {{token}}
 {
   "answers": [
     { "questionId": {{rdQuestionId}}, "answer": "{{rdOption}}" }
-  ]
+  ],
+  "baseVersion": {{rdVersion}}
 }
 
 > {%
     client.test("阅读批量保存成功", function () {
         client.assert(response.body.code === 200, "code=" + response.body.code);
     });
-    client.log("返回条数=" + response.body.data.length + "（是数组）");
+    client.global.set("rdVersion", String(response.body.data.version));
+    client.log("已答=" + response.body.data.answeredCount + "/" + response.body.data.totalQuestions);
 %}
 
 
 ### 26 阅读 · 交卷（注意没有 finalAnswers）
-POST {{practice}}/reading/records/{{rdRecordId}}/submit
+POST {{practice}}/hsk/objective/records/{{rdRecordId}}/submit?module=reading
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
 {
-  "durationSeconds": 120
+  "baseVersion": {{rdVersion}}
 }
 
 > {%
@@ -430,7 +439,7 @@ Authorization: Bearer {{token}}
 
 
 ### 27 阅读 · 报告
-GET {{practice}}/reading/records/{{rdRecordId}}/report
+GET {{practice}}/hsk/objective/records/{{rdRecordId}}/report?module=reading
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
@@ -464,7 +473,7 @@ Authorization: Bearer {{token}}
 
 
 ### 32 写作 · 开练（三字段必填）
-POST {{practice}}/writing/records/start
+POST {{practice}}/hsk/subjective/records/start?module=writing
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
@@ -488,7 +497,7 @@ Authorization: Bearer {{token}}
 
 
 ### 33 写作 · 拉题（看 layout 与 answerDraft）
-GET {{practice}}/writing/records/{{wrRecordId}}/questions
+GET {{practice}}/hsk/subjective/records/{{wrRecordId}}/questions?module=writing
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
@@ -504,7 +513,7 @@ Authorization: Bearer {{token}}
 
 
 ### 34 写作 · 存草稿（整份覆盖；同内容不增版本）
-PUT {{practice}}/writing/records/{{wrRecordId}}/questions/{{wrQuestionId}}/draft
+PUT {{practice}}/hsk/subjective/records/{{wrRecordId}}/questions/{{wrQuestionId}}/draft?module=writing
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
@@ -525,7 +534,7 @@ Authorization: Bearer {{token}}
 
 
 ### 35 写作 · 再存一次同内容（版本应不变）
-PUT {{practice}}/writing/records/{{wrRecordId}}/questions/{{wrQuestionId}}/draft
+PUT {{practice}}/hsk/subjective/records/{{wrRecordId}}/questions/{{wrQuestionId}}/draft?module=writing
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
@@ -546,7 +555,7 @@ Authorization: Bearer {{token}}
 
 
 ### 36 写作 · 正式保存答案（草稿不会自动变答案）
-PUT {{practice}}/writing/records/{{wrRecordId}}/answers
+PUT {{practice}}/hsk/subjective/records/{{wrRecordId}}/answers?module=writing
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
@@ -570,7 +579,7 @@ Authorization: Bearer {{token}}
 
 
 ### 37 写作 · 答题卡
-GET {{practice}}/writing/records/{{wrRecordId}}/answer-card
+GET {{practice}}/hsk/subjective/records/{{wrRecordId}}/answer-card?module=writing
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
@@ -582,7 +591,7 @@ Authorization: Bearer {{token}}
 
 
 ### 38 写作 · 交卷
-POST {{practice}}/writing/records/{{wrRecordId}}/submit
+POST {{practice}}/hsk/subjective/records/{{wrRecordId}}/submit?module=writing
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
@@ -593,8 +602,7 @@ Authorization: Bearer {{token}}
       "questionId": {{wrQuestionId}},
       "answerText": "我上周未去公园，天气很好，我们一家人一起散步，看到了很多花……"
     }
-  ],
-  "durationSeconds": 300
+  ]
 }
 
 > {%
@@ -609,7 +617,7 @@ Authorization: Bearer {{token}}
 
 
 ### 39 写作 · 报告（AI 评分总开关关着时恒为 GRADING）
-GET {{practice}}/writing/records/{{wrRecordId}}/report
+GET {{practice}}/hsk/subjective/records/{{wrRecordId}}/report?module=writing
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
@@ -628,7 +636,7 @@ Authorization: Bearer {{token}}
 
 
 ### 3A 写作 · 报告重试（仅 FAILED 时有意义）
-POST {{practice}}/writing/records/{{wrRecordId}}/report/retry
+POST {{practice}}/hsk/subjective/records/{{wrRecordId}}/report/retry?module=writing
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
@@ -663,7 +671,7 @@ Authorization: Bearer {{token}}
 
 
 ### 42 翻译 · 开练
-POST {{practice}}/translation/records/start
+POST {{practice}}/hsk/subjective/records/start?module=translation
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
@@ -685,7 +693,7 @@ Authorization: Bearer {{token}}
 
 
 ### 43 翻译 · 拉题
-GET {{practice}}/translation/records/{{trRecordId}}/questions
+GET {{practice}}/hsk/subjective/records/{{trRecordId}}/questions?module=translation
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
@@ -701,7 +709,7 @@ Authorization: Bearer {{token}}
 
 
 ### 44 翻译 · 保存答案
-PUT {{practice}}/translation/records/{{trRecordId}}/answers
+PUT {{practice}}/hsk/subjective/records/{{trRecordId}}/answers?module=translation
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
@@ -721,7 +729,7 @@ Authorization: Bearer {{token}}
 
 
 ### 45 翻译 · 交卷
-POST {{practice}}/translation/records/{{trRecordId}}/submit
+POST {{practice}}/hsk/subjective/records/{{trRecordId}}/submit?module=translation
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
@@ -729,8 +737,7 @@ Authorization: Bearer {{token}}
 {
   "finalAnswers": [
     { "questionId": {{trQuestionId}}, "answerText": "The weather is very good today." }
-  ],
-  "durationSeconds": 240
+  ]
 }
 
 > {%
@@ -745,7 +752,7 @@ Authorization: Bearer {{token}}
 
 
 ### 46 翻译 · 报告（没有 /report/retry 端点）
-GET {{practice}}/translation/records/{{trRecordId}}/report
+GET {{practice}}/hsk/subjective/records/{{trRecordId}}/report?module=translation
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
@@ -777,7 +784,7 @@ Authorization: Bearer {{token}}
 
 
 ### 52 口语 · 开练（sectionMapping 用 SEC_SPEAKING）
-POST {{practice}}/speaking/records/start
+POST {{practice}}/hsk/subjective/records/start?module=speaking
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
@@ -800,7 +807,7 @@ Authorization: Bearer {{token}}
 
 
 ### 53 口语 · 拉题（layout 恒 record，题目本体常在 passage）
-GET {{practice}}/speaking/records/{{spRecordId}}/questions
+GET {{practice}}/hsk/subjective/records/{{spRecordId}}/questions?module=speaking
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
@@ -817,7 +824,7 @@ Authorization: Bearer {{token}}
 
 
 ### 54 口语 · 保存提纲草稿（只存文字，不碰音频）
-PUT {{practice}}/speaking/records/{{spRecordId}}/questions/{{spQuestionId}}/draft
+PUT {{practice}}/hsk/subjective/records/{{spRecordId}}/questions/{{spQuestionId}}/draft?module=speaking
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
@@ -837,7 +844,7 @@ Authorization: Bearer {{token}}
 
 ### 55 口语 · 落答案（音频 URL 由客户端自己上传后拿到）
 ### ⚠️ 把 answer 换成你真实上传后的 WAV URL；服务端只存不校验
-POST {{practice}}/speaking/records/{{spRecordId}}/questions/{{spQuestionId}}/answers
+POST {{practice}}/hsk/subjective/records/{{spRecordId}}/questions/{{spQuestionId}}/answers?module=speaking
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
@@ -857,7 +864,7 @@ Authorization: Bearer {{token}}
 
 
 ### 56 口语 · 答题卡（answered = 录音已上传）
-GET {{practice}}/speaking/records/{{spRecordId}}/answer-card
+GET {{practice}}/hsk/subjective/records/{{spRecordId}}/answer-card?module=speaking
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
@@ -869,14 +876,12 @@ Authorization: Bearer {{token}}
 
 
 ### 57 口语 · 交卷
-POST {{practice}}/speaking/records/{{spRecordId}}/submit
+POST {{practice}}/hsk/subjective/records/{{spRecordId}}/submit?module=speaking
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
-{
-  "durationSeconds": 300
-}
+{}
 
 > {%
     client.test("口语交卷成功", function () {
@@ -889,7 +894,7 @@ Authorization: Bearer {{token}}
 
 
 ### 58 口语 · 报告
-GET {{practice}}/speaking/records/{{spRecordId}}/report
+GET {{practice}}/hsk/subjective/records/{{spRecordId}}/report?module=speaking
 X-Client-Type: APP
 Authorization: Bearer {{token}}
 
@@ -943,7 +948,7 @@ X-Client-Type: APP
 
 
 ### 64 反向用例 · 用错模块的 sectionMapping 开练（应得 8108 板块映射不一致）
-POST {{practice}}/translation/records/start
+POST {{practice}}/hsk/subjective/records/start?module=translation
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
@@ -964,7 +969,7 @@ Authorization: Bearer {{token}}
 
 
 ### 65 反向用例 · 交卷后再存草稿（应得 8109 草稿已冻结）
-PUT {{practice}}/writing/records/{{wrRecordId}}/questions/{{wrQuestionId}}/draft
+PUT {{practice}}/hsk/subjective/records/{{wrRecordId}}/questions/{{wrQuestionId}}/draft?module=writing
 Content-Type: application/json
 X-Client-Type: APP
 Authorization: Bearer {{token}}
