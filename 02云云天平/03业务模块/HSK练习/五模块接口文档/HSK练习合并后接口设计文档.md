@@ -1,7 +1,7 @@
 # HSK 练习 · 五模块接口合并（客观族 / 主观族）接口设计文档
 
 > 版本：v2.4｜更新日期：2026-11-23
-> 本版变更：新增 §4.4.1 `GET /hsk/modules/{module}/levels` 作为目录第一跳（模块 → 等级清单），原 `levels` / `intro` / `parts` 顺移为第二至第四跳，小节编号相应改为 §4.4.2–§4.4.4
+> 本版变更：新增 §4.4.1 `GET /hsk/modules/{module}/levels` 作为目录第一跳（模块 → 等级清单），原 `levels` / `parts` 顺移为第二、第三跳，小节编号相应改为 §4.4.2–§4.4.4；`intro` 仍随目录展示，不算一跳
 > 上版变更（v2.3）：删除开练请求的 `restart` 字段（不再提供重开机制）；主观族单题作答与判分重试改为三模块通用，`8120` 随之下线；客观报告结构收敛为「摘要 + 题号矩阵 `rows`」，不再下发 `items` / `reportStatus` / `retryable`；`baseVersion` 听读两模块都强校验；新增 §4.4 目录三跳与最近报告 4 个端点
 > 影响服务：practice-service（改造，无 DDL 变更）
 > 关联文档：《HSK练习五模块接口文档》（v1.x，按模块拆路径的旧版）
@@ -37,7 +37,7 @@
 | 16 | 解锁落表 | 仍是 `practice_subjective_record` 单表：`ai_deduct_state`（`0` 未解锁 / `1` 已解锁 / `3` 无需解锁）+ `deduct_type` + `ai_deduct_time` |
 | 17 | 解锁失败 | 扣减失败直接抛 `8118` 并回滚，本地不写解锁状态，用户付费后重试即可 |
 | 18 | 答题卡 | 五模块同一响应：`questions[]` 只给 `order` / `questionId` / `answered` / `current`，不下发对错，也不做标记 / 收藏 / 错题筛选 |
-| 19 | 目录与最近报告 | 四跳（`modules/{module}/levels` / `levels` / `intro` / `parts`）免登录、五模块同构；最近报告需登录，`data` 按模块分形状，无报告回 `null` 不报 404 |
+| 19 | 目录与最近报告 | 三跳（`modules/{module}/levels` / `levels` / `parts`）免登录、五模块同构；`intro` 是目录内展示的等级说明，不是独立一跳；最近报告需登录，`data` 按模块分形状，无报告回 `null` 不报 404 |
 
 ## 1. 现状问题列表（本次要修复的 bug）
 
@@ -95,7 +95,7 @@
 
 ## 3. 接口总览清单
 
-> 目录四跳（`/hsk/modules/{module}/levels`、`/hsk/levels`、`/hsk/levels/{level}/intro`、`/hsk/papers/{paperId}/parts`）与首页模块卡 `/hsk/modules` 不属于两族作答链路，见 §3.3 与 §4.4。
+> 目录三跳（`/hsk/modules/{module}/levels`、`/hsk/levels`、`/hsk/papers/{paperId}/parts`）与随目录展示的等级说明 `/hsk/levels/{level}/intro`，以及首页模块卡 `/hsk/modules`，都不属于两族作答链路，见 §3.3 与 §4.4。
 
 ### 3.1 客观族（听 / 读）
 
@@ -142,19 +142,21 @@
 
 > 主观族响应体只有一处字段变更：`SubjectiveReportResponse` 与 `SubjectiveQuestionReportResponse` 新增布尔字段 `aiUnlocked`，其余结构不变。报告内容不因未解锁而清空。
 
-### 3.3 目录四跳与最近报告（五模块共用）
+### 3.3 目录三跳、等级说明与最近报告（五模块共用）
 
-这一组接口不区分客观族 / 主观族，靠 `module` 区分模块，只读、不写库。四跳免登录，最近报告需要登录；四跳的响应结构五模块同构，最近报告的 `data` 按模块分形状。
+这一组接口不区分客观族 / 主观族，靠 `module` 区分模块，只读、不写库。目录三跳与等级说明免登录，最近报告需要登录；三跳的响应结构五模块同构，最近报告的 `data` 按模块分形状。等级说明只是目录页里展示的内容，不是一跳。
+
+下表序号与 §4.4 小节号一一对应；`intro` 是目录页里展示的说明，不计入跳次。
 
 | # | Method | Path | 用途 | 接口类型 | 改动简述 |
 |---|---|---|---|---|---|
 | 1 | GET | `/hsk/modules/{module}/levels` | 目录第一跳：模块下的等级清单 | 【新增】 | 按 `practice_module_level_config` 下发可用等级，`module` 走路径段，免登录 → §4.4.1 |
 | 2 | GET | `/hsk/levels` | 目录第二跳：等级概览 + 卷列表 + 进度 | 【无变更】 | `module` / `version` / `level` 全走 query，免登录 → §4.4.2 |
-| 3 | GET | `/hsk/levels/{level}/intro` | 目录第三跳：等级备考说明 | 【无变更】 | 能力描述三语 + 板块结构，无进度字段 → §4.4.3 |
-| 4 | GET | `/hsk/papers/{paperId}/parts` | 目录第四跳：卷内板块 + 每块进度 | 【无变更】 | 板块统一 `parts[]`，进度含 `draft` / `report` / 口语 `stats` → §4.4.4 |
+| 3 | GET | `/hsk/levels/{level}/intro` | 等级备考说明（目录内展示，不是一跳） | 【无变更】 | 能力描述三语 + 板块结构，无进度字段 → §4.4.3 |
+| 4 | GET | `/hsk/papers/{paperId}/parts` | 目录第三跳：卷内板块 + 每块进度 | 【无变更】 | 板块统一 `parts[]`，进度含 `draft` / `report` / 口语 `stats` → §4.4.4 |
 | 5 | GET | `/papers/{paperId}/reports/latest` | 板块最近一次已出报告 | 【新增】 | 替代原四条 `/{{mod}}/parts/{{structureId}}/reports/latest`，模块与板块号走 query → §4.4.5 |
 
-> 四跳的旧模块内路径（`/listening/levels`、`/reading/levels` 等 15 条）已整块下线，返回 `404`。
+> 目录三跳与等级说明的旧模块内路径（`/listening/levels`、`/reading/levels` 等 15 条）已整块下线，返回 `404`。
 > 首页模块卡 `GET /hsk/modules`（无路径变量）属于首页展示，不在本文档范围；第一跳是同前缀下的子路径，两者不冲突。
 
 ## 4. 改动接口详情
@@ -1819,17 +1821,17 @@ Content-Type: application/json
 
 **本族抛出错误码**：8101–8119（通用）、8201+（写作）、8251+（翻译）、8281+（口语）
 
-### 4.4 目录四跳与最近报告
+### 4.4 目录三跳、等级说明与最近报告
 
-本节 5 个端点服务「模块 → 等级 → 备考说明 → 卷内板块」这条只读链路，以及板块卡片上的「上次成绩」入口。它们与作答链路解耦：只读、不写库、不参与任何扣费与判分。
+本节 5 个端点服务「模块 → 等级 → 卷列表 → 卷内板块」这条只读链路，以及板块卡片上的「上次成绩」入口。其中等级备考说明（§4.4.3）是目录页内展示的内容，不算一跳。它们与作答链路解耦：只读、不写库、不参与任何扣费与判分。
 
 **通用规则**
 
 - `module` 取值 `listening` / `reading` / `writing` / `speaking` / `translation`，大小写不敏感；缺失或不在白名单 → `8133`。§4.4.1 走路径段，其余走 query
 - `version` 缺省 `HSK2.0`，只认 `HSK2.0` / `HSK3.0`，其余 → `8131`
-- 四跳（§4.4.1–§4.4.4）**免登录**：不带 token 时进度一律为未开始、`draft` 与 `report` 为 `null`；带有效 token 才回真实进度
+- 目录三跳与等级说明（§4.4.1–§4.4.4）**免登录**：不带 token 时进度一律为未开始、`draft` 与 `report` 为 `null`；带有效 token 才回真实进度
 - §4.4.5 需要登录，只查本人报告
-- 对外路径与作答端点不同：四跳是 `/hsk/...`，最近报告是 `/papers/...`（`/api/practice` 前缀由网关提供）
+- 对外路径与作答端点不同：目录三跳与等级说明都是 `/hsk/...`，最近报告是 `/papers/...`（`/api/practice` 前缀由网关提供）
 
 ---
 
@@ -1903,7 +1905,7 @@ Accept-Language: zh
 4. 逐行映射 `level` 数字串、`levelName`（三语选一）、`totalQuestionCount`、`durationMinutes`
 5. 无匹配行 → `levels = []`，不报错
 
-> 前端约定：取 `levels[0].level` 作为默认选中等级；`levels` 为空时整页按「该模块暂无内容」处理，不要再调 §4.4.2。
+> 前端约定：取 `levels[0].level` 作为默认选中等级；`levels` 为空时整页按「该模块暂无内容」处理，不要再调 §4.4.2。选中等级后，拉取卷列表（§4.4.2）。
 
 **本接口抛出错误码**：8131 / 8133
 
@@ -1977,7 +1979,7 @@ Accept-Language: zh
 
 #### 4.4.3 GET `/hsk/levels/{level}/intro`
 
-**用途**：等级备考说明（能力描述 + 板块结构），纯内容，无进度字段
+**用途**：等级备考说明（能力描述 + 板块结构），纯内容，无进度字段；在目录页内展示，不是一跳
 **鉴权**：免登录
 
 **入参说明**
@@ -2061,7 +2063,7 @@ Accept-Language: zh
 
 #### 4.4.4 GET `/hsk/papers/{paperId}/parts`
 
-**用途**：卷内该模块的板块列表 + 每块进度（目录第四跳，点板块即开练）
+**用途**：卷内该模块的板块列表 + 每块进度（目录第三跳，点板块即开练）
 **鉴权**：免登录
 
 **入参说明**
@@ -2254,11 +2256,11 @@ Accept-Language: zh
 | 8104               | practice-service | 【修改】`baseVersion` 与库里 `version` 不一致；本次对听读两个模块都强校验（原阅读只要求传、不校验）                                        |
 | 8105               | practice-service | 【修改】客观报告未交卷、主观解锁预检与执行解锁要求记录已交卷，都回该码                                                                   |
 | 8106               | practice-service | 【新增到本文档】客观报告重试前置不满足：`status ≠ 3` 或 `idempotency_key` 为空                                                        |
-| 8131               | practice-service | 【新增到本文档】目录四跳与最近报告的 `version` 不在 `HSK2.0` / `HSK3.0` 之内                                              |
+| 8131               | practice-service | 【新增到本文档】目录三跳、等级说明与最近报告的 `version` 不在 `HSK2.0` / `HSK3.0` 之内                                              |
 | 8132               | practice-service | 【新增到本文档】目录 `level` 不在 `1`–`7` 之内                                                                   |
 | 8133               | practice-service | 【修改】合并路径后承担更多职责：`module` 缺失、取值不在白名单（作答端点按族区分白名单，目录与最近报告五个模块码全收）                                       |
 | 8134 / 8137        | practice-service | 【新增到本文档】`paperId` 为空（服务层兜底，路径参数场景不会触发）/ 最近报告缺 `section`                                            |
-| 8135 / 8138        | practice-service | 【新增到本文档】目录第四跳：卷不存在或未启用（8135）、该模块在该卷下没有板块（8138）                                                    |
+| 8135 / 8138        | practice-service | 【新增到本文档】目录第三跳：卷不存在或未启用（8135）、该模块在该卷下没有板块（8138）                                                    |
 | 8136               | practice-service | 【新增到本文档】最近报告的 `version` 与卷实际版本不符                                                                    |
 | 8140               | practice-service | 【新增到本文档】最近报告查不到卷（`exam_paper` 与口语卷表都没有）                                                            |
 | 8141 / 8142        | practice-service | 【无变更】听力续练时卷内容 / 板块配置已下架                                                                               |
@@ -2279,7 +2281,7 @@ Accept-Language: zh
 9. **主观题报告多了一个解锁步骤**：报告与单题反馈新增 `aiUnlocked`，为 `false` 时解析需要用户主动解锁。后端不再替你遮挡内容，`analysis` 字段有值但**不应直接渲染**，必须先判 `aiUnlocked`，否则付费墙形同虚设。
 10. **解锁弹窗文案由后端下发**：`content` / `buttonLabel` / `bottomLabel` / `bottomValue` 直接渲染即可，不要在客户端拼「将消耗 N 次」这类句子，服务端已按 `language` 头和实际余额填好。`recommendedMethod = none` 时按钮应跳权益中心而不是调 unlock。
 11. **交卷不再因余额不足被拦**：旧版交卷前会校验权益，现在交卷只看作答与判分，未解锁只影响报告页的解析展示。
-12. **四跳免登录，别用 401 拦自己**：不带 token 也能拉 `modules/{module}/levels` / `levels` / `intro` / `parts`，此时进度字段为未开始、`draft` 与 `report` 为 `null`；带有效 token 自动带进度。`parts[].draft.id` 就是 `recordId`，直接拿去调 `resume` 继续练习。
+12. **目录三跳与等级说明都免登录，别用 401 拦自己**：不带 token 也能拉 `modules/{module}/levels` / `levels` / `intro` / `parts`，此时进度字段为未开始、`draft` 与 `report` 为 `null`；带有效 token 自动带进度。`parts[].draft.id` 就是 `recordId`，直接拿去调 `resume` 继续练习。
 13. **等级 tab 由第一跳决定，不要写死**：进入模块先拉 `GET /hsk/modules/{module}/levels`，按 `levels` 原序渲染并默认选中第一项。HSK3.0 口语从 HSK3 起配、HSK2.0 口语是 `HSKK 初级/中级/高级`、HSK2.0 翻译没有等级，按 `HSK1`–`HSK6` 写死会漏项或点进空页；`levels = []` 时直接显示「暂无内容」，不要再调第二跳。
 14. **最近报告的 `data` 按模块分形状**：先看 `module` 再取值，并且必须判 `data == null`（该板块还没报告，服务端不报 404）。
 
@@ -2291,7 +2293,7 @@ Accept-Language: zh
 Controller（2 族 6 个类 + 4 个跨族只读类）
   ├─ 客观族：ObjectiveRecordController / ObjectiveAnswerController / ObjectiveReportController
   ├─ 主观族：SubjectivePracticeController
-  └─ 跨族只读：PracticeCatalogController（目录四跳）/ PracticeHomeController（首页模块卡）
+  └─ 跨族只读：PracticeCatalogController（目录三跳 + 等级说明）/ PracticeHomeController（首页模块卡）
                PracticeReportController（最近报告）/ AnswerCardController（五模块答题卡）
       ↓ 模块解析（ObjectiveModuleResolver / SubjectiveModuleResolver）
 门面层（ObjectivePracticeService；主观族直接复用 SubjectivePracticeService）
@@ -2317,7 +2319,7 @@ Controller（2 族 6 个类 + 4 个跨族只读类）
 | 判分重试（主观） | `@Transactional` | 一条 SQL 重置入选行的 `grading_state` 与退避字段 → `grading_attempts + 1` → `afterCommit` 重新投递；不改报告状态（现算） |
 | 解锁（主观） | `@Transactional` | 行锁查记录 → 校验已交卷与归属 → 三级扣减（远程，不参与本地事务）→ 写 `ai_deduct_state=1` + `deduct_type` + `ai_deduct_time`。先扣后写，扣失败抛 8118 回滚，行锁串行化并发请求 |
 | 详情 / 拉题 / 报告读取（两族） | 无事务 | 只读、不加锁；`aiUnlocked` 在读时按 `ai_deduct_state` 现算 |
-| 目录四跳 / 最近报告（§4.4） | 无事务 | 只读、不加锁、不写库；未登录走 EMPTY 进度兜底；最近报告把各模块「无报告」异常统一降级为 `data = null` |
+| 目录三跳、等级说明 / 最近报告（§4.4） | 无事务 | 只读、不加锁、不写库；未登录走 EMPTY 进度兜底；最近报告把各模块「无报告」异常统一降级为 `data = null` |
 
 ### 7.3 时长口径（未变，重申）
 
@@ -2413,7 +2415,7 @@ Controller（2 族 6 个类 + 4 个跨族只读类）
 | `hsk/catalog/controller/PracticeCatalogController.java` | 【新增】`GET /hsk/modules/{module}/levels` 第一跳端点；`/hsk/modules`（无路径变量）仍归 `PracticeHomeController`，两者为并列路径 |
 | `hsk/catalog/service/PracticeCatalogService.java` + `impl` | 【新增】`moduleLevels`：按 `version` + `section_mapping` + `deleted = 0` + `enabled = 1` 读等级配置，不发额外查询 |
 | `hsk/catalog/dto/PracticeModuleLevelsResponse.java`、`PracticeModuleLevelItem.java` | 【新增】第一跳响应与等级行（`level` / `levelName` / `totalQuestionCount` / `durationMinutes`） |
-| `hsk/catalog/**`（后三跳控制器 / 服务 / DTO） | 【无变更】路径与响应结构不动 |
+| `hsk/catalog/**`（其余目录端点控制器 / 服务 / DTO） | 【无变更】路径与响应结构不动 |
 | `csca/controller/CscaFavoriteController.java` | 补回缺失的类闭合大括号（原本导致全模块编译失败） |
 
 ### 9.3 环境状态
@@ -2430,7 +2432,7 @@ Controller（2 族 6 个类 + 4 个跨族只读类）
 | 2 | 阅读 `baseVersion` | 已拍定：两个模块都强校验，不一致回 `8104` | 后端 |
 | 3 | 是否订正 `SEC_SPEAK` 存量配置（24 + 8 行） | 暂不订正，服务端双值兼容 | DBA / 后端 |
 | 4 | 客观报告是否还需要 `items` | 已拍定：不再下发，单题明细走逐题回顾端点 | 产品 |
-| 5 | 网关白名单登记 | 必须登记 `/hsk/objective/**`、`/hsk/subjective/**`、`/hsk/modules/*/levels`、`/hsk/levels`、`/hsk/papers/**`、`/papers/**`，并确认旧前缀已从白名单移除；目录四跳与首页模块卡免登录放行 | 运维 |
-| 6 | 最近报告路径缺 `/hsk` 段 | 现为 `/papers/{paperId}/reports/latest`（对外 `/api/practice/papers/...`），与四跳的 `/hsk/...` 不齐；是否统一成 `/hsk/papers/{paperId}/reports/latest` 待定 | 前后端 |
+| 5 | 网关白名单登记 | 必须登记 `/hsk/objective/**`、`/hsk/subjective/**`、`/hsk/modules/*/levels`、`/hsk/levels`、`/hsk/papers/**`、`/papers/**`，并确认旧前缀已从白名单移除；目录三跳、等级说明与首页模块卡免登录放行 | 运维 |
+| 6 | 最近报告路径缺 `/hsk` 段 | 现为 `/papers/{paperId}/reports/latest`（对外 `/api/practice/papers/...`），与目录三跳的 `/hsk/...` 不齐；是否统一成 `/hsk/papers/{paperId}/reports/latest` 待定 | 前后端 |
 | 7 | 最近报告的板块域取值 | 口语报告按 `SEC_SPEAK` 直查；若新记录按决策 10 写 `SEC_SPEAKING`，会出现查不到，候选集是否改为 `IN ('SEC_SPEAK','SEC_SPEAKING')` 待定 | 后端 / DBA |
 | 8 | 阅读最近报告是否也砍掉 `items` | 最近报告复用阅读原有模型（带 `items`），与 §4.2.9 收敛后的结构不一致；暂按现状双口径，是否统一待定 | 产品 / 前端 |
