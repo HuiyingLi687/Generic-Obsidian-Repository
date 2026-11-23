@@ -63,6 +63,22 @@ Accept-Language: zh
 %}
 
 
+### 01b 目录第一跳：模块下的等级清单（免登录；顺带把 level 设成第一项）
+GET {{practice}}/hsk/modules/{{module}}/levels?version={{version}}
+Accept-Language: zh
+
+> {%
+    client.test("拿到等级清单", function () {
+        client.assert(response.body.code === 200, "code=" + response.body.code);
+        client.assert(response.body.data.levels.length > 0,
+                      "该模块在该版本下没有可用等级，换个 module 或 version 再试");
+    });
+    client.global.set("level", String(response.body.data.levels[0].level));
+    client.log("等级数=" + response.body.data.levels.length +
+               " 首个=" + response.body.data.levels[0].levelName);
+%}
+
+
 ### 02 U1 等级概览 + 卷列表 → 取第一张卷的 paperId（免登录；带头才返回用户进度）
 GET {{practice}}/hsk/levels?module={{module}}&version={{version}}&level={{level}}
 X-Client-Type: APP
