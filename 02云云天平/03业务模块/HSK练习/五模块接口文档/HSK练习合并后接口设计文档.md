@@ -1891,7 +1891,7 @@ Accept-Language: zh
 
 **下发口径**
 
-- 只下发 `enabled = 1` 的等级。`enabled = 0` 的行不进 tab（如 HSK3.0 写作的 HSK1、HSK2.0 写作的 HSK1 / HSK2），避免点进去是空目录
+- 只下发 `enabled = 1` 的等级。
 - `level` 不连续是正常现象：HSK3.0 口语从 `level = 3` 起配，只配到 `7`；HSK2.0 翻译没有配置，返回空数组。前端不要按 `1..N` 自造 tab
 - `levelName` 必须取库列，不能按 `"HSK" + level` 拼：HSK2.0 口语三级配的是 `HSKK 初级` / `HSKK 中级` / `HSKK 高级`
 - 不下发卷数。卷数要按等级逐级现算题量才准（7 个等级 7 次查卷），而选中等级的准确卷数由 §4.4.2 的 `paperCount` 给出
