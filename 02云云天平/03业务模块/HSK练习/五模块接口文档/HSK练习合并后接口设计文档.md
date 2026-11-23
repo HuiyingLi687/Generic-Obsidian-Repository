@@ -1924,11 +1924,11 @@ Accept-Language: zh
 
 **入参说明**
 
-| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
-|---|---|---|---|---|
-| module | path | String | 是 | `listening` / `reading` / `writing` / `speaking` / `translation`，大小写不敏感；缺失或非法 → `8133` |
-| version | query | String | 否 | `HSK2.0` / `HSK3.0`，缺省 `HSK2.0`；其余 → `8131` |
-| Accept-Language | header | String | 否 | `zh` / `en` / `vi`，决定 `levelName` 取哪一列 |
+| 参数名             | 位置     | 类型     | 必填  | 约束&说明                                                                                  |
+| --------------- | ------ | ------ | --- | -------------------------------------------------------------------------------------- |
+| module          | path   | String | 是   | `listening` / `reading` / `writing` / `speaking` / `translation`，大小写不敏感；缺失或非法 → `8133` |
+| version         | query  | String | 否   | `HSK2.0` / `HSK3.0`，缺省 `HSK2.0`；其余 → `8131`                                            |
+| Accept-Language | header | String | 否   | `zh` / `en` / `vi`，决定 `levelName` 取哪一列                                                 |
 
 **请求示例**
 
