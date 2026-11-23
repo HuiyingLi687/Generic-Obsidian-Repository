@@ -1832,17 +1832,17 @@ Content-Type: application/json
 
 #### 4.4.1 GET `/hsk/levels`
 
-**用途**：等级概览 + 该等级全部卷及作答进度（目录第一跳）
+**用途**：等级概览 + 该等级全部卷及作答进度（目录第二跳）
 **鉴权**：免登录
 
 **入参说明**
 
-| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
-|---|---|---|---|---|
-| module | query | String | 必传 | `listening` / `reading` / `writing` / `speaking` / `translation` |
-| version | query | String | 否 | `HSK2.0` / `HSK3.0`，缺省 `HSK2.0` |
-| level | query | String | 否 | 等级数字串 `1`–`7`（`7` = HSK7-9 整级），缺省 `1` |
-| Accept-Language | header | String | 否 | `zh` / `en` / `vi`，决定 `levelName` 取哪一列 |
+| 参数名             | 位置     | 类型     | 必填  | 约束&说明                                                            |
+| --------------- | ------ | ------ | --- | ---------------------------------------------------------------- |
+| module          | query  | String | 必传  | `listening` / `reading` / `writing` / `speaking` / `translation` |
+| version         | query  | String | 否   | `HSK2.0` / `HSK3.0`，缺省 `HSK2.0`                                  |
+| level           | query  | String | 否   | 等级数字串 `1`–`7`（`7` = HSK7-9 整级），缺省 `1`                            |
+| Accept-Language | header | String | 否   | `zh` / `en` / `vi`，决定 `levelName` 取哪一列                           |
 
 **返回完整示例**
 
