@@ -165,14 +165,14 @@
 
 ### 4.1 模块参数规则（两族通用）
 
-| 路径 | `module` 是否必传 | 取值 |
-|---|---|---|
-| `/hsk/objective/records/**` | **必传** | `listening` / `reading` |
-| `/hsk/subjective/records/**` | **必传** | `writing` / `translation` / `speaking` |
-| `/hsk/modules` | 不涉及 | 无 `module` 参数，只按 `version` 下发卡片清单，免登录 |
-| `/hsk/modules/{module}/levels` | **必传**（路径段） | 五个模块码全收，免登录 |
-| `/hsk/levels`、`/hsk/levels/{level}/intro`、`/hsk/papers/{paperId}/parts` | **必传** | 五个模块码全收（`listening` / `reading` / `writing` / `speaking` / `translation`），免登录 |
-| `/papers/{paperId}/reports/latest` | **必传** | 五个模块码全收，另需 `section` |
+| 路径                                                                      | `module` 是否必传 | 取值                                                                            |
+| ----------------------------------------------------------------------- | ------------- | ----------------------------------------------------------------------------- |
+| `/hsk/objective/records/**`                                             | **必传**        | `listening` / `reading`                                                       |
+| `/hsk/subjective/records/**`                                            | **必传**        | `writing` / `translation` / `speaking`                                        |
+| `/hsk/modules`                                                          | 不涉及           | 无 `module` 参数，只按 `version` 下发卡片清单，免登录                                         |
+| `/hsk/modules/{module}/levels`                                          | **必传**（路径段）   | 五个模块码全收，免登录                                                                   |
+| `/hsk/levels`、`/hsk/levels/{level}/intro`、`/hsk/papers/{paperId}/parts` | **必传**        | 五个模块码全收（`listening` / `reading` / `writing` / `speaking` / `translation`），免登录 |
+| `/papers/{paperId}/reports/latest`                                      | **必传**        | 五个模块码全收，另需 `section`                                                          |
 
 `module` 大小写与首尾空格不敏感。缺失、取值不在白名单 → `8133`。
 
