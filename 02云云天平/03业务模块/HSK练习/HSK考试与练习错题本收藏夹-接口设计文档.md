@@ -197,18 +197,18 @@ ALTER TABLE question_favorite
 
 接口类型说明：新增 / 改造 / 复用不改代码
 
-| # | Method | Path | 用途 | 服务 | 接口类型 |
-|---|---|---|---|---|---|
-| 1 | GET | `/hsk/wrong-book` | 错题本分页列表 | practice-service | 新增 |
-| 2 | DELETE | `/hsk/wrong-book/{questionId}` | 单题移出错题本 | practice-service | 新增 |
-| 3 | POST | `/hsk/wrong-book/batch-remove` | 批量移出错题本 | practice-service | 新增 |
-| 4 | GET | `/hsk/favorites` | 收藏夹分页列表 | practice-service | 新增 |
-| 5 | PUT | `/hsk/favorites/{questionId}` | 答题中收藏（练习侧） | practice-service | 新增 |
-| 6 | DELETE | `/hsk/favorites/{questionId}` | 取消收藏（练习侧） | practice-service | 新增 |
-| 7 | POST | `/hsk/favorites/batch-cancel` | 批量取消收藏 | practice-service | 新增 |
-| 8 | POST | `/answer/hsk/favorite` | 答题中收藏 / 取消（考试侧） | exam-service | 新增 |
-| 9 | GET | `/hsk/objective/records/{recordId}/answer-card`、`/hsk/subjective/records/{recordId}/answer-card` | 练习答题卡回收藏态 | practice-service | 改造 |
-| 10 | GET | `/answer/card/detail/{paperId}` | 考试答题卡回收藏态 | exam-service | 改造 |
+| #   | Method | Path                                                                                             | 用途              | 服务               | 接口类型 |
+| --- | ------ | ------------------------------------------------------------------------------------------------ | --------------- | ---------------- | ---- |
+| 1   | GET    | `/hsk/wrong-book`                                                                                | 错题本分页列表         | practice-service | 新增   |
+| 2   | DELETE | `/hsk/wrong-book/{questionId}`                                                                   | 单题移出错题本         | practice-service | 新增   |
+| 3   | POST   | `/hsk/wrong-book/batch-remove`                                                                   | 批量移出错题本         | practice-service | 新增   |
+| 4   | GET    | `/hsk/favorites`                                                                                 | 收藏夹分页列表         | practice-service | 新增   |
+| 5   | PUT    | `/hsk/favorites/{questionId}`                                                                    | 答题中收藏（练习侧）      | practice-service | 新增   |
+| 6   | DELETE | `/hsk/favorites/{questionId}`                                                                    | 取消收藏（练习侧）       | practice-service | 新增   |
+| 7   | POST   | `/hsk/favorites/batch-cancel`                                                                    | 批量取消收藏          | practice-service | 新增   |
+| 8   | POST   | `/answer/hsk/favorite`                                                                           | 答题中收藏 / 取消（考试侧） | exam-service     | 新增   |
+| 9   | GET    | `/hsk/objective/records/{recordId}/answer-card`、`/hsk/subjective/records/{recordId}/answer-card` | 练习答题卡回收藏态       | practice-service | 改造   |
+| 10  | GET    | `/answer/card/detail/{paperId}`                                                                  | 考试答题卡回收藏态       | exam-service     | 改造   |
 
 > 交卷时的写入（错题收录 + 收藏入册）不在本清单内：它是交卷链路的内部步骤，无独立端点，详见 §2.4 与 §5.11。
 
