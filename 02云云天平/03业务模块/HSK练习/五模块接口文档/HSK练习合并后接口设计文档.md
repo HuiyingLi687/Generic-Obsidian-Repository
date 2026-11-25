@@ -1131,12 +1131,12 @@ Content-Type: application/json
 
 **入参说明**
 
-| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
-|---|---|---|---|---|
-| recordId | path | Long | 是 | 练习记录 ID |
-| module | query | String | 是 | `writing` / `translation` / `speaking` |
-| currentQuestionId | body | Long | 否 | 当前停留题目 ID；不传则不改进度位置 |
-| X-Client-Type | header | String | 否 | 客户端类型 |
+| 参数名               | 位置     | 类型     | 必填  | 约束&说明                                  |
+| ----------------- | ------ | ------ | --- | -------------------------------------- |
+| recordId          | path   | Long   | 是   | 练习记录 ID                                |
+| module            | query  | String | 是   | `writing` / `translation` / `speaking` |
+| currentQuestionId | body   | Long   | 否   | 当前停留题目 ID；不传则不改进度位置                    |
+| X-Client-Type     | header | String | 否   | 客户端类型                                  |
 
 > 请求体整体可省略（`visibilitychange` 触发时没有位置上下文）。**请求体不含时长**，时长由服务端算。
 
