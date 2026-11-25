@@ -551,11 +551,11 @@ X-Client-Type: APP
 
 **返回字段说明**
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| questionId | String | 题目 ID |
-| favorite | Boolean | 是否已收藏（`true`） |
-| inBook | Boolean | 是否已在收藏夹（答题中恒 `false`；若该题历史已入册则回 `true`） |
+| 字段            | 类型      | 说明                                                |
+| ------------- | ------- | ------------------------------------------------- |
+| questionId    | String  | 题目 ID                                             |
+| favorite      | Boolean | 是否已收藏（`true`）                                     |
+| inBook        | Boolean | 是否已在收藏夹（答题中恒 `false`；若该题历史已入册则回 `true`）           |
 | favoriteCount | Integer | 该用户已入册收藏总数（`in_book = 1 AND deleted = 0`），供「我的」角标 |
 
 **服务端内部执行顺序（重要，后端&测试阅读）**
