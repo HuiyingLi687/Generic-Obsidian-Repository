@@ -2245,12 +2245,12 @@ Accept-Language: zh
 
 **入参说明**
 
-| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
-|---|---|---|---|---|
-| paperId | path | Long | 是 | 试卷 ID |
-| module | query | String | 必传 | `listening` / `reading` / `writing` / `speaking` / `translation` |
-| section | query | String | 必传 | 板块号，五个模块统一为数字：`1` / `2` / `3`… |
-| version | query | String | 否 | 传了就校验卷归属，不符回 `8136` |
+| 参数名     | 位置    | 类型     | 必填  | 约束&说明                                                            |
+| ------- | ----- | ------ | --- | ---------------------------------------------------------------- |
+| paperId | path  | Long   | 是   | 试卷 ID                                                            |
+| module  | query | String | 必传  | `listening` / `reading` / `writing` / `speaking` / `translation` |
+| section | query | String | 必传  | 板块号，五个模块统一为数字：`1` / `2` / `3`…                                   |
+| version | query | String | 否   | 传了就校验卷归属，不符回 `8136`                                              |
 
 **返回字段说明（外层）**
 
