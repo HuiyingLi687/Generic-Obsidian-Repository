@@ -1418,14 +1418,14 @@ Content-Type: application/json
 
 **入参说明**
 
-| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
-|---|---|---|---|---|
-| recordId | path | Long | 是 | 练习记录 ID |
-| questionId | path | Long | 是 | 题目 ID，必须在冻结题集内，否则 `8107` |
-| module | query | String | 是 | `writing` / `translation` / `speaking` |
-| text | body | String | 是 | 草稿全文；清空请传空串（`null` 由校验拦下） |
-| expectedVersion | body | Long | 否 | 期望的草稿版本；传了就必须与库里一致，否则 `8111` |
-| X-Client-Type | header | String | 否 | 客户端类型 |
+| 参数名             | 位置     | 类型     | 必填  | 约束&说明                                  |
+| --------------- | ------ | ------ | --- | -------------------------------------- |
+| recordId        | path   | Long   | 是   | 练习记录 ID                                |
+| questionId      | path   | Long   | 是   | 题目 ID，必须在冻结题集内，否则 `8107`               |
+| module          | query  | String | 是   | `writing` / `translation` / `speaking` |
+| text            | body   | String | 是   | 草稿全文；清空请传空串（`null` 由校验拦下）              |
+| expectedVersion | body   | Long   | 否   | 期望的草稿版本；传了就必须与库里一致，否则 `8111`           |
+| X-Client-Type   | header | String | 否   | 客户端类型                                  |
 
 **请求示例**
 
@@ -1476,14 +1476,14 @@ Content-Type: application/json
 
 **入参说明**
 
-| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
-|---|---|---|---|---|
-| recordId | path | Long | 是 | 练习记录 ID |
-| module | query | String | 是 | `writing` / `translation` / `speaking` |
-| finalAnswers | body | Array | 否 | 交卷这一刻的最后一批作答，元素结构同 §4.3.6 |
-| idempotencyKey | body | String | 否 | 兼容旧前端的字段，**服务端忽略其值** |
-| Idempotency-Key | header | String | 否 | 同上，仅打日志，不参与去重 |
-| X-Client-Type | header | String | 否 | 客户端类型 |
+| 参数名             | 位置     | 类型     | 必填  | 约束&说明                                  |
+| --------------- | ------ | ------ | --- | -------------------------------------- |
+| recordId        | path   | Long   | 是   | 练习记录 ID                                |
+| module          | query  | String | 是   | `writing` / `translation` / `speaking` |
+| finalAnswers    | body   | Array  | 否   | 交卷这一刻的最后一批作答，元素结构同 §4.3.6              |
+| idempotencyKey  | body   | String | 否   | 兼容旧前端的字段，**服务端忽略其值**                   |
+| Idempotency-Key | header | String | 否   | 同上，仅打日志，不参与去重                          |
+| X-Client-Type   | header | String | 否   | 客户端类型                                  |
 
 > 请求体整体可省略。若前端在交卷前才把编辑器内容提交，可以放进 `finalAnswers` 一起落库，省一次往返。
 
