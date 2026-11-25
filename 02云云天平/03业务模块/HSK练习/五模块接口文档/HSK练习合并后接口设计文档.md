@@ -355,11 +355,11 @@ Content-Type: application/json
 
 **入参说明**
 
-| 参数名               | 位置    | 类型     | 必填   | 约束&说明                                            |
-| ----------------- | ----- | ------ | ---- | ------------------------------------------------ |
-| recordId          | path  | Long   | 是    | 练习记录 ID                                          |
-| module            | query | String | 必传   | 模块码                                              |
-| currentQuestionId | body  | Long   | 条件必填 | 【修改】停留题目 ID；**必传**（要校验该题属于本次记录，缺省回 `8101`）       |
+| 参数名               | 位置    | 类型     | 必填   | 约束&说明                                      |
+| ----------------- | ----- | ------ | ---- | ------------------------------------------ |
+| recordId          | path  | Long   | 是    | 练习记录 ID                                    |
+| module            | query | String | 必传   | 模块码                                        |
+| currentQuestionId | body  | Long   | 条件必填 | 【修改】停留题目 ID；**必传**（要校验该题属于本次记录，缺省回 `8101`） |
 
 
 
@@ -414,10 +414,10 @@ Content-Type: application/json
 
 **入参说明**
 
-| 参数名 | 位置 | 类型 | 必填 | 约束&说明 |
-|---|---|---|---|---|
-| recordId | path | Long | 是 | 练习记录 ID |
-| module | query | String | 必传 | 模块码 |
+| 参数名      | 位置    | 类型     | 必填  | 约束&说明   |
+| -------- | ----- | ------ | --- | ------- |
+| recordId | path  | Long   | 是   | 练习记录 ID |
+| module   | query | String | 必传  | 模块码     |
 
 无请求体。
 
