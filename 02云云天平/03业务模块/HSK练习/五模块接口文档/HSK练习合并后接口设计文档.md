@@ -1308,18 +1308,18 @@ Content-Type: application/json
 
 **入参说明**
 
-| 参数名                     | 位置     | 类型     | 必填  | 约束&说明                                  |
-| ----------------------- | ------ | ------ | --- | -------------------------------------- |
-| recordId                | path   | Long   | 是   | 练习记录 ID                                |
-| module                  | query  | String | 是   | `writing` / `translation` / `speaking` |
-| answers                 | body   | Array  | 是   | 作答列表，元素见下                              |
-| answers[].questionId    | body   | Long   | 是   | 题目 ID，必须在冻结题集内，否则 `8107`               |
-| answers[].answerText    | body   | String | 否   | 文本作答：写作正文 / 笔译译文 (无需将用户录音转为文字，口语为NULL) |
-| answers[].answer        | body   | String | 否   | 音频 URL：口语 / 口译                         |
-| answers[].durationMs    | body   | Long   | 否   | 录音时长（毫秒）                               |
-| answers[].answerVersion | body   | Long   | 否   | 客户端持有的版本，**当前不参与校验**（见下）               |
-| currentQuestionId       | body   | Long   | 否   | 当前题，用于更新进度位置；不传则不改进度                   |
-| X-Client-Type           | header | String | 否   | 客户端类型                                  |
+| 参数名                  | 位置     | 类型     | 必填  | 约束&说明                                  |
+| -------------------- | ------ | ------ | --- | -------------------------------------- |
+| recordId             | path   | Long   | 是   | 练习记录 ID                                |
+| module               | query  | String | 是   | `writing` / `translation` / `speaking` |
+| answers              | body   | Array  | 是   | 作答列表，元素见下                              |
+| answers[].questionId | body   | Long   | 是   | 题目 ID，必须在冻结题集内，否则 `8107`               |
+| answers[].answerText | body   | String | 否   | 文本作答：写作正文 / 笔译译文 (无需将用户录音转为文字，口语为NULL) |
+| answers[].answer     | body   | String | 否   | 音频 URL：口语 / 口译                         |
+| answers[].durationMs | body   | Long   | 否   | 录音时长（毫秒）                               |
+|                      | body   | Long   | 否   | 客户端持有的版本，**当前不参与校验**（见下）               |
+| currentQuestionId    | body   | Long   | 否   | 当前题，用于更新进度位置；不传则不改进度                   |
+| X-Client-Type        | header | String | 否   | 客户端类型                                  |
 
 **请求示例**
 
